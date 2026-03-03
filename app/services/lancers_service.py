@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -22,14 +21,24 @@ LC_STATE_FILE = AUTH_STATE_DIR / "lancers_state.json"
 LC_SELECTORS = {
     "job_list_item": ".c-search-result__item, .p-search-job__item, .c-media",
     "job_link": "a[href*='/work/detail/']",
-    "price": ".c-media__price, .price, .p-search-job__price",
-    "description": ".p-job-detail__description, .c-definitionList__description",
-    "client_name": ".p-job-detail__client-name, .c-media__name",
-    "client_rating": ".c-rating__score, .rating",
-    "apply_button": 'a:has-text("提案する"), button:has-text("提案する"), a:has-text("応募する")',
+    # 一覧ページの価格
+    "price": ".p-search-job-media__price, .c-media__price, .price",
+    # 詳細ページの説明文
+    "description": "dd.c-definition-list__description, .p-work-detail-lancer__postscript-description",
+    # 詳細ページの予算（price-block は複数あるので親要素で取る）
+    "detail_price": ".price-block",
+    # クライアント名
+    "client_name": ".client_name, .p-work-detail-sub-heading__client",
+    # クライアント評価（Good/Bad）
+    "client_rating_good": ".p-work-detail-client-box-feedback-info__number-good",
+    "client_rating_bad": ".p-work-detail-client-box-feedback-info__number-bad",
+    # 発注率
+    "client_order_rate": ".p-work-detail-client-box-feedback-info__percent",
+    # Playwright専用セレクター（BeautifulSoupでは使わない）
+    "apply_button_pw": 'a:has-text("提案する"), button:has-text("提案する"), a:has-text("応募する")',
     "proposal_textarea": 'textarea[name*="proposal"], textarea[name*="message"], textarea.p-proposal__textarea',
     "budget_input": 'input[name*="price"], input[name*="budget"]',
-    "submit_button": 'button[type="submit"], button:has-text("提案を送信"), button:has-text("送信")',
+    "submit_button": 'button[type="submit"]',
 }
 
 # 検索URL（新着順、カテゴリ別）
@@ -57,10 +66,14 @@ async def _get_context(playwright) -> BrowserContext:
                 user_agent=UA,
             )
             page = await context.new_page()
+            # domcontentloadedで高速チェック（networkidleはLancersで頻繁にタイムアウトする）
             await page.goto("https://www.lancers.jp/mypage",
-                            wait_until="networkidle", timeout=30000)
+                            wait_until="domcontentloaded", timeout=20000)
+            # リダイレクト完了を少し待つ
+            await asyncio.sleep(2)
             # セッション有効: loginにもverify_codeにもリダイレクトされない
             if "/login" not in page.url and "/verify_code" not in page.url:
+                logger.info("Lancersセッション復元成功")
                 await page.close()
                 return context
             # verify_code画面に飛ばされた場合は2FA処理
@@ -92,7 +105,7 @@ async def _handle_2fa(context: BrowserContext) -> None:
         # verify_code画面でなければ遷移
         if "verify_code" not in page.url:
             await page.goto("https://www.lancers.jp/user/verify_code",
-                            wait_until="networkidle", timeout=15000)
+                            wait_until="domcontentloaded", timeout=15000)
 
         logger.info("Lancers 2FA認証コード画面を検出、Gmailからコード取得中...")
         code = await fetch_verification_code(
@@ -129,7 +142,7 @@ async def _login(context: BrowserContext) -> None:
     page = await context.new_page()
     try:
         await page.goto("https://www.lancers.jp/user/login",
-                        wait_until="networkidle", timeout=30000)
+                        wait_until="domcontentloaded", timeout=20000)
         # ログインフォームの入力欄を待つ
         await page.wait_for_selector('input#UserEmail, input[name="data[User][email]"]', timeout=10000)
         email_input = await page.query_selector('input#UserEmail, input[name="data[User][email]"]')
@@ -166,18 +179,22 @@ async def _login(context: BrowserContext) -> None:
 async def fetch_new_jobs(known_external_ids: set[str]) -> list[dict]:
     """Lancersから新着案件をスクレイピング"""
     jobs = []
+    seen_ids: set[str] = set()
     async with async_playwright() as p:
         context = await _get_context(p)
         try:
             page = await context.new_page()
             for search_url in SEARCH_URLS:
                 try:
-                    await page.goto(search_url, wait_until="networkidle",
+                    await page.goto(search_url, wait_until="domcontentloaded",
                                     timeout=20000)
                     await page.wait_for_selector(
-                        LC_SELECTORS["job_list_item"], timeout=10000)
+                        LC_SELECTORS["job_list_item"], timeout=15000)
                     content = await page.content()
-                    page_jobs = _parse_job_list(content, known_external_ids)
+                    # 既知ID + 今回のサイクルで取得済みIDの両方で重複除外
+                    page_jobs = _parse_job_list(content, known_external_ids | seen_ids)
+                    for pj in page_jobs:
+                        seen_ids.add(pj["external_id"])
                     jobs.extend(page_jobs)
                 except Exception as e:
                     logger.error(f"Lancersスクレイプエラー ({search_url}): {e}")
@@ -186,8 +203,10 @@ async def fetch_new_jobs(known_external_ids: set[str]) -> list[dict]:
             # 各案件の詳細ページを取得
             for job in jobs:
                 try:
-                    await page.goto(job["url"], wait_until="networkidle",
+                    await page.goto(job["url"], wait_until="domcontentloaded",
                                     timeout=15000)
+                    # 動的コンテンツの読み込みを少し待つ
+                    await asyncio.sleep(2)
                     detail_html = await page.content()
                     _enrich_job_detail(job, detail_html)
                     await asyncio.sleep(1)
@@ -223,7 +242,10 @@ def _parse_job_list(html: str, known_ids: set[str]) -> list[dict]:
             title = link.get_text(strip=True)
             url = f"https://www.lancers.jp{href}" if href.startswith("/") else href
 
+            # 一覧ページの価格（複数セレクターにフォールバック）
             budget_el = item.select_one(LC_SELECTORS["price"])
+            if not budget_el:
+                budget_el = item.select_one(".p-search-job-media__price, [class*='price']")
             budget_text = budget_el.get_text(strip=True) if budget_el else ""
             budget_min, budget_max, budget_type = _parse_budget(budget_text)
 
@@ -250,25 +272,67 @@ def _parse_job_list(html: str, known_ids: set[str]) -> list[dict]:
 
 
 def _enrich_job_detail(job: dict, html: str) -> None:
-    """詳細ページからdescription/client情報を追加"""
+    """詳細ページからdescription/client/budget情報を追加"""
     soup = BeautifulSoup(html, "lxml")
 
+    # 説明文の取得
     desc_el = soup.select_one(LC_SELECTORS["description"])
     if desc_el:
         job["description"] = desc_el.get_text(strip=True)[:3000]
+    else:
+        logger.debug("説明文セレクター不一致、フォールバック検索")
+        for sel in ["dd[class*='description']", "[class*='postscript-description']"]:
+            el = soup.select_one(sel)
+            if el and len(el.get_text(strip=True)) > 30:
+                job["description"] = el.get_text(strip=True)[:3000]
+                break
 
+    # 予算の取得（一覧で取れなかった場合の補完）
+    if not job.get("budget_min"):
+        price_els = soup.select(LC_SELECTORS["detail_price"])
+        if price_els:
+            price_text = " ".join(el.get_text(strip=True) for el in price_els)
+            bmin, bmax, btype = _parse_budget(price_text)
+            if bmin:
+                job["budget_min"] = bmin
+                job["budget_max"] = bmax
+                job["budget_type"] = btype
+
+    # クライアント名
     client_el = soup.select_one(LC_SELECTORS["client_name"])
     if client_el:
-        job["client_name"] = client_el.get_text(strip=True)
+        # "MakotoEdit (MakotoEdit)--本人確認..." から名前部分だけ抽出
+        raw = client_el.get_text(strip=True)
+        name_match = re.match(r'^(.+?)\s*(?:\(|（|--)', raw)
+        job["client_name"] = name_match.group(1) if name_match else raw[:50]
+    else:
+        heading = soup.select_one(".p-work-detail-sub-heading__client")
+        if heading:
+            raw = heading.get_text(strip=True)
+            name_match = re.match(r'^(.+?)\s*(?:\(|（|募集)', raw)
+            job["client_name"] = name_match.group(1) if name_match else raw[:50]
 
-    rating_el = soup.select_one(LC_SELECTORS["client_rating"])
-    if rating_el:
+    # クライアント評価（Good/Bad比率を5点満点に変換）
+    good_el = soup.select_one(LC_SELECTORS["client_rating_good"])
+    bad_el = soup.select_one(LC_SELECTORS["client_rating_bad"])
+    if good_el:
         try:
-            job["client_rating"] = float(
-                re.search(r'[\d.]+', rating_el.get_text()).group()
-            )
-        except (AttributeError, ValueError):
+            good = int(good_el.get_text(strip=True))
+            bad = int(bad_el.get_text(strip=True)) if bad_el else 0
+            total = good + bad
+            if total > 0:
+                job["client_rating"] = round(good / total * 5, 1)
+                job["client_review_count"] = total
+        except (ValueError, TypeError):
             pass
+
+    # 発注率
+    rate_el = soup.select_one(LC_SELECTORS["client_order_rate"])
+    if rate_el:
+        rate_text = rate_el.get_text(strip=True)
+        rate_match = re.search(r'(\d+)', rate_text)
+        if rate_match:
+            logger.debug(f"発注率: {rate_match.group(1)}%")
 
 
 def _parse_budget(text: str) -> tuple[Optional[int], Optional[int], Optional[str]]:
