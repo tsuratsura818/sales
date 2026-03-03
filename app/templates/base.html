@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}営業自動化ツール{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">🎯 営業自動化ツール</div>
+        <div class="nav-links">
+            <a href="/dashboard">📊 ダッシュボード</a>
+            <a href="/">🔍 検索</a>
+            <a href="/leads">📋 リード一覧</a>
+            <a href="/sent">📨 送信済み</a>
+            <a href="/followups">📩 フォローアップ</a>
+            <a href="/portfolios">📁 ポートフォリオ</a>
+            <a href="/jobs">📡 案件モニター</a>
+            <a href="/links">🔗 リンク一覧</a>
+            <a href="/roadmap">📌 ロードマップ</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="/static/js/sse_progress.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}リンク一覧 - 営業自動化ツール{% endblock %}
+
+{% block content %}
+<h1>リンク一覧</h1>
+<p class="page-desc">このツールで使用しているAPI・サービス・ライブラリの一覧です。</p>
+
+<section class="links-section">
+    <h2>外部API・サービス（APIキーが必要）</h2>
+    <div class="links-grid">
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://serpapi.com/" target="_blank" rel="noopener">SerpAPI</a></h3>
+                <span class="badge badge-api">API</span>
+            </div>
+            <p>Google検索結果をAPI経由で取得。営業対象となる古いサイト・HTTPS非対応サイトの自動発見に使用。</p>
+            <div class="link-card-footer">
+                <a href="https://serpapi.com/dashboard" target="_blank" rel="noopener">ダッシュボード</a>
+                <a href="https://serpapi.com/search-api" target="_blank" rel="noopener">APIドキュメント</a>
+            </div>
+        </div>
+
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://console.anthropic.com/" target="_blank" rel="noopener">Anthropic Claude API</a></h3>
+                <span class="badge badge-api">API</span>
+            </div>
+            <p>AIによる営業メールの自動生成。サイト分析結果をもとに、問題点を指摘するパーソナライズされたメールを作成。</p>
+            <div class="link-card-footer">
+                <a href="https://console.anthropic.com/" target="_blank" rel="noopener">コンソール</a>
+                <a href="https://docs.anthropic.com/en/docs" target="_blank" rel="noopener">APIドキュメント</a>
+            </div>
+        </div>
+
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">Gmail SMTP（アプリパスワード）</a></h3>
+                <span class="badge badge-service">サービス</span>
+            </div>
+            <p>生成した営業メールの自動送信に使用。BCC自分宛てで送信控えも自動取得。Googleアプリパスワードで認証。</p>
+            <div class="link-card-footer">
+                <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">アプリパスワード管理</a>
+                <a href="https://support.google.com/mail/answer/185833" target="_blank" rel="noopener">設定ガイド</a>
+            </div>
+        </div>
+
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://developers.google.com/speed/docs/insights/v5/get-started" target="_blank" rel="noopener">Google PageSpeed Insights API</a></h3>
+                <span class="badge badge-optional">オプション</span>
+            </div>
+            <p>サイトの表示速度スコアを取得。スコアが低いサイトへの提案材料として活用。現在は未設定。</p>
+            <div class="link-card-footer">
+                <a href="https://pagespeed.web.dev/" target="_blank" rel="noopener">Web版ツール</a>
+                <a href="https://developers.google.com/speed/docs/insights/v5/get-started" target="_blank" rel="noopener">APIドキュメント</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="links-section">
+    <h2>Pythonフレームワーク・ライブラリ</h2>
+    <div class="links-grid">
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://fastapi.tiangolo.com/" target="_blank" rel="noopener">FastAPI</a></h3>
+                <span class="badge badge-lib">フレームワーク</span>
+            </div>
+            <p>WebアプリのバックエンドAPIフレームワーク。高速な非同期処理に対応。</p>
+        </div>
+
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://www.uvicorn.org/" target="_blank" rel="noopener">Uvicorn</a></h3>
+                <span class="badge badge-lib">サーバー</span>
+            </div>
+            <p>FastAPIを動かすASGIサーバー。start.batから起動し、localhost:8000でアクセス。</p>
+        </div>
+
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://jinja.palletsprojects.com/" target="_blank" rel="noopener">Jinja2</a></h3>
+                <span class="badge badge-lib">テンプレート</span>
+            </div>
+            <p>HTMLテンプレートエンジン。各画面のHTML生成に使用。</p>
+        </div>
+
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://www.sqlalchemy.org/" target="_blank" rel="noopener">SQLAlchemy</a></h3>
+                <span class="badge badge-lib">ORM</span>
+            </div>
+            <p>PythonのORM。SQLiteデータベースの操作（リード・ジョブ・メールログの保存）に使用。</p>
+        </div>
+
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://www.sqlite.org/" target="_blank" rel="noopener">SQLite</a></h3>
+                <span class="badge badge-lib">データベース</span>
+            </div>
+            <p>軽量データベース。ファイル1つ（sales.db）でデータを管理。サーバー不要。</p>
+        </div>
+
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://www.python-httpx.org/" target="_blank" rel="noopener">httpx</a></h3>
+                <span class="badge badge-lib">HTTP</span>
+            </div>
+            <p>非同期HTTPクライアント。外部APIやサイトへのアクセスに使用。</p>
+        </div>
+
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://www.crummy.com/software/BeautifulSoup/bs4/doc/" target="_blank" rel="noopener">BeautifulSoup4</a></h3>
+                <span class="badge badge-lib">パーサー</span>
+            </div>
+            <p>HTMLパーサー。サイトの構造解析（CMS検出・メールアドレス抽出・モバイル対応チェック等）に使用。</p>
+        </div>
+
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://lxml.de/" target="_blank" rel="noopener">lxml</a></h3>
+                <span class="badge badge-lib">パーサー</span>
+            </div>
+            <p>高速XMLパーサー。BeautifulSoupのバックエンドエンジンとして使用。</p>
+        </div>
+
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://pypi.org/project/python-whois/" target="_blank" rel="noopener">python-whois</a></h3>
+                <span class="badge badge-lib">WHOIS</span>
+            </div>
+            <p>WHOISでドメイン登録日を取得し、ドメイン年齢を算出。古いサイトの判定に使用。</p>
+        </div>
+
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://docs.pydantic.dev/latest/concepts/pydantic_settings/" target="_blank" rel="noopener">pydantic-settings</a></h3>
+                <span class="badge badge-lib">設定管理</span>
+            </div>
+            <p>.envファイルから設定値（APIキー等）を型安全に読み込み。</p>
+        </div>
+
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://pypi.org/project/sse-starlette/" target="_blank" rel="noopener">sse-starlette</a></h3>
+                <span class="badge badge-lib">リアルタイム</span>
+            </div>
+            <p>Server-Sent Events。検索・分析の進捗をブラウザにリアルタイム表示。</p>
+        </div>
+
+        <div class="link-card">
+            <div class="link-card-header">
+                <h3><a href="https://pypi.org/project/anthropic/" target="_blank" rel="noopener">anthropic（Pythonクライアント）</a></h3>
+                <span class="badge badge-lib">SDK</span>
+            </div>
+            <p>Anthropic公式Pythonクライアント。Claude APIの呼び出しに使用。</p>
+        </div>
+    </div>
+</section>
+
+<section class="links-section">
+    <h2>Python標準ライブラリ（インストール不要）</h2>
+    <table class="std-lib-table">
+        <thead>
+            <tr><th>ライブラリ</th><th>用途</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>smtplib</td><td>Gmail SMTP接続・メール送信</td></tr>
+            <tr><td>ssl / socket</td><td>SSL証明書の有効期限チェック</td></tr>
+            <tr><td>email.mime</td><td>メール本文の構築（MIMEフォーマット）</td></tr>
+            <tr><td>asyncio</td><td>非同期処理（サイト分析の並列実行）</td></tr>
+            <tr><td>re</td><td>正規表現（メールアドレス抽出・CMS検出等）</td></tr>
+            <tr><td>json</td><td>JSONデータの処理</td></tr>
+        </tbody>
+    </table>
+</section>
+{% endblock %}

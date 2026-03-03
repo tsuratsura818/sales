@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}リード一覧 - 営業自動化ツール{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📋 リード一覧</h1>
+    {% if job %}
+    <p>検索クエリ: <strong>{{ job.query }}</strong> | 全{{ leads|length }}件</p>
+    {% else %}
+    <p>{{ leads|length }}件のリード</p>
+    {% endif %}
+</div>
+
+{% if cost %}
+<div class="cost-bar">
+    💰 SerpAPIコスト: {{ cost.serpapi_calls }}回 / 約{{ cost.serpapi_cost_jpy }}円　｜
+    Claude メール生成: 約{{ cost.claude_cost_per_email_jpy }}円/件
+    （全件生成なら 約{{ (leads|length * cost.claude_cost_per_email_jpy)|int }}円）
+</div>
+{% endif %}
+
+{% if leads %}
+<div class="card table-card">
+    <div class="table-toolbar">
+        <input type="text" id="filter-input" placeholder="🔍 ドメインで絞り込み..." class="form-control filter-input">
+        <div class="filter-toggle-group">
+            <button class="filter-toggle" data-type="http" onclick="toggleFilter(this)">🔓 HTTPのみ</button>
+            <button class="filter-toggle" data-type="mobile" onclick="toggleFilter(this)">📵 モバイル非対応</button>
+            <button class="filter-toggle" data-type="WordPress" onclick="toggleFilter(this)">WordPress</button>
+            <button class="filter-toggle" data-type="Wix" onclick="toggleFilter(this)">Wix</button>
+            <button class="filter-toggle" data-type="Jimdo" onclick="toggleFilter(this)">Jimdo</button>
+            <button class="filter-toggle" data-type="Shopify" onclick="toggleFilter(this)">Shopify</button>
+            <button class="filter-toggle" data-type="STUDIO" onclick="toggleFilter(this)">STUDIO</button>
+            <button class="filter-toggle filter-clear" onclick="clearFilters()">✕ 解除</button>
+        </div>
+        <span class="table-summary">
+            📊 表示: <span id="visible-count">{{ leads|length }}</span>件 / 合計{{ leads|length }}件　｜
+            要対応(30+): {{ leads|selectattr('score', 'ge', 30)|list|length }}件
+        </span>
+        <a href="/api/leads/export/csv{% if job_id %}?job_id={{ job_id }}{% endif %}" class="btn btn-sm btn-secondary">📥 CSV出力</a>
+        {% if job_id %}
+        <button class="btn btn-sm btn-danger" onclick="deleteJob({{ job_id }})">🗑 このジョブを全削除</button>
+        {% endif %}
+    </div>
+    <div class="table-responsive">
+        <table class="table" id="leads-table">
+            <thead>
+                <tr>
+                    <th>優先度</th>
+                    <th>期待度</th>
+                    <th>ドメイン / タイトル</th>
+                    <th>HTTPS</th>
+                    <th>モバイル</th>
+                    <th>著作権年</th>
+                    <th>CMS</th>
+                    <th>連絡先</th>
+                    <th>ステータス</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for lead in leads %}
+                <tr class="lead-row"
+                    data-lead-id="{{ lead.id }}"
+                    data-domain="{{ lead.domain or '' }}"
+                    data-https="{{ 'false' if lead.is_https == false else 'true' }}"
+                    data-mobile="{{ 'false' if lead.has_viewport == false else 'true' }}"
+                    data-cms="{{ lead.cms_type or '' }}">
+                    <td>
+                        <span class="score-badge score-{{ 'high' if lead.score >= 50 else ('mid' if lead.score >= 25 else 'low') }}">
+                            {{ lead.score }}点
+                        </span>
+                    </td>
+                    <td>
+                        {% if lead.conversion_rank %}
+                        <span class="rank-badge rank-{{ lead.conversion_rank }}">{{ lead.conversion_rank }}</span>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>
+                        <div class="domain-cell">
+                            <a href="{{ lead.url }}" target="_blank" class="domain-link">
+                                {{ lead.domain or lead.url[:40] }}
+                            </a>
+                            {% if lead.title %}
+                            <div class="site-title">{{ lead.title[:50] }}{% if lead.title|length > 50 %}...{% endif %}</div>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        {% if lead.is_https is none %}<span class="badge badge-unknown">-</span>
+                        {% elif lead.is_https %}<span class="badge badge-ok">✓</span>
+                        {% else %}<span class="badge badge-ng">✗ 非対応</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if lead.has_viewport is none %}<span class="badge badge-unknown">-</span>
+                        {% elif lead.has_viewport %}<span class="badge badge-ok">✓</span>
+                        {% else %}<span class="badge badge-ng">✗ 非対応</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if lead.copyright_year %}
+                        <span class="{{ 'text-warning' if (2026 - lead.copyright_year) >= 3 else '' }}">
+                            {{ lead.copyright_year }}年
+                        </span>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>
+                        {% if lead.cms_type %}
+                        <span class="cms-badge cms-{{ lead.cms_type }}">{{ lead.cms_type }}</span>
+                        {% if lead.cms_version %}<span class="cms-ver"> {{ lead.cms_version }}</span>{% endif %}
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>
+                        {% if lead.contact_email %}
+                        <span class="badge badge-ok">✓ あり</span>
+                        {% else %}<span class="badge badge-unknown">-</span>{% endif %}
+                    </td>
+                    <td><span class="badge badge-{{ lead.status }}">{{ lead.status | status_ja }}</span></td>
+                    <td>
+                        <div style="display:flex; gap:4px; white-space:nowrap;">
+                            <a href="/leads/{{ lead.id }}" class="btn btn-sm btn-primary">詳細</a>
+                            <button class="btn btn-sm btn-danger" onclick="deleteLead({{ lead.id }}, this)" title="削除">✕</button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card empty-state">
+    <p>📭 リードがありません。まず検索を実行してください。</p>
+    <a href="/" class="btn btn-primary">検索を開始</a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+var activeFilters = new Set();
+{% if job and job.filter_http_only %}activeFilters.add("http");{% endif %}
+{% if job and job.filter_no_mobile %}activeFilters.add("mobile");{% endif %}
+{% for cms in active_cms_list %}activeFilters.add("{{ cms }}");{% endfor %}
+
+document.addEventListener("DOMContentLoaded", function() {
+    activeFilters.forEach(function(f) {
+        var btn = document.querySelector(".filter-toggle[data-type='" + f + "']");
+        if (btn) btn.classList.add("active");
+    });
+    applyFilters();
+});
+
+document.getElementById("filter-input") && document.getElementById("filter-input").addEventListener("input", applyFilters);
+
+function toggleFilter(btn) {
+    var type = btn.dataset.type;
+    if (activeFilters.has(type)) { activeFilters.delete(type); btn.classList.remove("active"); }
+    else { activeFilters.add(type); btn.classList.add("active"); }
+    applyFilters();
+}
+
+function clearFilters() {
+    activeFilters.clear();
+    document.querySelectorAll(".filter-toggle.active").forEach(function(b) { b.classList.remove("active"); });
+    applyFilters();
+}
+
+function applyFilters() {
+    var txt = (document.getElementById("filter-input") ? document.getElementById("filter-input").value : "").toLowerCase();
+    var cmsFilters = ["WordPress","Wix","Jimdo","Shopify","STUDIO"].filter(function(c) { return activeFilters.has(c); });
+    var visible = 0;
+    document.querySelectorAll(".lead-row").forEach(function(row) {
+        var show = row.dataset.domain.toLowerCase().includes(txt);
+        if (show && activeFilters.has("http")) show = row.dataset.https === "false";
+        if (show && activeFilters.has("mobile")) show = row.dataset.mobile === "false";
+        if (show && cmsFilters.length > 0) show = cmsFilters.includes(row.dataset.cms);
+        row.style.display = show ? "" : "none";
+        if (show) visible++;
+    });
+    var el = document.getElementById("visible-count");
+    if (el) el.textContent = visible;
+}
+
+async function deleteLead(leadId, btn) {
+    if (!confirm('このリードを削除しますか？')) return;
+    try {
+        var resp = await fetch('/api/leads/' + leadId, {method: 'DELETE'});
+        if (!resp.ok) throw new Error('削除に失敗しました');
+        var row = btn.closest('tr');
+        if (row) row.remove();
+        applyFilters();
+    } catch(e) {
+        alert(e.message);
+    }
+}
+
+async function deleteJob(jobId) {
+    if (!confirm('このジョブの検索結果を全て削除しますか？\nこの操作は取り消せません。')) return;
+    try {
+        var resp = await fetch('/api/jobs/' + jobId, {method: 'DELETE'});
+        if (!resp.ok) throw new Error('削除に失敗しました');
+        window.location.href = '/';
+    } catch(e) {
+        alert(e.message);
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block title %}案件モニター{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📡 案件モニター（CrowdWorks / Lancers）</h1>
+    <p>自動検出された案件一覧。LINEまたはダッシュボードから応募を管理できます。</p>
+</div>
+
+<!-- 集計カード -->
+<div class="stats-row">
+    <div class="stat-card stat-leads">
+        <div class="stat-number">{{ counts.total }}</div>
+        <div class="stat-label">総検出</div>
+    </div>
+    <div class="stat-card stat-active">
+        <div class="stat-number">{{ counts.notified }}</div>
+        <div class="stat-label">通知済み</div>
+    </div>
+    <div class="stat-card stat-meeting">
+        <div class="stat-number">{{ counts.review }}</div>
+        <div class="stat-label">確認待ち</div>
+    </div>
+    <div class="stat-card stat-completed">
+        <div class="stat-number">{{ counts.applied }}</div>
+        <div class="stat-label">応募完了</div>
+    </div>
+    <div class="stat-card stat-stopped">
+        <div class="stat-number">{{ counts.skipped }}</div>
+        <div class="stat-label">スキップ</div>
+    </div>
+</div>
+
+<!-- フィルター -->
+<div class="card">
+    <div class="filter-toggle-group">
+        <a href="/jobs" class="filter-toggle {% if not current_status and not current_platform %}active{% endif %}">全て</a>
+        <a href="/jobs?status=notified" class="filter-toggle {% if current_status == 'notified' %}active{% endif %}">通知済み</a>
+        <a href="/jobs?status=review" class="filter-toggle {% if current_status == 'review' %}active{% endif %}">確認待ち</a>
+        <a href="/jobs?status=approved" class="filter-toggle {% if current_status == 'approved' %}active{% endif %}">承認済み</a>
+        <a href="/jobs?status=applied" class="filter-toggle {% if current_status == 'applied' %}active{% endif %}">応募完了</a>
+        <a href="/jobs?status=skipped" class="filter-toggle {% if current_status == 'skipped' %}active{% endif %}">スキップ</a>
+        <a href="/jobs?status=error" class="filter-toggle {% if current_status == 'error' %}active{% endif %}">エラー</a>
+        <span style="margin: 0 8px; color: #ccc;">|</span>
+        <a href="/jobs?platform=crowdworks" class="filter-toggle {% if current_platform == 'crowdworks' %}active{% endif %}">CrowdWorks</a>
+        <a href="/jobs?platform=lancers" class="filter-toggle {% if current_platform == 'lancers' %}active{% endif %}">Lancers</a>
+    </div>
+</div>
+
+<!-- 案件一覧 -->
+{% if listings %}
+<div class="card">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>サイト</th>
+                <th>案件タイトル</th>
+                <th>予算</th>
+                <th>マッチ度</th>
+                <th>ステータス</th>
+                <th>検出日時</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in listings %}
+            <tr>
+                <td>
+                    {% if job.platform == "crowdworks" %}
+                    <span class="badge badge-cw">CW</span>
+                    {% else %}
+                    <span class="badge badge-lc">LC</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{{ job.url }}" target="_blank" class="domain-link">
+                        {{ job.title[:50] }}{% if job.title|length > 50 %}...{% endif %}
+                    </a>
+                    {% if job.category %}
+                    <br><small style="color: #888;">{{ job.category }}</small>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if job.budget_min and job.budget_max %}
+                        {% if job.budget_min == job.budget_max %}
+                            {{ "{:,}".format(job.budget_min) }}円
+                        {% else %}
+                            {{ "{:,}".format(job.budget_min) }}〜{{ "{:,}".format(job.budget_max) }}円
+                        {% endif %}
+                    {% else %}
+                        <span style="color: #aaa;">未定</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if job.match_score is not none %}
+                    <span class="score-badge {% if job.match_score >= 80 %}score-high{% elif job.match_score >= 60 %}score-mid{% else %}score-low{% endif %}">
+                        {{ job.match_score }}点
+                    </span>
+                    {% if job.match_reason %}
+                    <br><small style="color: #888;">{{ job.match_reason[:30] }}</small>
+                    {% endif %}
+                    {% endif %}
+                </td>
+                <td>
+                    <span class="badge badge-{{ job.status }}">
+                        {{ job.status | status_ja }}
+                    </span>
+                </td>
+                <td>
+                    {{ job.created_at.strftime('%m/%d %H:%M') if job.created_at else '-' }}
+                </td>
+                <td>
+                    {% if job.status in ('notified', 'new', 'analyzing') %}
+                    <button class="btn btn-sm btn-primary" onclick="approveJob({{ job.id }})">応募</button>
+                    <button class="btn btn-sm btn-secondary" onclick="skipJob({{ job.id }})">スキップ</button>
+                    {% elif job.status == 'review' %}
+                    <button class="btn btn-sm btn-proposal" onclick="showProposal({{ job.id }})">提案文確認</button>
+                    {% elif job.status in ('generating', 'approved') %}
+                    <span class="badge badge-generating">生成中...</span>
+                    {% elif job.status == 'applied' %}
+                    <button class="btn btn-sm btn-secondary" onclick="showProposal({{ job.id }})">提案文</button>
+                    {% elif job.status == 'error' %}
+                    <button class="btn btn-sm btn-primary" onclick="approveJob({{ job.id }})">再試行</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card">
+    <p class="empty-message">案件はまだ検出されていません。バックグラウンドモニターが自動的に案件を検出します。</p>
+</div>
+{% endif %}
+
+<!-- 提案文モーダル -->
+<div id="proposalModal" class="modal-overlay" style="display:none;" onclick="closeModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3 id="modalTitle">提案文プレビュー</h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="modalLoading" class="modal-loading">読み込み中...</div>
+            <div id="modalProposal" style="display:none;">
+                <div id="proposalText" class="proposal-text"></div>
+            </div>
+        </div>
+        <div id="modalActions" class="modal-footer" style="display:none;">
+            <button id="btnConfirm" class="btn btn-primary" onclick="confirmProposal()">この内容で応募する</button>
+            <button id="btnRegenerate" class="btn btn-secondary" onclick="regenerateProposal()">再生成</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentJobId = null;
+
+async function approveJob(jobId) {
+    const resp = await fetch(`/api/jobs/${jobId}/approve`, {method: 'POST'});
+    if (resp.ok) {
+        location.reload();
+    } else {
+        const data = await resp.json();
+        alert(data.detail || 'エラーが発生しました');
+    }
+}
+
+async function skipJob(jobId) {
+    if (!confirm('この案件をスキップしますか？')) return;
+    const resp = await fetch(`/api/jobs/${jobId}/skip`, {method: 'POST'});
+    if (resp.ok) location.reload();
+}
+
+async function showProposal(jobId) {
+    currentJobId = jobId;
+    const modal = document.getElementById('proposalModal');
+    const loading = document.getElementById('modalLoading');
+    const proposal = document.getElementById('modalProposal');
+    const actions = document.getElementById('modalActions');
+
+    modal.style.display = 'flex';
+    loading.style.display = 'block';
+    proposal.style.display = 'none';
+    actions.style.display = 'none';
+
+    const resp = await fetch(`/api/jobs/${jobId}/proposal`);
+    if (!resp.ok) {
+        loading.textContent = '取得に失敗しました';
+        return;
+    }
+
+    const data = await resp.json();
+    loading.style.display = 'none';
+
+    document.getElementById('modalTitle').textContent = data.title || '提案文プレビュー';
+
+    if (data.proposal_text) {
+        document.getElementById('proposalText').textContent = data.proposal_text;
+        proposal.style.display = 'block';
+
+        if (data.status === 'review') {
+            document.getElementById('btnConfirm').style.display = '';
+            document.getElementById('btnRegenerate').style.display = '';
+            actions.style.display = 'flex';
+        } else if (data.status === 'applied') {
+            actions.style.display = 'none';
+        } else {
+            document.getElementById('btnConfirm').style.display = 'none';
+            document.getElementById('btnRegenerate').style.display = '';
+            actions.style.display = 'flex';
+        }
+    } else {
+        proposal.style.display = 'block';
+        document.getElementById('proposalText').textContent = '提案文はまだ生成されていません。';
+    }
+}
+
+function closeModal(e) {
+    if (e && e.target !== e.currentTarget) return;
+    document.getElementById('proposalModal').style.display = 'none';
+    currentJobId = null;
+}
+
+async function confirmProposal() {
+    if (!currentJobId) return;
+    if (!confirm('この提案文で応募しますか？')) return;
+
+    const btn = document.getElementById('btnConfirm');
+    btn.disabled = true;
+    btn.textContent = '送信中...';
+
+    const resp = await fetch(`/api/jobs/${currentJobId}/confirm`, {method: 'POST'});
+    if (resp.ok) {
+        closeModal();
+        location.reload();
+    } else {
+        const data = await resp.json();
+        alert(data.detail || 'エラーが発生しました');
+        btn.disabled = false;
+        btn.textContent = 'この内容で応募する';
+    }
+}
+
+async function regenerateProposal() {
+    if (!currentJobId) return;
+    if (!confirm('提案文を再生成しますか？')) return;
+
+    const btn = document.getElementById('btnRegenerate');
+    btn.disabled = true;
+    btn.textContent = '再生成中...';
+
+    const resp = await fetch(`/api/jobs/${currentJobId}/regenerate`, {method: 'POST'});
+    if (resp.ok) {
+        closeModal();
+        location.reload();
+    } else {
+        const data = await resp.json();
+        alert(data.detail || 'エラーが発生しました');
+        btn.disabled = false;
+        btn.textContent = '再生成';
+    }
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeModal();
+});
+</script>
+{% endblock %}

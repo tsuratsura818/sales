@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}改善ロードマップ - 営業自動化ツール{% endblock %}
+
+{% block content %}
+<h1>改善ロードマップ</h1>
+<p class="page-desc">営業獲得率を上げるための機能改善計画です。Web制作・デザイン・ECサイト制作の3つの視点で営業先を分析し、最適な提案を自動で組み立てます。</p>
+
+<!-- Phase 1 -->
+<section class="roadmap-phase">
+    <div class="phase-header phase-high">
+        <div class="phase-title">
+            <span class="phase-number">Phase 1</span>
+            <h2>分析強化（Web制作/デザイン/EC視点の追加）</h2>
+        </div>
+        <span class="phase-priority priority-high">優先度：高</span>
+    </div>
+    <div class="phase-body">
+        <p class="phase-desc">現在の分析項目（HTTPS・モバイル・CMS等）に加え、Web制作・デザイン・EC の3視点で営業先サイトを深く分析。検出した問題に応じてClaudeが最適な提案メールを生成。</p>
+
+        <div class="phase-tasks">
+            <div class="task-group">
+                <h4>HTML/デザイン拡張チェック</h4>
+                <ul>
+                    <li>テーブルレイアウト検出（古いHTML構造）</li>
+                    <li>インラインCSS多用の検出</li>
+                    <li>OGP画像の有無 → SNSシェア時の見え方が損している指摘</li>
+                    <li>ファビコン未設定の検出</li>
+                    <li>WebP未対応の画像検出</li>
+                    <li>alt属性欠落の検出（アクセシビリティ）</li>
+                </ul>
+            </div>
+            <div class="task-group">
+                <h4>EC関連チェック</h4>
+                <ul>
+                    <li>ECサイト判定（カート・商品ページの有無）</li>
+                    <li>決済方法の種類チェック</li>
+                    <li>商品構造化データ（schema.org/Product）の有無</li>
+                    <li>サイト内検索・レビュー機能の有無</li>
+                    <li>モール利用検出（BASE/STORES/Shopify → 自社EC移行提案）</li>
+                </ul>
+            </div>
+            <div class="task-group">
+                <h4>SEO/構造チェック</h4>
+                <ul>
+                    <li>構造化データ（schema.org）の有無</li>
+                    <li>パンくずリスト・sitemap.xml・robots.txt の確認</li>
+                </ul>
+            </div>
+            <div class="task-group">
+                <h4>スコアリング・メール生成の更新</h4>
+                <ul>
+                    <li>新チェック項目のスコア重み追加</li>
+                    <li>Claudeプロンプトに3視点の分析結果を反映</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Phase 2 -->
+<section class="roadmap-phase">
+    <div class="phase-header phase-high">
+        <div class="phase-title">
+            <span class="phase-number">Phase 2</span>
+            <h2>ビジュアル分析レポート</h2>
+        </div>
+        <span class="phase-priority priority-high">優先度：高</span>
+    </div>
+    <div class="phase-body">
+        <p class="phase-desc">営業先サイトのスクリーンショットを自動取得し、問題箇所に注釈を入れた診断レポートPDFを生成。メールの説得力が大幅に向上。</p>
+        <div class="phase-tasks">
+            <div class="task-group">
+                <ul>
+                    <li>Playwrightでスクリーンショット自動取得（PC版/スマホ版）</li>
+                    <li>問題箇所に赤枠・注釈を入れたレポート画像生成</li>
+                    <li>PDF診断レポートの自動生成</li>
+                    <li>リード詳細画面にスクリーンショット表示</li>
+                    <li>メール添付 or レポートURL機能</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Phase 3 -->
+<section class="roadmap-phase">
+    <div class="phase-header phase-high">
+        <div class="phase-title">
+            <span class="phase-number">Phase 3</span>
+            <h2>フォローアップ自動化（ステップメール）</h2>
+        </div>
+        <span class="phase-priority priority-high">優先度：高</span>
+    </div>
+    <div class="phase-body">
+        <p class="phase-desc">1通で終わらない営業を実現。初回メール→3日後リマインド→1週間後に別切り口で再アプローチ。返信があれば自動停止。</p>
+        <div class="phase-tasks">
+            <div class="task-group">
+                <ul>
+                    <li>ステップメール設計（初回:問題提起 → 2回目:事例紹介 → 3回目:期間限定提案）</li>
+                    <li>各ステップのメール内容をAIが切り口を変えて生成</li>
+                    <li>送信スケジューラ（バックグラウンドタスク）</li>
+                    <li>返信検知で自動停止</li>
+                    <li>UI: フォローアップ状態の表示</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Phase 4 -->
+<section class="roadmap-phase">
+    <div class="phase-header phase-mid">
+        <div class="phase-title">
+            <span class="phase-number">Phase 4</span>
+            <h2>競合比較分析</h2>
+        </div>
+        <span class="phase-priority priority-mid">優先度：中</span>
+    </div>
+    <div class="phase-body">
+        <p class="phase-desc">同業種・同エリアの競合サイトを自動検索し、スコア比較表を生成。「同業の〇〇社はリニューアル済みです」で危機感を喚起。</p>
+        <div class="phase-tasks">
+            <div class="task-group">
+                <ul>
+                    <li>同業種・同エリアの競合サイト自動検索</li>
+                    <li>競合とのスコア比較表生成</li>
+                    <li>メール文面に競合比較を盛り込む機能</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Phase 5 -->
+<section class="roadmap-phase">
+    <div class="phase-header phase-mid">
+        <div class="phase-title">
+            <span class="phase-number">Phase 5</span>
+            <h2>スマートスコアリング</h2>
+        </div>
+        <span class="phase-priority priority-mid">優先度：中</span>
+    </div>
+    <div class="phase-body">
+        <p class="phase-desc">技術的問題だけでなく、会社規模・業種・投資意欲も考慮して「成約期待度」でランク付け。成約可能性が高い順にアプローチ。</p>
+        <div class="phase-tasks">
+            <div class="task-group">
+                <ul>
+                    <li>会社規模推定（従業員数・資本金）</li>
+                    <li>業種自動判定（AIで分類）</li>
+                    <li>問い合わせフォーム有無による投資意欲推定</li>
+                    <li>総合「成約期待度」ランク付け</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Phase 6 -->
+<section class="roadmap-phase">
+    <div class="phase-header phase-mid">
+        <div class="phase-title">
+            <span class="phase-number">Phase 6</span>
+            <h2>営業ダッシュボード強化</h2>
+        </div>
+        <span class="phase-priority priority-mid">優先度：中</span>
+    </div>
+    <div class="phase-body">
+        <p class="phase-desc">送信→返信→商談→成約のファネル表示、業種別の返信率グラフ、効果分析でPDCAを回す。</p>
+        <div class="phase-tasks">
+            <div class="task-group">
+                <ul>
+                    <li>ファネル表示（送信→開封→返信→商談→成約）</li>
+                    <li>業種別・スコア帯別の返信率グラフ</li>
+                    <li>効果分析（どの問題点指摘が最も返信されたか）</li>
+                    <li>週次/月次レポート自動生成</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Phase 7 -->
+<section class="roadmap-phase">
+    <div class="phase-header phase-low">
+        <div class="phase-title">
+            <span class="phase-number">Phase 7</span>
+            <h2>自社ポートフォリオ連携</h2>
+        </div>
+        <span class="phase-priority priority-low">優先度：低</span>
+    </div>
+    <div class="phase-body">
+        <p class="phase-desc">自社の制作実績を業種別に登録し、リードの業種に合った実績をメールに自動挿入。「同業種の実績あります」で信頼感UP。</p>
+        <div class="phase-tasks">
+            <div class="task-group">
+                <ul>
+                    <li>自社制作実績の業種別DB登録機能</li>
+                    <li>リードの業種に合った実績を自動でメールに挿入</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

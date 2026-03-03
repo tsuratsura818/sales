@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+{% block title %}ダッシュボード - 営業自動化ツール{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>ダッシュボード</h1>
+    <p>営業パイプラインの全体状況</p>
+</div>
+
+<!-- KPIカード -->
+<div class="stats-row-6">
+    <div class="stat-card stat-leads">
+        <div class="stat-number" id="kpi-leads">-</div>
+        <div class="stat-label">リード数</div>
+    </div>
+    <div class="stat-card stat-sent-kpi">
+        <div class="stat-number" id="kpi-sent">-</div>
+        <div class="stat-label">送信数</div>
+    </div>
+    <div class="stat-card stat-reply-rate">
+        <div class="stat-number" id="kpi-reply-rate">-</div>
+        <div class="stat-label">返信率</div>
+    </div>
+    <div class="stat-card stat-meeting">
+        <div class="stat-number" id="kpi-meeting">-</div>
+        <div class="stat-label">商談数</div>
+    </div>
+    <div class="stat-card stat-closed-kpi">
+        <div class="stat-number" id="kpi-closed">-</div>
+        <div class="stat-label">成約数</div>
+    </div>
+    <div class="stat-card stat-revenue">
+        <div class="stat-number" id="kpi-revenue">-</div>
+        <div class="stat-label">売上合計</div>
+    </div>
+</div>
+
+<!-- ファネル -->
+<div class="dashboard-card">
+    <h2>営業ファネル</h2>
+    <div class="chart-container chart-funnel">
+        <canvas id="funnelChart"></canvas>
+    </div>
+</div>
+
+<!-- 業種別 / スコア帯別 2カラム -->
+<div class="dashboard-grid">
+    <div class="dashboard-card">
+        <h2>業種別返信率</h2>
+        <div class="chart-container" id="industry-container">
+            <canvas id="industryChart"></canvas>
+        </div>
+    </div>
+    <div class="dashboard-card">
+        <h2>スコア帯別返信率</h2>
+        <div class="chart-container">
+            <canvas id="scoreChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- 効果分析 -->
+<div class="dashboard-card">
+    <h2>効果分析（問題点指摘別の返信率）</h2>
+    <div class="chart-container chart-wide" id="effectiveness-container">
+        <canvas id="effectivenessChart"></canvas>
+    </div>
+</div>
+
+<!-- 週次/月次レポート -->
+<div class="dashboard-card">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+        <h2 style="margin-bottom: 0;">レポート</h2>
+        <div class="report-toggle">
+            <button class="active" id="report-weekly" onclick="switchReport('weekly')">週次</button>
+            <button id="report-monthly" onclick="switchReport('monthly')">月次</button>
+        </div>
+    </div>
+    <div class="chart-container chart-wide">
+        <canvas id="reportChart"></canvas>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+// グローバル設定
+Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif';
+Chart.defaults.font.size = 12;
+Chart.defaults.color = '#666';
+
+const COLORS = {
+    blue: '#4a90d9',
+    cyan: '#5dade2',
+    green: '#27ae60',
+    greenLight: '#2ecc71',
+    orange: '#f39c12',
+    red: '#e74c3c',
+    lightBlue: '#d4e6f9',
+    gray: '#95a5a6',
+};
+
+// ファネルチャート
+function renderFunnel(data) {
+    if (!data.values.some(v => v > 0)) {
+        document.getElementById('funnelChart').parentElement.innerHTML = '<div class="no-data-message">データがありません</div>';
+        return;
+    }
+    new Chart(document.getElementById('funnelChart'), {
+        type: 'bar',
+        data: {
+            labels: data.labels.map((l, i) => l + ' (' + data.values[i] + '件)'),
+            datasets: [{
+                data: data.values,
+                backgroundColor: [COLORS.blue, COLORS.cyan, COLORS.orange, '#e67e22', COLORS.green],
+                borderRadius: 6,
+                barThickness: 32,
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            return ctx.raw + '件 (前段階比 ' + data.rates[ctx.dataIndex] + '%)';
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { display: false },
+                y: { grid: { display: false } }
+            }
+        }
+    });
+}
+
+// 業種別返信率
+function renderIndustry(data) {
+    if (data.labels.length === 0) {
+        document.getElementById('industryChart').parentElement.innerHTML = '<div class="no-data-message">データがありません</div>';
+        return;
+    }
+    new Chart(document.getElementById('industryChart'), {
+        type: 'bar',
+        data: {
+            labels: data.labels,
+            datasets: [
+                { label: '送信数', data: data.sent, backgroundColor: COLORS.lightBlue, borderRadius: 4 },
+                { label: '返信数', data: data.replied, backgroundColor: COLORS.green, borderRadius: 4 },
+            ]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: {
+                    callbacks: {
+                        afterBody: function(ctx) {
+                            var i = ctx[0].dataIndex;
+                            return '返信率: ' + data.rates[i] + '%';
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { beginAtZero: true, grid: { display: false } },
+                y: { grid: { display: false } }
+            }
+        }
+    });
+}
+
+// スコア帯別返信率
+function renderScore(data) {
+    if (!data.sent.some(v => v > 0)) {
+        document.getElementById('scoreChart').parentElement.innerHTML = '<div class="no-data-message">データがありません</div>';
+        return;
+    }
+    new Chart(document.getElementById('scoreChart'), {
+        type: 'bar',
+        data: {
+            labels: data.labels,
+            datasets: [
+                { label: '送信数', data: data.sent, backgroundColor: COLORS.lightBlue, borderRadius: 4, yAxisID: 'y' },
+                { label: '返信数', data: data.replied, backgroundColor: COLORS.green, borderRadius: 4, yAxisID: 'y' },
+                {
+                    label: '返信率',
+                    data: data.rates,
+                    type: 'line',
+                    borderColor: COLORS.red,
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    pointBackgroundColor: COLORS.red,
+                    yAxisID: 'y1',
+                    tension: 0.3,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, grid: { display: false }, title: { display: true, text: '件数' } },
+                y1: { position: 'right', beginAtZero: true, max: 100, ticks: { callback: v => v + '%' }, grid: { display: false }, title: { display: true, text: '返信率' } }
+            }
+        }
+    });
+}
+
+// 効果分析
+function renderEffectiveness(data) {
+    if (data.labels.length === 0) {
+        document.getElementById('effectivenessChart').parentElement.innerHTML = '<div class="no-data-message">データがありません</div>';
+        return;
+    }
+    // 高さを項目数に応じて調整
+    const container = document.getElementById('effectiveness-container');
+    container.style.minHeight = Math.max(300, data.labels.length * 32) + 'px';
+
+    new Chart(document.getElementById('effectivenessChart'), {
+        type: 'bar',
+        data: {
+            labels: data.labels,
+            datasets: [{
+                label: '返信率 (%)',
+                data: data.rates,
+                backgroundColor: data.rates.map(r =>
+                    r >= 30 ? COLORS.green : r >= 15 ? COLORS.orange : r > 0 ? COLORS.red : COLORS.gray
+                ),
+                borderRadius: 4,
+                barThickness: 24,
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            var i = ctx.dataIndex;
+                            return '返信率: ' + data.rates[i] + '% (送信' + data.sent_counts[i] + '件, 返信' + data.replied_counts[i] + '件)';
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } },
+                y: { grid: { display: false } }
+            }
+        }
+    });
+}
+
+// レポートチャート
+let reportChart = null;
+
+function renderReport(data) {
+    if (reportChart) reportChart.destroy();
+    reportChart = new Chart(document.getElementById('reportChart'), {
+        type: 'bar',
+        data: {
+            labels: data.labels,
+            datasets: [
+                { label: '分析', data: data.analyzed, backgroundColor: COLORS.blue, stack: 'stack0' },
+                { label: '送信', data: data.sent, backgroundColor: COLORS.cyan, stack: 'stack0' },
+                { label: '返信', data: data.replied, backgroundColor: COLORS.green, stack: 'stack0' },
+                {
+                    label: 'コスト(円)',
+                    data: data.costs,
+                    type: 'line',
+                    borderColor: COLORS.red,
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    pointBackgroundColor: COLORS.red,
+                    yAxisID: 'y1',
+                    tension: 0.3,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { stacked: true },
+                y: { stacked: true, beginAtZero: true, title: { display: true, text: '件数' } },
+                y1: { position: 'right', beginAtZero: true, ticks: { callback: v => v + '円' }, grid: { display: false }, title: { display: true, text: 'コスト' } }
+            }
+        }
+    });
+}
+
+async function switchReport(period) {
+    document.getElementById('report-weekly').classList.toggle('active', period === 'weekly');
+    document.getElementById('report-monthly').classList.toggle('active', period === 'monthly');
+    try {
+        const resp = await fetch('/api/dashboard/report?period=' + period);
+        const data = await resp.json();
+        renderReport(data);
+    } catch(e) {
+        console.error('レポートデータ取得エラー:', e);
+    }
+}
+
+// 初期化: 全データを並列取得
+document.addEventListener('DOMContentLoaded', async function() {
+    try {
+        const [kpiResp, funnelResp, industryResp, scoreResp, effectResp, reportResp] = await Promise.all([
+            fetch('/api/dashboard/kpi'),
+            fetch('/api/dashboard/funnel'),
+            fetch('/api/dashboard/reply-by-industry'),
+            fetch('/api/dashboard/reply-by-score'),
+            fetch('/api/dashboard/issue-effectiveness'),
+            fetch('/api/dashboard/report?period=weekly'),
+        ]);
+
+        const kpi = await kpiResp.json();
+        const funnel = await funnelResp.json();
+        const industry = await industryResp.json();
+        const score = await scoreResp.json();
+        const effect = await effectResp.json();
+        const report = await reportResp.json();
+
+        // KPIカード更新
+        document.getElementById('kpi-leads').textContent = kpi.total_leads.toLocaleString();
+        document.getElementById('kpi-sent').textContent = kpi.total_sent.toLocaleString();
+        document.getElementById('kpi-reply-rate').textContent = kpi.reply_rate + '%';
+        document.getElementById('kpi-meeting').textContent = kpi.total_meeting.toLocaleString();
+        document.getElementById('kpi-closed').textContent = kpi.total_closed.toLocaleString();
+        document.getElementById('kpi-revenue').textContent =
+            kpi.total_revenue > 0
+                ? (kpi.total_revenue >= 10000
+                    ? (kpi.total_revenue / 10000).toFixed(1) + '万円'
+                    : kpi.total_revenue.toLocaleString() + '円')
+                : '0円';
+
+        // チャート描画
+        renderFunnel(funnel);
+        renderIndustry(industry);
+        renderScore(score);
+        renderEffectiveness(effect);
+        renderReport(report);
+    } catch(e) {
+        console.error('ダッシュボードデータ取得エラー:', e);
+    }
+});
+</script>
+{% endblock %}

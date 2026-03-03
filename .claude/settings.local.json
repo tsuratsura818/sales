@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c:*)",
+      "Bash(where:*)",
+      "Bash(python3:*)",
+      "Bash(# docxはZIPファイルなので直接解凍してXMLを読む cd /c/Users/nishikawa/Desktop/AIApp/sales mkdir -p /tmp/docx_extract cp SerpAPI_Google_Search_Top30_Specification.docx /tmp/docx_extract/doc.zip cd /tmp/docx_extract && unzip -o doc.zip -d extracted/ 2>&1 cat /tmp/docx_extract/extracted/word/document.xml)",
+      "Bash(py:*)",
+      "Bash(pip install:*)",
+      "Bash(powershell.exe -Command \":*)",
+      "Bash(powershell.exe -Command \"winget --version\")",
+      "Bash(powershell.exe -Command \"& ''C:\\\\Users\\\\nishikawa\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python312\\\\python.exe'' --version\")",
+      "Bash(powershell.exe -Command \"& ''C:\\\\Users\\\\nishikawa\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python312\\\\python.exe'' -m pip install -r ''C:\\\\Users\\\\nishikawa\\\\Desktop\\\\AIApp\\\\sales\\\\requirements.txt''\")",
+      "Bash(powershell.exe -File -:*)",
+      "Bash(C:/Users/nishikawa/AppData/Local/Programs/Python/Python312/python.exe -c \":*)",
+      "Bash(C:/Users/nishikawa/AppData/Local/Programs/Python/Python312/python.exe:*)",
+      "Bash(taskkill:*)",
+      "Bash(curl:*)",
+      "Bash(for i in 1 2 3 4 5 6)",
+      "Bash(do sleep 10)",
+      "Bash(done)",
+      "Bash(/c/Users/nishikawa/AppData/Local/Programs/Python/Python312/python.exe:*)"
+    ]
+  }
+}

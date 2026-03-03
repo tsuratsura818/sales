@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% block title %}検索設定 - 営業自動化ツール{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>🔍 見込み客検索</h1>
+    <p>Google検索で古いWebサイト・HTTPS非対応サイトを持つ企業を自動発見します</p>
+</div>
+
+<div class="card">
+    <form id="search-form">
+        <div class="form-grid">
+            <div class="form-group full-width">
+                <label for="query">検索クエリ <span class="required">*</span></label>
+                <input type="text" id="query" name="query" required
+                    placeholder="例: 歯科医院 ホームページ 東京 / 税理士事務所 大阪 / 美容室 名古屋"
+                    class="form-control">
+                <div class="hint">業種 + 「ホームページ」または「サイト」 + 地域 の形式が効果的です</div>
+            </div>
+            <div class="form-group">
+                <label for="industry">業種（任意）</label>
+                <select id="industry" name="industry" class="form-control">
+                    <option value="">指定なし</option>
+                    <option value="歯科">歯科医院</option>
+                    <option value="美容室">美容室・サロン</option>
+                    <option value="税理士">税理士・会計</option>
+                    <option value="飲食">飲食店</option>
+                    <option value="建設">建設・工務店</option>
+                    <option value="医療">医療・クリニック</option>
+                    <option value="不動産">不動産</option>
+                    <option value="その他">その他</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="region">地域（任意）</label>
+                <input type="text" id="region" name="region"
+                    placeholder="例: 東京、大阪、名古屋"
+                    class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="num_results">取得件数</label>
+                <select id="num_results" name="num_results" class="form-control">
+                    <option value="10">10件</option>
+                    <option value="20">20件</option>
+                    <option value="30">30件</option>
+                    <option value="50">50件</option>
+                    <option value="100" selected>100件</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="filter-section">
+            <div class="filter-section-title">📌 表示フィルター（条件に合うサイトのみ表示）</div>
+            <div class="filter-row">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="filter_http_only">
+                    🔓 HTTPのみ（HTTPS非対応）
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="filter_no_mobile">
+                    📵 モバイル非対応のみ
+                </label>
+            </div>
+            <div class="filter-row">
+                <span class="filter-label">CMS絞り込み:</span>
+                <label class="checkbox-label"><input type="checkbox" class="cms-filter" value="WordPress"> WordPress</label>
+                <label class="checkbox-label"><input type="checkbox" class="cms-filter" value="Wix"> Wix</label>
+                <label class="checkbox-label"><input type="checkbox" class="cms-filter" value="Jimdo"> Jimdo</label>
+                <label class="checkbox-label"><input type="checkbox" class="cms-filter" value="Shopify"> Shopify</label>
+                <label class="checkbox-label"><input type="checkbox" class="cms-filter" value="STUDIO"> STUDIO</label>
+            </div>
+        </div>
+
+        <div class="cost-preview">
+            <span class="cost-label">💰 コスト目安:</span>
+            <span id="cost-serpapi">SerpAPI: 約15円（100件 = 10回呼び出し）</span>
+            <span class="cost-sep">|</span>
+            <span>Claude メール生成: 約4.5円/件</span>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="submit-btn">
+            🚀 検索・分析を開始
+        </button>
+    </form>
+</div>
+
+<div id="progress-section" class="card hidden">
+    <h2>⚙️ 分析中...</h2>
+    <div class="progress-bar-container">
+        <div class="progress-bar" id="progress-bar"></div>
+    </div>
+    <div class="progress-stats">
+        <span id="progress-text">準備中...</span>
+        <span id="progress-eta" class="progress-eta"></span>
+    </div>
+    <p id="current-url" class="current-url"></p>
+</div>
+
+{% if recent_jobs %}
+<div class="card">
+    <h2>📊 最近の検索ジョブ</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>クエリ</th>
+                <th>ステータス</th>
+                <th>取得件数</th>
+                <th>分析済み</th>
+                <th>SerpAPIコスト</th>
+                <th>実行日時</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in jobs_with_cost %}
+            {% set job = item.job %}
+            {% set cost = item.cost %}
+            <tr>
+                <td>{{ job.query }}</td>
+                <td><span class="badge badge-{{ job.status }}">{{ job.status | status_ja }}</span></td>
+                <td>{{ job.total_urls }}</td>
+                <td>{{ job.analyzed_count }}</td>
+                <td>
+                    {% if cost.serpapi_calls > 0 %}
+                    <span class="cost-chip">{{ cost.serpapi_calls }}回 / 約{{ cost.serpapi_cost_jpy }}円</span>
+                    {% else %}-{% endif %}
+                </td>
+                <td>{{ job.created_at.strftime('%Y/%m/%d %H:%M') if job.created_at else '-' }}</td>
+                <td><a href="/leads?job_id={{ job.id }}" class="btn btn-sm btn-secondary">結果を見る</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById("num_results").addEventListener("change", updateCost);
+updateCost();
+function updateCost() {
+    var n = parseInt(document.getElementById("num_results").value) || 100;
+    var c = Math.ceil(n / 10);
+    var yen = Math.round(c * 1.5);
+    document.getElementById("cost-serpapi").textContent =
+        "SerpAPI: 約" + yen + "円（" + n + "件 = " + c + "回呼び出し）";
+}
+
+document.getElementById("search-form").addEventListener("submit", async function(e) {
+    e.preventDefault();
+    var btn = document.getElementById("submit-btn");
+    btn.disabled = true;
+    btn.textContent = "⏳ 送信中...";
+    var cms = Array.from(document.querySelectorAll(".cms-filter:checked")).map(function(el) { return el.value; });
+    var fd = {
+        query: document.getElementById("query").value,
+        industry: document.getElementById("industry").value || null,
+        region: document.getElementById("region").value || null,
+        num_results: parseInt(document.getElementById("num_results").value),
+        filter_http_only: document.getElementById("filter_http_only").checked,
+        filter_no_mobile: document.getElementById("filter_no_mobile").checked,
+        filter_cms_list: cms
+    };
+    try {
+        var resp = await fetch("/api/search", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(fd)
+        });
+        var data = await resp.json();
+        if (!resp.ok) {
+            alert("エラー: " + (data.detail || "不明なエラー"));
+            btn.disabled = false;
+            btn.textContent = "🚀 検索・分析を開始";
+            return;
+        }
+        document.getElementById("progress-section").classList.remove("hidden");
+        document.getElementById("search-form").closest(".card").style.opacity = "0.5";
+        btn.textContent = "🔄 分析中...";
+        startSSE(data.job_id);
+    } catch(err) {
+        alert("通信エラー: " + err.message);
+        btn.disabled = false;
+        btn.textContent = "🚀 検索・分析を開始";
+    }
+});
+
+function formatETA(sec) {
+    if (!sec || sec <= 0) return "";
+    if (sec < 60) return "約" + sec + "秒";
+    var m = Math.floor(sec / 60);
+    var s = sec % 60;
+    if (m < 60) return "約" + m + "分" + (s > 0 ? s + "秒" : "");
+    var h = Math.floor(m / 60);
+    m = m % 60;
+    return "約" + h + "時間" + m + "分";
+}
+
+function startSSE(jobId) {
+    var es = new EventSource("/api/events/" + jobId);
+    es.onmessage = function(event) {
+        var d = JSON.parse(event.data);
+        if (d.ping) return;
+        var t = d.total || 0, done = d.completed || 0;
+        var excluded = d.excluded || 0;
+        var pct = t > 0 ? Math.round(done / t * 100) : 0;
+        document.getElementById("progress-bar").style.width = pct + "%";
+        var statusText = "有効 " + done + " / " + t + " 件 (" + pct + "%)";
+        if (excluded > 0) statusText += "　除外: " + excluded + "件";
+        document.getElementById("progress-text").textContent = statusText;
+
+        var etaEl = document.getElementById("progress-eta");
+        if (d.eta_seconds > 0 && done > 0) {
+            etaEl.textContent = "残り " + formatETA(d.eta_seconds) +
+                " (平均" + (d.avg_seconds || 0) + "秒/件)";
+        } else if (done === 0 && t > 0) {
+            etaEl.textContent = "検索結果を分析しています...";
+        } else {
+            etaEl.textContent = "";
+        }
+
+        if (d.current_url) {
+            var url = d.current_url;
+            if (url.length > 60) url = url.substring(0, 60) + "...";
+            document.getElementById("current-url").textContent = "分析中: " + url;
+        }
+        if (d.status === "completed") {
+            es.close();
+            document.getElementById("progress-bar").style.width = "100%";
+            var doneMsg = "✅ 有効" + done + "件の分析が完了しました！";
+            if (excluded > 0) doneMsg += "（除外: " + excluded + "件）";
+            document.getElementById("progress-text").textContent = doneMsg;
+            etaEl.textContent = "";
+            document.getElementById("current-url").textContent = "リード一覧に移動します...";
+            setTimeout(function() { window.location.href = "/leads?job_id=" + jobId; }, 1500);
+        }
+    };
+    es.onerror = function() {
+        es.close();
+        document.getElementById("progress-text").textContent =
+            "⚠️ 接続が切断されました。";
+        document.getElementById("progress-eta").textContent = "";
+        document.getElementById("current-url").innerHTML =
+            '<a href="/leads?job_id=' + jobId + '">リード一覧を確認する →</a>';
+    };
+}
+</script>
+{% endblock %}

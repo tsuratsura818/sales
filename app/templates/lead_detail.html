@@ -1,0 +1,931 @@
+{% extends "base.html" %}
+{% block title %}{{ lead.domain }} - リード詳細{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="javascript:history.back()" class="btn btn-sm btn-secondary">← 戻る</a>
+    <h1>🏢 {{ lead.domain or lead.url }}</h1>
+    <a href="{{ lead.url }}" target="_blank" class="site-url">{{ lead.url }}</a>
+</div>
+
+<!-- スクリーンショット -->
+<div class="card screenshot-card">
+    <h2>📸 サイトプレビュー
+        <button class="btn btn-sm btn-secondary" id="screenshot-btn" onclick="takeScreenshot({{ lead.id }})" style="margin-left: 12px;">
+            {{ '🔄 再取得' if screenshots.pc_url else '📸 スクリーンショット取得' }}
+        </button>
+    </h2>
+    <div class="screenshot-grid" id="screenshot-area">
+        {% if screenshots.pc_url %}
+        <div class="screenshot-item">
+            <div class="screenshot-label">PC版 (1280px)</div>
+            <a href="{{ screenshots.pc_url }}" target="_blank">
+                <img src="{{ screenshots.pc_url }}" alt="PC版スクリーンショット" class="screenshot-img">
+            </a>
+        </div>
+        {% endif %}
+        {% if screenshots.mobile_url %}
+        <div class="screenshot-item screenshot-mobile">
+            <div class="screenshot-label">スマホ版 (375px)</div>
+            <a href="{{ screenshots.mobile_url }}" target="_blank">
+                <img src="{{ screenshots.mobile_url }}" alt="スマホ版スクリーンショット" class="screenshot-img">
+            </a>
+        </div>
+        {% endif %}
+        {% if not screenshots.pc_url and not screenshots.mobile_url %}
+        <div class="screenshot-empty">
+            <p>スクリーンショットがまだ取得されていません。上のボタンから取得できます。</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="detail-grid">
+    <!-- 左カラム: 分析結果 -->
+    <div class="detail-left">
+        <div class="card">
+            <h2>📊 分析結果 <span class="score-badge score-{{ 'high' if lead.score >= 50 else ('mid' if lead.score >= 25 else 'low') }}">{{ lead.score }}点</span>
+                {% if lead.conversion_rank %}
+                <span class="rank-badge rank-{{ lead.conversion_rank }}">{{ lead.conversion_rank }}ランク</span>
+                {% endif %}
+            </h2>
+
+            <div class="analysis-items">
+                <!-- HTTPS -->
+                <div class="analysis-item {{ 'problem' if lead.is_https == false else 'ok' }}">
+                    <span class="item-icon">{{ '⚠️' if lead.is_https == false else '✅' }}</span>
+                    <div class="item-content">
+                        <div class="item-label">HTTPS対応</div>
+                        <div class="item-value">
+                            {% if lead.is_https is none %}-
+                            {% elif lead.is_https %}対応済み
+                                {% if lead.ssl_expiry_days is not none %}
+                                （SSL残{{ lead.ssl_expiry_days }}日）
+                                {% endif %}
+                            {% else %}
+                            <strong>非対応</strong>（Googleの評価低下・ブラウザ警告リスク）
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if 'no_https' in breakdown %}<span class="score-chip">+{{ breakdown.no_https }}点</span>{% endif %}
+                </div>
+
+                <!-- モバイル -->
+                <div class="analysis-item {{ 'problem' if lead.has_viewport == false else 'ok' }}">
+                    <span class="item-icon">{{ '⚠️' if lead.has_viewport == false else '✅' }}</span>
+                    <div class="item-content">
+                        <div class="item-label">スマートフォン対応</div>
+                        <div class="item-value">
+                            {% if lead.has_viewport is none %}-
+                            {% elif lead.has_viewport %}対応済み
+                            {% else %}<strong>非対応</strong>（モバイルユーザーの離脱率増加）
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if 'no_mobile' in breakdown %}<span class="score-chip">+{{ breakdown.no_mobile }}点</span>{% endif %}
+                </div>
+
+                <!-- コピーライト年 -->
+                <div class="analysis-item {{ 'problem' if 'old_copyright_3yr' in breakdown else 'ok' }}">
+                    <span class="item-icon">{{ '⚠️' if 'old_copyright_3yr' in breakdown else '✅' }}</span>
+                    <div class="item-content">
+                        <div class="item-label">コピーライト年</div>
+                        <div class="item-value">
+                            {% if lead.copyright_year %}{{ lead.copyright_year }}年
+                            {% else %}不明{% endif %}
+                        </div>
+                    </div>
+                    {% if 'old_copyright_3yr' in breakdown %}<span class="score-chip">+{{ breakdown.old_copyright_3yr }}点</span>{% endif %}
+                </div>
+
+                <!-- ドメイン年齢 -->
+                <div class="analysis-item {{ 'problem' if 'old_domain_10yr' in breakdown else 'ok' }}">
+                    <span class="item-icon">{{ '⚠️' if 'old_domain_10yr' in breakdown else '✅' }}</span>
+                    <div class="item-content">
+                        <div class="item-label">ドメイン年齢</div>
+                        <div class="item-value">
+                            {% if lead.domain_age_years %}約{{ lead.domain_age_years }}年
+                            {% else %}不明{% endif %}
+                        </div>
+                    </div>
+                    {% if 'old_domain_10yr' in breakdown %}<span class="score-chip">+{{ breakdown.old_domain_10yr }}点</span>{% endif %}
+                </div>
+
+                <!-- Flash -->
+                {% if lead.has_flash %}
+                <div class="analysis-item problem">
+                    <span class="item-icon">⚠️</span>
+                    <div class="item-content">
+                        <div class="item-label">Flash使用</div>
+                        <div class="item-value"><strong>検出</strong>（現代のブラウザで表示不可）</div>
+                    </div>
+                    {% if 'has_flash' in breakdown %}<span class="score-chip">+{{ breakdown.has_flash }}点</span>{% endif %}
+                </div>
+                {% endif %}
+
+                <!-- CMS -->
+                {% if lead.cms_type %}
+                <div class="analysis-item {{ 'problem' if 'old_wordpress' in breakdown else 'neutral' }}">
+                    <span class="item-icon">{{ '⚠️' if 'old_wordpress' in breakdown else 'ℹ️' }}</span>
+                    <div class="item-content">
+                        <div class="item-label">CMS</div>
+                        <div class="item-value">
+                            {{ lead.cms_type }}{% if lead.cms_version %} {{ lead.cms_version }}{% endif %}
+                            {% if breakdown.get('wp_version_age_days') %}
+                            <br><strong style="color: #d9534f;">⚠ リリースから約{{ (breakdown.wp_version_age_days / 365)|round(1) }}年経過（{{ breakdown.wp_version_age_days }}日）- 更新推奨</strong>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if 'old_wordpress' in breakdown %}<span class="score-chip">+{{ breakdown.old_wordpress }}点</span>{% endif %}
+                </div>
+                {% endif %}
+
+                <!-- PageSpeed -->
+                {% if lead.pagespeed_score is not none %}
+                <div class="analysis-item {{ 'problem' if lead.pagespeed_score < 50 else 'ok' }}">
+                    <span class="item-icon">{{ '⚠️' if lead.pagespeed_score < 50 else '✅' }}</span>
+                    <div class="item-content">
+                        <div class="item-label">表示速度スコア</div>
+                        <div class="item-value">{{ lead.pagespeed_score }}点 / 100点</div>
+                    </div>
+                    {% if 'low_pagespeed' in breakdown %}<span class="score-chip">+{{ breakdown.low_pagespeed }}点</span>{% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- デザイン分析 -->
+        <div class="card">
+            <h2>🎨 デザイン分析</h2>
+            <div class="analysis-items">
+                <div class="analysis-item {{ 'problem' if lead.has_og_image == false else ('ok' if lead.has_og_image else 'neutral') }}">
+                    <span class="item-icon">{{ '⚠️' if lead.has_og_image == false else ('✅' if lead.has_og_image else 'ℹ️') }}</span>
+                    <div class="item-content">
+                        <div class="item-label">OGP画像</div>
+                        <div class="item-value">
+                            {% if lead.has_og_image is none %}-
+                            {% elif lead.has_og_image %}設定済み
+                            {% else %}<strong>未設定</strong>（SNSシェア時にサムネイルが表示されない）
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if 'no_og_image' in breakdown %}<span class="score-chip">+{{ breakdown.no_og_image }}点</span>{% endif %}
+                </div>
+
+                <div class="analysis-item {{ 'problem' if lead.has_favicon == false else ('ok' if lead.has_favicon else 'neutral') }}">
+                    <span class="item-icon">{{ '⚠️' if lead.has_favicon == false else ('✅' if lead.has_favicon else 'ℹ️') }}</span>
+                    <div class="item-content">
+                        <div class="item-label">ファビコン</div>
+                        <div class="item-value">
+                            {% if lead.has_favicon is none %}-
+                            {% elif lead.has_favicon %}設定済み
+                            {% else %}<strong>未設定</strong>（ブランド認知に影響）
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if 'no_favicon' in breakdown %}<span class="score-chip">+{{ breakdown.no_favicon }}点</span>{% endif %}
+                </div>
+
+                <div class="analysis-item {{ 'problem' if lead.has_table_layout else ('ok' if lead.has_table_layout == false else 'neutral') }}">
+                    <span class="item-icon">{{ '⚠️' if lead.has_table_layout else ('✅' if lead.has_table_layout == false else 'ℹ️') }}</span>
+                    <div class="item-content">
+                        <div class="item-label">テーブルレイアウト</div>
+                        <div class="item-value">
+                            {% if lead.has_table_layout is none %}-
+                            {% elif lead.has_table_layout %}<strong>検出</strong>（古いHTML構造）
+                            {% else %}なし
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if 'table_layout' in breakdown %}<span class="score-chip">+{{ breakdown.table_layout }}点</span>{% endif %}
+                </div>
+
+                <div class="analysis-item {{ 'problem' if lead.missing_alt_count and lead.missing_alt_count >= 5 else 'ok' }}">
+                    <span class="item-icon">{{ '⚠️' if lead.missing_alt_count and lead.missing_alt_count >= 5 else '✅' }}</span>
+                    <div class="item-content">
+                        <div class="item-label">alt属性欠落</div>
+                        <div class="item-value">
+                            {% if lead.missing_alt_count is none %}-
+                            {% elif lead.missing_alt_count == 0 %}なし
+                            {% else %}{{ lead.missing_alt_count }}個の画像でalt未設定
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if 'many_missing_alt' in breakdown %}<span class="score-chip">+{{ breakdown.many_missing_alt }}点</span>{% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- EC分析 -->
+        <div class="card">
+            <h2>🛒 EC分析</h2>
+            <div class="analysis-items">
+                <div class="analysis-item {{ 'neutral' }}">
+                    <span class="item-icon">ℹ️</span>
+                    <div class="item-content">
+                        <div class="item-label">ECサイト判定</div>
+                        <div class="item-value">
+                            {% if lead.is_ec_site is none %}-
+                            {% elif lead.is_ec_site %}
+                                <strong>ECサイト</strong>
+                                {% if lead.ec_platform %}（{{ lead.ec_platform }}）{% endif %}
+                            {% else %}ECサイトではない
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                {% if lead.is_ec_site %}
+                <div class="analysis-item {{ 'problem' if lead.has_product_schema == false else 'ok' }}">
+                    <span class="item-icon">{{ '⚠️' if lead.has_product_schema == false else '✅' }}</span>
+                    <div class="item-content">
+                        <div class="item-label">商品構造化データ</div>
+                        <div class="item-value">
+                            {% if lead.has_product_schema %}設定済み
+                            {% else %}<strong>未設定</strong>（Google Shoppingでのリッチ表示不可）
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if 'ec_no_product_schema' in breakdown %}<span class="score-chip">+{{ breakdown.ec_no_product_schema }}点</span>{% endif %}
+                </div>
+
+                <div class="analysis-item {{ 'problem' if lead.has_site_search == false else 'ok' }}">
+                    <span class="item-icon">{{ '⚠️' if lead.has_site_search == false else '✅' }}</span>
+                    <div class="item-content">
+                        <div class="item-label">サイト内検索</div>
+                        <div class="item-value">
+                            {% if lead.has_site_search %}あり
+                            {% else %}<strong>なし</strong>（商品を見つけにくい）
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if 'ec_no_site_search' in breakdown %}<span class="score-chip">+{{ breakdown.ec_no_site_search }}点</span>{% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- SEO分析 -->
+        <div class="card">
+            <h2>🔍 SEO分析</h2>
+            <div class="analysis-items">
+                <div class="analysis-item {{ 'problem' if lead.has_structured_data == false else ('ok' if lead.has_structured_data else 'neutral') }}">
+                    <span class="item-icon">{{ '⚠️' if lead.has_structured_data == false else ('✅' if lead.has_structured_data else 'ℹ️') }}</span>
+                    <div class="item-content">
+                        <div class="item-label">構造化データ</div>
+                        <div class="item-value">
+                            {% if lead.has_structured_data is none %}-
+                            {% elif lead.has_structured_data %}実装済み
+                            {% else %}<strong>未実装</strong>（リッチスニペット表示不可）
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if 'no_structured_data' in breakdown %}<span class="score-chip">+{{ breakdown.no_structured_data }}点</span>{% endif %}
+                </div>
+
+                <div class="analysis-item {{ 'problem' if lead.has_sitemap == false else ('ok' if lead.has_sitemap else 'neutral') }}">
+                    <span class="item-icon">{{ '⚠️' if lead.has_sitemap == false else ('✅' if lead.has_sitemap else 'ℹ️') }}</span>
+                    <div class="item-content">
+                        <div class="item-label">sitemap.xml</div>
+                        <div class="item-value">
+                            {% if lead.has_sitemap is none %}-
+                            {% elif lead.has_sitemap %}あり
+                            {% else %}<strong>なし</strong>（クロール効率低下）
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if 'no_sitemap' in breakdown %}<span class="score-chip">+{{ breakdown.no_sitemap }}点</span>{% endif %}
+                </div>
+
+                <div class="analysis-item {{ 'problem' if lead.has_robots_txt == false else ('ok' if lead.has_robots_txt else 'neutral') }}">
+                    <span class="item-icon">{{ '⚠️' if lead.has_robots_txt == false else ('✅' if lead.has_robots_txt else 'ℹ️') }}</span>
+                    <div class="item-content">
+                        <div class="item-label">robots.txt</div>
+                        <div class="item-value">
+                            {% if lead.has_robots_txt is none %}-
+                            {% elif lead.has_robots_txt %}あり
+                            {% else %}<strong>なし</strong>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analysis-item {{ 'ok' if lead.has_breadcrumb else 'neutral' }}">
+                    <span class="item-icon">{{ '✅' if lead.has_breadcrumb else 'ℹ️' }}</span>
+                    <div class="item-content">
+                        <div class="item-label">パンくずリスト</div>
+                        <div class="item-value">
+                            {% if lead.has_breadcrumb is none %}-
+                            {% elif lead.has_breadcrumb %}あり
+                            {% else %}なし
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 成約期待度 -->
+        <div class="card">
+            <h2>🎯 成約期待度
+                {% if lead.conversion_rank %}
+                <span class="rank-badge rank-{{ lead.conversion_rank }}">{{ lead.conversion_rank }}</span>
+                {% endif %}
+            </h2>
+            <div class="analysis-items">
+                <div class="analysis-item neutral">
+                    <span class="item-icon">🏢</span>
+                    <div class="item-content">
+                        <div class="item-label">会社規模（推定）</div>
+                        <div class="item-value">
+                            {% if lead.company_size_estimate == "small" %}小規模（〜10ページ）
+                            {% elif lead.company_size_estimate == "medium" %}中小企業（10〜50ページ）
+                            {% elif lead.company_size_estimate == "mid_large" %}中堅企業（50〜200ページ）
+                            {% elif lead.company_size_estimate == "large" %}大企業（200ページ以上）
+                            {% else %}-
+                            {% endif %}
+                            {% if lead.estimated_page_count %}
+                            <span class="hint">（サイト内約{{ lead.estimated_page_count }}ページ）</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analysis-item neutral">
+                    <span class="item-icon">📁</span>
+                    <div class="item-content">
+                        <div class="item-label">業種（推定）</div>
+                        <div class="item-value">{{ lead.industry_category or '-' }}</div>
+                    </div>
+                </div>
+
+                <div class="analysis-item {{ 'ok' if lead.has_contact_form else 'problem' }}">
+                    <span class="item-icon">{{ '✅' if lead.has_contact_form else '⚠️' }}</span>
+                    <div class="item-content">
+                        <div class="item-label">問い合わせフォーム</div>
+                        <div class="item-value">
+                            {% if lead.has_contact_form %}
+                            あり（{{ lead.form_field_count or 0 }}フィールド）
+                            {% if lead.has_file_upload %}＋ファイルアップロード{% endif %}
+                            {% elif lead.has_contact_form is none %}-
+                            {% else %}なし
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 連絡先 -->
+        <div class="card">
+            <h2>📬 連絡先情報</h2>
+            <div class="contact-info">
+                <div class="contact-item">
+                    <span class="contact-label">メールアドレス:</span>
+                    <span class="contact-value">
+                        {% if lead.contact_email %}
+                        <a href="mailto:{{ lead.contact_email }}">{{ lead.contact_email }}</a>
+                        {% else %}見つかりませんでした{% endif %}
+                    </span>
+                </div>
+                <div class="contact-item">
+                    <span class="contact-label">お問い合わせページ:</span>
+                    <span class="contact-value">
+                        {% if lead.contact_page_url %}
+                        <a href="{{ lead.contact_page_url }}" target="_blank">{{ lead.contact_page_url }}</a>
+                        {% else %}見つかりませんでした{% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 競合比較分析 -->
+        <div class="card" id="competitor-section">
+            <h2>🏆 競合比較分析
+                <button class="btn btn-sm btn-secondary" id="competitor-btn"
+                    onclick="runCompetitorAnalysis({{ lead.id }})" style="margin-left: 12px;">
+                    {{ '🔄 再分析' if competitor_analysis else '🔍 競合分析を実行' }}
+                </button>
+            </h2>
+
+            {% if competitor_analysis and competitor_analysis.status == "completed" and comp_summary %}
+            <div class="competitor-info">
+                <span class="hint">検索: {{ competitor_analysis.search_query }} / {{ comp_summary.competitor_count }}社比較 / SerpAPI {{ competitor_analysis.serpapi_calls_used }}回使用</span>
+            </div>
+
+            {% if comp_summary.gap_count > 0 %}
+            <div class="alert alert-warning" style="margin-top: 12px;">
+                競合と比べて <strong>{{ comp_summary.gap_count }}項目</strong> が不足しています
+            </div>
+            {% else %}
+            <div class="alert alert-success" style="margin-top: 12px;">
+                競合と同等以上の機能を備えています
+            </div>
+            {% endif %}
+
+            <!-- 比較表 -->
+            <table class="comp-table">
+                <thead>
+                    <tr>
+                        <th>項目</th>
+                        <th>御社</th>
+                        <th>競合平均</th>
+                        <th>判定</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for key, feat in comp_summary.features.items() %}
+                    <tr class="{{ 'comp-gap' if feat.gap else '' }}">
+                        <td>{{ feat.label }}</td>
+                        <td>
+                            {% if key == "pagespeed" %}
+                            {{ feat.target if feat.target is not none else '-' }}点
+                            {% else %}
+                            {{ '✅' if feat.target else '❌' }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if key == "pagespeed" %}
+                            {{ feat.competitors_avg }}点
+                            {% else %}
+                            {{ feat.competitors_rate }}%
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if feat.gap %}
+                            <span class="badge badge-error">要改善</span>
+                            {% else %}
+                            <span class="badge badge-sent">OK</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <!-- 競合サイト一覧 -->
+            {% if comp_summary.competitors %}
+            <details class="comp-details">
+                <summary>比較対象の競合サイト（{{ comp_summary.competitor_count }}社）</summary>
+                <ul class="comp-list">
+                    {% for c in comp_summary.competitors %}
+                    <li>
+                        <a href="{{ c.url }}" target="_blank">{{ c.title or c.url }}</a>
+                        <span class="comp-tags">
+                            {% if c.is_https %}🔒{% endif %}
+                            {% if c.has_viewport %}📱{% endif %}
+                            {% if c.pagespeed_score %}⚡{{ c.pagespeed_score }}{% endif %}
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </details>
+            {% endif %}
+
+            <div class="competitor-actions" style="margin-top: 12px;">
+                <button class="btn btn-secondary" onclick="generateCompetitorEmail({{ lead.id }})">
+                    🏆 競合比較メールを生成
+                </button>
+            </div>
+
+            {% elif competitor_analysis and competitor_analysis.status == "error" %}
+            <div class="alert alert-error" style="margin-top: 12px;">
+                ❌ エラー: {{ competitor_analysis.error_message }}
+            </div>
+
+            {% elif competitor_analysis and competitor_analysis.status == "analyzing" %}
+            <div class="alert alert-info" style="margin-top: 12px;">
+                ⏳ 分析中...
+            </div>
+
+            {% else %}
+            <p class="hint">同業種の競合サイトと比較分析します（SerpAPI 1回 + 分析5件）<br>コスト: 約1.5円</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 右カラム: メール -->
+    <div class="detail-right">
+        <!-- Phase 7: マッチしたポートフォリオ -->
+        {% if matched_portfolios %}
+        <div class="card">
+            <h2>📁 該当ポートフォリオ
+                <span class="hint" style="margin-left: 8px;">メール生成時に自動挿入されます</span>
+            </h2>
+            <div class="portfolio-match-list">
+                {% for p in matched_portfolios %}
+                <div class="portfolio-match-item {% if p.industry_category == lead.industry_category %}portfolio-match-exact{% endif %}">
+                    <div class="portfolio-match-header">
+                        <strong>{{ p.title }}</strong>
+                        <span class="badge badge-industry">{{ p.industry_category }}</span>
+                    </div>
+                    {% if p.client_name %}
+                    <div class="portfolio-match-detail">🏢 {{ p.client_name }}様</div>
+                    {% endif %}
+                    {% if p.result_summary %}
+                    <div class="portfolio-match-detail">📈 {{ p.result_summary }}</div>
+                    {% endif %}
+                    {% if p.url %}
+                    <div class="portfolio-match-detail"><a href="{{ p.url }}" target="_blank">🔗 サイトを見る</a></div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card">
+            <h2>✉️ 営業メール</h2>
+
+            {% if not lead.contact_email %}
+            <div class="alert alert-warning">
+                ⚠️ メールアドレスが見つかりませんでした。お問い合わせページから手動でご連絡ください。
+            </div>
+            {% endif %}
+
+            <div class="email-actions">
+                <button class="btn btn-secondary" id="generate-btn" onclick="generateEmail({{ lead.id }})">
+                    🤖 Claude AIでメール生成
+                </button>
+            </div>
+
+            <div class="form-group">
+                <label for="email-subject">件名</label>
+                <input type="text" id="email-subject" class="form-control"
+                    value="{{ lead.generated_email_subject or '' }}"
+                    placeholder="メールを生成してください">
+            </div>
+            <div class="form-group">
+                <label for="email-body">本文</label>
+                <textarea id="email-body" class="form-control email-body" rows="12"
+                    placeholder="メールを生成してください">{{ lead.generated_email_body or '' }}</textarea>
+            </div>
+
+            <div class="email-send-actions">
+                <button class="btn btn-secondary" onclick="saveEmail({{ lead.id }})">
+                    💾 内容を保存
+                </button>
+                {% if lead.contact_email %}
+                <button class="btn btn-primary" onclick="sendEmail({{ lead.id }})" id="send-btn">
+                    📤 Gmailで送信（{{ lead.contact_email }}）
+                </button>
+                {% endif %}
+            </div>
+
+            <div id="email-message" class="alert hidden"></div>
+        </div>
+
+        <!-- フォローアップセクション -->
+        <div class="card" id="followup-section">
+            <h2>📩 フォローアップ</h2>
+
+            {% if lead.followup_status == "active" %}
+            <div class="alert alert-success">
+                フォローアップシーケンス実行中
+                <div class="followup-actions-inline">
+                    <button class="btn btn-sm btn-secondary" onclick="pauseFollowup({{ lead.id }})">⏸ 一時停止</button>
+                    <button class="btn btn-sm btn-secondary" onclick="cancelFollowup({{ lead.id }})">✕ 停止</button>
+                </div>
+            </div>
+
+            {% elif lead.followup_status == "paused" %}
+            <div class="alert alert-warning">
+                一時停止中
+                <div class="followup-actions-inline">
+                    <button class="btn btn-sm btn-primary" onclick="resumeFollowup({{ lead.id }})">▶ 再開</button>
+                    <button class="btn btn-sm btn-secondary" onclick="cancelFollowup({{ lead.id }})">✕ 停止</button>
+                </div>
+            </div>
+
+            {% elif lead.followup_status == "completed" %}
+            <div class="alert alert-info">
+                全ステップ送信完了
+            </div>
+
+            {% elif lead.followup_status == "stopped" %}
+            <div class="alert alert-secondary">
+                フォローアップ停止済み
+            </div>
+
+            {% elif lead.status == "sent" and not lead.followup_status %}
+            <button class="btn btn-primary" id="start-followup-btn" onclick="startFollowup({{ lead.id }})">
+                📩 フォローアップ開始（3ステップ）
+            </button>
+            <p class="hint">初回メール → 3日後 → 7日後の3段階で自動送信<br>Claude APIコスト: 約9円（2回生成）</p>
+            {% endif %}
+
+            <!-- タイムライン -->
+            {% if follow_up_steps %}
+            <div class="followup-timeline">
+                {% for step in follow_up_steps %}
+                <div class="timeline-item timeline-{{ step.status }}">
+                    <div class="timeline-marker">
+                        {% if step.status == "sent" %}✅
+                        {% elif step.status == "pending" %}⏳
+                        {% elif step.status == "ready" %}📝
+                        {% elif step.status == "generating" %}🤖
+                        {% elif step.status == "cancelled" %}✕
+                        {% elif step.status == "error" %}❌
+                        {% else %}⏳
+                        {% endif %}
+                    </div>
+                    <div class="timeline-content">
+                        <div class="timeline-header">
+                            <strong>ステップ{{ step.step_number }}</strong>
+                            <span class="badge badge-{{ step.status }}">
+                                {% if step.status == "pending" %}待機中
+                                {% elif step.status == "generating" %}生成中
+                                {% elif step.status == "ready" %}送信待ち
+                                {% elif step.status == "sent" %}送信済み
+                                {% elif step.status == "cancelled" %}キャンセル
+                                {% elif step.status == "error" %}エラー
+                                {% else %}{{ step.status }}
+                                {% endif %}
+                            </span>
+                            <span class="timeline-date">
+                                {% if step.sent_at %}
+                                送信: {{ step.sent_at.strftime('%m/%d %H:%M') }}
+                                {% else %}
+                                予定: {{ step.scheduled_at.strftime('%m/%d %H:%M') }}
+                                {% endif %}
+                            </span>
+                        </div>
+                        {% if step.email_subject %}
+                        <div class="timeline-subject">件名: {{ step.email_subject }}</div>
+                        {% endif %}
+                        {% if step.error_message %}
+                        <div class="timeline-error">{{ step.error_message }}</div>
+                        {% endif %}
+                        {% if step.status == "ready" %}
+                        <div class="timeline-actions">
+                            <button class="btn btn-sm btn-primary" onclick="sendStepNow({{ step.id }})">📤 今すぐ送信</button>
+                        </div>
+                        {% endif %}
+                        {% if step.status == "error" %}
+                        <div class="timeline-actions">
+                            <button class="btn btn-sm btn-secondary" onclick="sendStepNow({{ step.id }})">🔄 再試行</button>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- 返信マークボタン -->
+            {% if lead.status in ("sent", "replied", "meeting") or lead.followup_status %}
+            <div class="followup-reply-section">
+                <button class="btn btn-sm btn-secondary" onclick="markReplied({{ lead.id }})"
+                    {% if lead.status in ("replied", "meeting", "closed") %}disabled{% endif %}>
+                    {{ '✅ 返信済み' if lead.status in ('replied', 'meeting', 'closed') else '📥 返信ありとしてマーク' }}
+                </button>
+                {% if lead.status in ("replied", "meeting") %}
+                <button class="btn btn-sm btn-primary" onclick="markMeeting({{ lead.id }})"
+                    {% if lead.status in ("meeting", "closed") %}disabled{% endif %}>
+                    {{ '✅ 商談中' if lead.status in ('meeting', 'closed') else '🤝 商談開始としてマーク' }}
+                </button>
+                {% endif %}
+                {% if lead.status in ("replied", "meeting") %}
+                <button class="btn btn-sm btn-primary" onclick="markClosed({{ lead.id }})"
+                    {% if lead.status == "closed" %}disabled{% endif %}>
+                    {{ '✅ 成約済み' if lead.status == 'closed' else '🎉 成約としてマーク' }}
+                </button>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function generateEmail(leadId) {
+    const btn = document.getElementById('generate-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ 生成中...';
+
+    try {
+        const resp = await fetch(`/api/leads/${leadId}/generate-email`, {method: 'POST'});
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail);
+
+        document.getElementById('email-subject').value = data.subject;
+        document.getElementById('email-body').value = data.body;
+        showMessage('✅ メールを生成しました', 'success');
+    } catch(e) {
+        showMessage('❌ エラー: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🤖 Claude AIでメール生成';
+    }
+}
+
+async function saveEmail(leadId) {
+    const subject = document.getElementById('email-subject').value;
+    const body = document.getElementById('email-body').value;
+
+    const resp = await fetch(`/api/leads/${leadId}/email`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({subject, body}),
+    });
+    if (resp.ok) {
+        showMessage('💾 保存しました', 'success');
+    } else {
+        showMessage('❌ 保存に失敗しました', 'error');
+    }
+}
+
+async function sendEmail(leadId) {
+    if (!confirm('このメールを送信しますか？')) return;
+
+    // まず内容を保存
+    await saveEmail(leadId);
+
+    const btn = document.getElementById('send-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ 送信中...';
+
+    try {
+        const resp = await fetch(`/api/leads/${leadId}/send-email`, {method: 'POST'});
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail);
+
+        showMessage('✅ ' + data.message, 'success');
+        btn.textContent = '✅ 送信済み';
+    } catch(e) {
+        showMessage('❌ エラー: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = '📤 Gmailで送信';
+    }
+}
+
+async function takeScreenshot(leadId) {
+    const btn = document.getElementById('screenshot-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ 取得中...（20秒ほどかかります）';
+
+    try {
+        const resp = await fetch(`/api/leads/${leadId}/screenshot`, {method: 'POST'});
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail);
+
+        // スクリーンショットエリアを更新
+        const area = document.getElementById('screenshot-area');
+        let html = '';
+        if (data.pc_url) {
+            html += `<div class="screenshot-item">
+                <div class="screenshot-label">PC版 (1280px)</div>
+                <a href="${data.pc_url}?t=${Date.now()}" target="_blank">
+                    <img src="${data.pc_url}?t=${Date.now()}" alt="PC版" class="screenshot-img">
+                </a>
+            </div>`;
+        }
+        if (data.mobile_url) {
+            html += `<div class="screenshot-item screenshot-mobile">
+                <div class="screenshot-label">スマホ版 (375px)</div>
+                <a href="${data.mobile_url}?t=${Date.now()}" target="_blank">
+                    <img src="${data.mobile_url}?t=${Date.now()}" alt="スマホ版" class="screenshot-img">
+                </a>
+            </div>`;
+        }
+        area.innerHTML = html;
+        btn.textContent = '🔄 再取得';
+    } catch(e) {
+        showMessage('❌ スクリーンショット取得エラー: ' + e.message, 'error');
+        btn.textContent = '📸 スクリーンショット取得';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function showMessage(text, type) {
+    const el = document.getElementById('email-message');
+    el.textContent = text;
+    el.className = `alert alert-${type}`;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 5000);
+}
+
+// --- フォローアップ関連 ---
+async function startFollowup(leadId) {
+    if (!confirm('フォローアップシーケンスを開始しますか？\n（初回メール → 3日後 → 7日後の3段階）')) return;
+
+    const btn = document.getElementById('start-followup-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ 開始中...';
+
+    try {
+        const resp = await fetch(`/api/leads/${leadId}/followup/start`, {method: 'POST'});
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail);
+        showMessage('✅ フォローアップを開始しました', 'success');
+        location.reload();
+    } catch(e) {
+        showMessage('❌ エラー: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = '📩 フォローアップ開始（3ステップ）';
+    }
+}
+
+async function pauseFollowup(leadId) {
+    const resp = await fetch(`/api/leads/${leadId}/followup/pause`, {method: 'POST'});
+    if (resp.ok) { location.reload(); }
+    else { const d = await resp.json(); showMessage('❌ ' + d.detail, 'error'); }
+}
+
+async function resumeFollowup(leadId) {
+    const resp = await fetch(`/api/leads/${leadId}/followup/resume`, {method: 'POST'});
+    if (resp.ok) { location.reload(); }
+    else { const d = await resp.json(); showMessage('❌ ' + d.detail, 'error'); }
+}
+
+async function cancelFollowup(leadId) {
+    if (!confirm('フォローアップを停止しますか？（未送信のステップはキャンセルされます）')) return;
+    const resp = await fetch(`/api/leads/${leadId}/followup/cancel`, {method: 'POST'});
+    if (resp.ok) { location.reload(); }
+    else { const d = await resp.json(); showMessage('❌ ' + d.detail, 'error'); }
+}
+
+async function markReplied(leadId) {
+    if (!confirm('このリードを「返信あり」としてマークしますか？\nフォローアップは自動停止されます。')) return;
+    const resp = await fetch(`/api/leads/${leadId}/replied`, {method: 'POST'});
+    if (resp.ok) { location.reload(); }
+    else { const d = await resp.json(); showMessage('❌ ' + d.detail, 'error'); }
+}
+
+async function markMeeting(leadId) {
+    if (!confirm('このリードを「商談中」としてマークしますか？')) return;
+    const resp = await fetch(`/api/leads/${leadId}/meeting`, {method: 'POST'});
+    if (resp.ok) { location.reload(); }
+    else { const d = await resp.json(); showMessage('❌ ' + d.detail, 'error'); }
+}
+
+async function markClosed(leadId) {
+    const amount = prompt('成約金額を入力してください（円、任意）:', '');
+    const params = (amount && !isNaN(parseInt(amount))) ? '?amount=' + parseInt(amount) : '';
+    const resp = await fetch(`/api/leads/${leadId}/closed` + params, {method: 'POST'});
+    if (resp.ok) { location.reload(); }
+    else { const d = await resp.json(); showMessage('❌ ' + d.detail, 'error'); }
+}
+
+async function sendStepNow(stepId) {
+    if (!confirm('このステップメールを今すぐ送信しますか？')) return;
+
+    try {
+        const resp = await fetch(`/api/followup-steps/${stepId}/send-now`, {method: 'POST'});
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail);
+        showMessage('✅ ' + data.message, 'success');
+        location.reload();
+    } catch(e) {
+        showMessage('❌ エラー: ' + e.message, 'error');
+    }
+}
+
+// --- 競合分析関連 ---
+async function runCompetitorAnalysis(leadId) {
+    const btn = document.getElementById('competitor-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ 分析中...（30秒ほどかかります）';
+
+    try {
+        const resp = await fetch(`/api/leads/${leadId}/competitor-analysis`, {method: 'POST'});
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail);
+        showMessage('✅ 競合分析が完了しました（' + data.competitor_count + '社）', 'success');
+        location.reload();
+    } catch(e) {
+        showMessage('❌ 競合分析エラー: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = '🔍 競合分析を実行';
+    }
+}
+
+async function generateCompetitorEmail(leadId) {
+    const btn = document.getElementById('generate-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ 生成中...';
+    }
+
+    try {
+        const resp = await fetch(`/api/leads/${leadId}/generate-competitor-email`, {method: 'POST'});
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail);
+
+        document.getElementById('email-subject').value = data.subject;
+        document.getElementById('email-body').value = data.body;
+        showMessage('✅ 競合比較メールを生成しました', 'success');
+    } catch(e) {
+        showMessage('❌ エラー: ' + e.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '🤖 Claude AIでメール生成';
+        }
+    }
+}
+</script>
+{% endblock %}

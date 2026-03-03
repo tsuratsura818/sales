@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}送信済み管理 - 営業自動化ツール{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📨 送信済みメール管理</h1>
+    <p>{{ logs|length }}件の送信履歴</p>
+</div>
+
+{% if logs %}
+<div class="card table-card">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>送信先</th>
+                <th>件名</th>
+                <th>送信日時</th>
+                <th>ステータス</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td>{{ log.to_address }}</td>
+                <td>{{ (log.subject or '-')[:50] }}{% if log.subject and log.subject|length > 50 %}...{% endif %}</td>
+                <td>{{ log.sent_at.strftime('%Y/%m/%d %H:%M') if log.sent_at else '送信失敗' }}</td>
+                <td>
+                    {% if log.error_message %}
+                    <span class="badge badge-error">エラー</span>
+                    {% elif log.sent_at %}
+                    <span class="badge badge-ok">送信済み</span>
+                    {% else %}
+                    <span class="badge badge-unknown">不明</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="/leads/{{ log.lead_id }}" class="btn btn-sm btn-secondary">リード詳細</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card empty-state">
+    <p>📭 送信済みメールはありません。</p>
+    <a href="/leads" class="btn btn-primary">リード一覧へ</a>
+</div>
+{% endif %}
+{% endblock %}

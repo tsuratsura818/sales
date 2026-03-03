@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}フォローアップ管理{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📩 フォローアップ管理</h1>
+</div>
+
+<!-- 集計カード -->
+<div class="stats-row">
+    <div class="stat-card stat-active">
+        <div class="stat-number">{{ counts.active }}</div>
+        <div class="stat-label">実行中</div>
+    </div>
+    <div class="stat-card stat-paused">
+        <div class="stat-number">{{ counts.paused }}</div>
+        <div class="stat-label">一時停止</div>
+    </div>
+    <div class="stat-card stat-completed">
+        <div class="stat-number">{{ counts.completed }}</div>
+        <div class="stat-label">完了</div>
+    </div>
+    <div class="stat-card stat-stopped">
+        <div class="stat-number">{{ counts.stopped }}</div>
+        <div class="stat-label">停止</div>
+    </div>
+</div>
+
+{% if followup_data %}
+<div class="card">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>ドメイン</th>
+                <th>ステータス</th>
+                <th>進捗</th>
+                <th>次回送信</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in followup_data %}
+            <tr>
+                <td>
+                    <a href="/leads/{{ item.lead.id }}">{{ item.lead.domain or item.lead.url }}</a>
+                </td>
+                <td>
+                    <span class="badge badge-{{ item.lead.followup_status }}">
+                        {{ item.lead.followup_status | status_ja }}
+                    </span>
+                </td>
+                <td>
+                    <div class="progress-bar-mini">
+                        <div class="progress-fill" style="width: {{ (item.sent_count / item.total_steps * 100) if item.total_steps > 0 else 0 }}%"></div>
+                    </div>
+                    <span class="progress-text">{{ item.sent_count }}/{{ item.total_steps }}</span>
+                </td>
+                <td>
+                    {% if item.next_step %}
+                    {{ item.next_step.scheduled_at.strftime('%m/%d %H:%M') }}
+                    （ステップ{{ item.next_step.step_number }}）
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td>
+                    {% if item.lead.followup_status == "active" %}
+                    <button class="btn btn-sm btn-secondary" onclick="pauseFollowup({{ item.lead.id }})">⏸</button>
+                    <button class="btn btn-sm btn-secondary" onclick="cancelFollowup({{ item.lead.id }})">✕</button>
+                    {% elif item.lead.followup_status == "paused" %}
+                    <button class="btn btn-sm btn-primary" onclick="resumeFollowup({{ item.lead.id }})">▶</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card">
+    <p class="empty-message">フォローアップはまだ設定されていません。リード詳細画面から開始できます。</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function pauseFollowup(leadId) {
+    const resp = await fetch(`/api/leads/${leadId}/followup/pause`, {method: 'POST'});
+    if (resp.ok) location.reload();
+}
+async function resumeFollowup(leadId) {
+    const resp = await fetch(`/api/leads/${leadId}/followup/resume`, {method: 'POST'});
+    if (resp.ok) location.reload();
+}
+async function cancelFollowup(leadId) {
+    if (!confirm('フォローアップを停止しますか？')) return;
+    const resp = await fetch(`/api/leads/${leadId}/followup/cancel`, {method: 'POST'});
+    if (resp.ok) location.reload();
+}
+</script>
+{% endblock %}

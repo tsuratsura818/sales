@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% block title %}ポートフォリオ管理{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📁 ポートフォリオ管理</h1>
+    <p>自社の制作実績を登録・管理します。リードの業種に合った実績が営業メールに自動挿入されます。</p>
+</div>
+
+<!-- 登録フォーム -->
+<div class="card" id="portfolio-form-card">
+    <h2 id="form-title">➕ 新規登録</h2>
+    <input type="hidden" id="edit-id" value="">
+
+    <div class="form-grid">
+        <div class="form-group full-width">
+            <label for="pf-title">実績タイトル <span class="required">*</span></label>
+            <input type="text" id="pf-title" class="form-control" placeholder="例: ○○歯科様 サイトリニューアル">
+        </div>
+
+        <div class="form-group">
+            <label for="pf-client">クライアント名</label>
+            <input type="text" id="pf-client" class="form-control" placeholder="例: ○○歯科（匿名可）">
+        </div>
+
+        <div class="form-group">
+            <label for="pf-url">実績サイトURL</label>
+            <input type="url" id="pf-url" class="form-control" placeholder="https://example.com">
+        </div>
+
+        <div class="form-group">
+            <label for="pf-industry">業種カテゴリ <span class="required">*</span></label>
+            <select id="pf-industry" class="form-control">
+                {% for cat in industry_categories %}
+                <option value="{{ cat }}">{{ cat }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="pf-service">サービス種別</label>
+            <select id="pf-service" class="form-control">
+                {% for key, label in service_types.items() %}
+                <option value="{{ key }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group full-width">
+            <label for="pf-desc">改善内容の説明</label>
+            <textarea id="pf-desc" class="form-control" rows="3" placeholder="例: 10年前のデザインからモダンなレスポンシブサイトにリニューアル。WordPressからの移行も実施。"></textarea>
+        </div>
+
+        <div class="form-group full-width">
+            <label for="pf-result">成果の要約</label>
+            <input type="text" id="pf-result" class="form-control" placeholder="例: PV 2倍、問い合わせ 3倍、ページ表示速度 50%改善">
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <button class="btn btn-primary" id="save-btn" onclick="savePortfolio()">💾 登録</button>
+        <button class="btn btn-secondary hidden" id="cancel-edit-btn" onclick="cancelEdit()">キャンセル</button>
+    </div>
+    <div id="form-message" class="alert hidden"></div>
+</div>
+
+<!-- フィルター -->
+<div class="card">
+    <div class="table-toolbar">
+        <span class="filter-label">業種フィルター:</span>
+        <div class="filter-toggle-group" id="industry-filter">
+            <button class="filter-toggle active" data-industry="">すべて</button>
+            {% for cat in industry_categories %}
+            <button class="filter-toggle" data-industry="{{ cat }}">{{ cat }}</button>
+            {% endfor %}
+        </div>
+        <span class="table-summary" id="portfolio-count">{{ portfolios|length }}件</span>
+    </div>
+</div>
+
+<!-- 一覧 -->
+<div class="portfolio-grid" id="portfolio-list">
+    {% if portfolios %}
+    {% for p in portfolios %}
+    <div class="portfolio-card {% if not p.is_active %}portfolio-inactive{% endif %}"
+         data-industry="{{ p.industry_category }}" data-id="{{ p.id }}"
+         data-title="{{ p.title }}"
+         data-client="{{ p.client_name or '' }}"
+         data-url="{{ p.url or '' }}"
+         data-desc="{{ p.description or '' }}"
+         data-service="{{ p.service_type or 'web_renewal' }}"
+         data-result="{{ p.result_summary or '' }}">
+        <div class="portfolio-card-header">
+            <h3>{{ p.title }}</h3>
+            <div class="portfolio-badges">
+                <span class="badge badge-industry">{{ p.industry_category }}</span>
+                <span class="badge badge-service">{{ service_types.get(p.service_type, p.service_type) }}</span>
+                {% if not p.is_active %}
+                <span class="badge badge-excluded">無効</span>
+                {% endif %}
+            </div>
+        </div>
+        {% if p.client_name %}
+        <div class="portfolio-client">🏢 {{ p.client_name }}様</div>
+        {% endif %}
+        {% if p.description %}
+        <p class="portfolio-desc">{{ p.description }}</p>
+        {% endif %}
+        {% if p.result_summary %}
+        <div class="portfolio-result">📈 {{ p.result_summary }}</div>
+        {% endif %}
+        {% if p.url %}
+        <div class="portfolio-url"><a href="{{ p.url }}" target="_blank">🔗 {{ p.url }}</a></div>
+        {% endif %}
+        <div class="portfolio-actions">
+            <button class="btn btn-sm btn-secondary" onclick="editPortfolioById({{ p.id }})">✏️ 編集</button>
+            <button class="btn btn-sm btn-secondary" onclick="toggleActive({{ p.id }}, {{ 'true' if not p.is_active else 'false' }})">
+                {{ '✅ 有効化' if not p.is_active else '⏸ 無効化' }}
+            </button>
+            <button class="btn btn-sm btn-secondary" onclick="deletePortfolio({{ p.id }})">🗑 削除</button>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state" id="empty-message">
+        <p>ポートフォリオがまだ登録されていません。</p>
+        <p class="hint">上のフォームから自社の制作実績を登録してください。<br>登録した実績は、リードの業種に合わせて営業メールに自動挿入されます。</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// --- フィルター ---
+document.querySelectorAll('#industry-filter .filter-toggle').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('#industry-filter .filter-toggle').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        const industry = this.dataset.industry;
+        let visible = 0;
+        document.querySelectorAll('.portfolio-card').forEach(card => {
+            if (!industry || card.dataset.industry === industry) {
+                card.style.display = '';
+                visible++;
+            } else {
+                card.style.display = 'none';
+            }
+        });
+        document.getElementById('portfolio-count').textContent = visible + '件';
+    });
+});
+
+// --- CRUD ---
+async function savePortfolio() {
+    const editId = document.getElementById('edit-id').value;
+    const data = {
+        title: document.getElementById('pf-title').value.trim(),
+        client_name: document.getElementById('pf-client').value.trim() || null,
+        url: document.getElementById('pf-url').value.trim() || null,
+        description: document.getElementById('pf-desc').value.trim() || null,
+        industry_category: document.getElementById('pf-industry').value,
+        service_type: document.getElementById('pf-service').value,
+        result_summary: document.getElementById('pf-result').value.trim() || null,
+    };
+
+    if (!data.title) {
+        showFormMessage('⚠️ タイトルを入力してください', 'warning');
+        return;
+    }
+
+    const btn = document.getElementById('save-btn');
+    btn.disabled = true;
+
+    try {
+        let resp;
+        if (editId) {
+            resp = await fetch(`/api/portfolios/${editId}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data),
+            });
+        } else {
+            resp = await fetch('/api/portfolios', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data),
+            });
+        }
+        const result = await resp.json();
+        if (!resp.ok) throw new Error(result.detail);
+
+        showFormMessage(editId ? '✅ 更新しました' : '✅ 登録しました', 'success');
+        setTimeout(() => location.reload(), 800);
+    } catch(e) {
+        showFormMessage('❌ エラー: ' + e.message, 'error');
+        btn.disabled = false;
+    }
+}
+
+function editPortfolioById(id) {
+    const card = document.querySelector(`.portfolio-card[data-id="${id}"]`);
+    if (!card) return;
+
+    document.getElementById('edit-id').value = id;
+    document.getElementById('pf-title').value = card.dataset.title || '';
+    document.getElementById('pf-client').value = card.dataset.client || '';
+    document.getElementById('pf-url').value = card.dataset.url || '';
+    document.getElementById('pf-desc').value = card.dataset.desc || '';
+    document.getElementById('pf-industry').value = card.dataset.industry || '';
+    document.getElementById('pf-service').value = card.dataset.service || 'web_renewal';
+    document.getElementById('pf-result').value = card.dataset.result || '';
+
+    document.getElementById('form-title').textContent = '✏️ 編集中: ' + card.dataset.title;
+    document.getElementById('save-btn').textContent = '💾 更新';
+    document.getElementById('cancel-edit-btn').classList.remove('hidden');
+
+    document.getElementById('portfolio-form-card').scrollIntoView({behavior: 'smooth'});
+}
+
+function cancelEdit() {
+    document.getElementById('edit-id').value = '';
+    document.getElementById('pf-title').value = '';
+    document.getElementById('pf-client').value = '';
+    document.getElementById('pf-url').value = '';
+    document.getElementById('pf-desc').value = '';
+    document.getElementById('pf-industry').selectedIndex = 0;
+    document.getElementById('pf-service').selectedIndex = 0;
+    document.getElementById('pf-result').value = '';
+
+    document.getElementById('form-title').textContent = '➕ 新規登録';
+    document.getElementById('save-btn').textContent = '💾 登録';
+    document.getElementById('cancel-edit-btn').classList.add('hidden');
+}
+
+async function toggleActive(id, activate) {
+    const resp = await fetch(`/api/portfolios/${id}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({is_active: activate}),
+    });
+    if (resp.ok) location.reload();
+}
+
+async function deletePortfolio(id) {
+    if (!confirm('この実績を削除しますか？')) return;
+    const resp = await fetch(`/api/portfolios/${id}`, {method: 'DELETE'});
+    if (resp.ok) location.reload();
+}
+
+function showFormMessage(text, type) {
+    const el = document.getElementById('form-message');
+    el.textContent = text;
+    el.className = `alert alert-${type}`;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 5000);
+}
+</script>
+{% endblock %}
