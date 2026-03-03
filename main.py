@@ -8,6 +8,7 @@ from app.database import init_db
 from app.tasks import task_queue
 from app.tasks.followup_scheduler import followup_scheduler
 from app.tasks.job_monitor import job_monitor
+from app.tasks.keep_alive import keep_alive
 from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook
 
 STATUS_JA = {
@@ -54,11 +55,13 @@ async def lifespan(app: FastAPI):
     worker_task = asyncio.create_task(task_queue.worker())
     scheduler_task = asyncio.create_task(followup_scheduler())
     monitor_task = asyncio.create_task(job_monitor())
+    keepalive_task = asyncio.create_task(keep_alive())
     yield
     # 終了時
     worker_task.cancel()
     scheduler_task.cancel()
     monitor_task.cancel()
+    keepalive_task.cancel()
     try:
         await worker_task
     except asyncio.CancelledError:
@@ -69,6 +72,10 @@ async def lifespan(app: FastAPI):
         pass
     try:
         await monitor_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await keepalive_task
     except asyncio.CancelledError:
         pass
 

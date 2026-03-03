@@ -17,3 +17,5 @@ services:
         sync: false
       - key: LINE_USER_ID
         sync: false
+      - key: RENDER_EXTERNAL_URL
+        value: https://sales-6g78.onrender.com
