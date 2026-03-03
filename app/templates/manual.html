@@ -1,0 +1,568 @@
+{% extends "base.html" %}
+{% block title %}使い方マニュアル - 営業自動化ツール{% endblock %}
+
+{% block content %}
+<h1>使い方マニュアル</h1>
+<p class="page-desc">営業自動化ツールの各機能の使い方を説明します。目次から各セクションにジャンプできます。</p>
+
+<!-- 目次 -->
+<nav class="manual-toc">
+    <h2>目次</h2>
+    <ol class="toc-list">
+        <li><a href="#overview">全体の流れ</a></li>
+        <li><a href="#search">検索・分析</a></li>
+        <li><a href="#leads">リード一覧</a></li>
+        <li><a href="#lead-detail">リード詳細・メール送信</a></li>
+        <li><a href="#followup">フォローアップ</a></li>
+        <li><a href="#competitors">競合分析</a></li>
+        <li><a href="#portfolio">ポートフォリオ</a></li>
+        <li><a href="#dashboard">ダッシュボード</a></li>
+        <li><a href="#jobs">案件モニター</a></li>
+        <li><a href="#line">LINE連携</a></li>
+    </ol>
+</nav>
+
+<!-- 全体の流れ -->
+<section class="manual-section" id="overview">
+    <div class="section-header">
+        <h2>全体の流れ</h2>
+    </div>
+    <div class="section-body">
+        <p>このツールは「古いWebサイトを持つ企業を自動で見つけ、問題点を分析し、営業メールを送る」一連の流れを自動化します。</p>
+        <div class="workflow-steps">
+            <div class="workflow-step">
+                <span class="step-number">1</span>
+                <div class="step-content">
+                    <h4>検索・分析</h4>
+                    <p>Google検索で営業対象を発見し、自動でサイトを分析</p>
+                </div>
+            </div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">
+                <span class="step-number">2</span>
+                <div class="step-content">
+                    <h4>リード確認</h4>
+                    <p>分析結果を確認し、有望な見込み客を選別</p>
+                </div>
+            </div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">
+                <span class="step-number">3</span>
+                <div class="step-content">
+                    <h4>メール送信</h4>
+                    <p>AIが問題点を指摘する営業メールを自動生成・送信</p>
+                </div>
+            </div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">
+                <span class="step-number">4</span>
+                <div class="step-content">
+                    <h4>フォローアップ</h4>
+                    <p>返信がなければ自動で追加メールを送信</p>
+                </div>
+            </div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">
+                <span class="step-number">5</span>
+                <div class="step-content">
+                    <h4>商談・成約</h4>
+                    <p>ダッシュボードで営業成果を管理</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 検索・分析 -->
+<section class="manual-section" id="search">
+    <div class="section-header">
+        <h2>🔍 検索・分析</h2>
+        <span class="section-nav-link">ナビ：検索</span>
+    </div>
+    <div class="section-body">
+        <p>Google検索で営業対象となるサイトを発見し、自動で分析します。</p>
+
+        <div class="manual-subsection">
+            <h3>基本的な使い方</h3>
+            <ol class="manual-steps">
+                <li>
+                    <strong>検索キーワードを入力</strong>
+                    <p>例：「歯科医院 ホームページ 東京」「美容室 ウェブサイト 大阪」</p>
+                    <p>業種名 + 「ホームページ」or「ウェブサイト」+ 地域名 の組み合わせが効果的です。</p>
+                </li>
+                <li>
+                    <strong>検索件数を設定</strong>
+                    <p>10〜100件から選択できます。まずは10件で試してみるのがおすすめです。</p>
+                </li>
+                <li>
+                    <strong>フィルター設定（任意）</strong>
+                    <ul>
+                        <li><strong>HTTPS非対応のみ</strong> — HTTPのサイトだけに絞り込み（セキュリティ対策がされていないサイト）</li>
+                        <li><strong>モバイル非対応のみ</strong> — スマホ表示に対応していないサイトだけに絞り込み</li>
+                        <li><strong>CMS指定</strong> — WordPress、Wix、Jimdo など特定のCMSで作られたサイトだけに絞り込み</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>「検索・分析を開始」をクリック</strong>
+                    <p>リアルタイムで進捗が表示されます。完了すると自動的にリード一覧に移動します。</p>
+                </li>
+            </ol>
+        </div>
+
+        <div class="manual-subsection">
+            <h3>分析される項目</h3>
+            <table class="manual-table">
+                <thead>
+                    <tr><th>チェック項目</th><th>内容</th><th>営業ポイント</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>HTTPS対応</td>
+                        <td>SSL証明書の有無</td>
+                        <td>非対応なら「セキュリティ警告が表示される」と指摘</td>
+                    </tr>
+                    <tr>
+                        <td>モバイル対応</td>
+                        <td>スマホ表示の最適化状況</td>
+                        <td>非対応なら「スマホユーザーの7割が離脱」と指摘</td>
+                    </tr>
+                    <tr>
+                        <td>CMS・バージョン</td>
+                        <td>WordPress等のCMS検出とバージョン</td>
+                        <td>古いバージョンなら「セキュリティリスク」を指摘</td>
+                    </tr>
+                    <tr>
+                        <td>コピーライト年</td>
+                        <td>フッターの年号</td>
+                        <td>3年以上前なら「更新されていない印象」を指摘</td>
+                    </tr>
+                    <tr>
+                        <td>ドメイン年齢</td>
+                        <td>WHOIS情報から算出</td>
+                        <td>長寿命ドメインは予算がある可能性</td>
+                    </tr>
+                    <tr>
+                        <td>連絡先</td>
+                        <td>メールアドレスの抽出</td>
+                        <td>メール送信に必要な情報</td>
+                    </tr>
+                    <tr>
+                        <td>デザイン要素</td>
+                        <td>OGP画像、ファビコン、構造化データ等</td>
+                        <td>不足なら「見た目の改善」を提案</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="manual-subsection">
+            <h3>コストについて</h3>
+            <div class="cost-info">
+                <div class="cost-item">
+                    <span class="cost-label">SerpAPI（Google検索）</span>
+                    <span class="cost-value">約1.5円 / 1検索呼び出し</span>
+                </div>
+                <div class="cost-item">
+                    <span class="cost-label">Claude（メール生成）</span>
+                    <span class="cost-value">約4.5円 / 1通</span>
+                </div>
+            </div>
+            <p>例：100件検索 → 約15円（SerpAPI）、そのうち30件にメール生成 → 約135円（Claude）</p>
+        </div>
+    </div>
+</section>
+
+<!-- リード一覧 -->
+<section class="manual-section" id="leads">
+    <div class="section-header">
+        <h2>📋 リード一覧</h2>
+        <span class="section-nav-link">ナビ：リード一覧</span>
+    </div>
+    <div class="section-body">
+        <p>検索・分析で発見された見込み客（リード）の一覧です。スコアの高い順に表示されます。</p>
+
+        <div class="manual-subsection">
+            <h3>画面の見方</h3>
+            <table class="manual-table">
+                <thead>
+                    <tr><th>列</th><th>説明</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>優先度スコア</strong></td>
+                        <td>0〜100点。数字が大きいほど営業対象として有望。色分け：赤(高)・黄(中)・灰(低)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>期待度</strong></td>
+                        <td>成約期待度のランク。★★★(高) ★★(中) ★(低)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ドメイン / タイトル</strong></td>
+                        <td>対象サイトのURL。クリックでサイトを確認可能</td>
+                    </tr>
+                    <tr>
+                        <td><strong>HTTPS / モバイル</strong></td>
+                        <td>対応状況。✗マークが付いていたら営業チャンス</td>
+                    </tr>
+                    <tr>
+                        <td><strong>著作権年</strong></td>
+                        <td>サイトのコピーライト年。古いほど更新されていない</td>
+                    </tr>
+                    <tr>
+                        <td><strong>CMS</strong></td>
+                        <td>検出されたCMS（WordPress等）とバージョン</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ステータス</strong></td>
+                        <td>新規 → 分析済み → メール生成済み → 送信済み → 返信あり → 商談中 → 成約</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="manual-subsection">
+            <h3>フィルター機能</h3>
+            <ul>
+                <li><strong>テキスト検索</strong> — ドメイン名で絞り込み</li>
+                <li><strong>HTTPS非対応のみ</strong> / <strong>モバイル非対応のみ</strong> — 問題のあるサイトだけ表示</li>
+                <li><strong>CMS絞り込み</strong> — WordPress、Wix、Jimdo 等で絞り込み</li>
+            </ul>
+        </div>
+
+        <div class="manual-subsection">
+            <h3>操作方法</h3>
+            <ul>
+                <li><strong>「詳細」ボタン</strong> — リード詳細ページに移動（メール生成・送信はここから）</li>
+                <li><strong>「CSV出力」ボタン</strong> — 表示中のリードをCSVファイルでダウンロード</li>
+                <li><strong>「✕」ボタン</strong> — リードを個別に削除</li>
+                <li><strong>「このジョブを全削除」</strong> — 検索ジョブとそのリードをすべて削除</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<!-- リード詳細・メール送信 -->
+<section class="manual-section" id="lead-detail">
+    <div class="section-header">
+        <h2>🏢 リード詳細・メール送信</h2>
+        <span class="section-nav-link">リード一覧 → 詳細ボタン</span>
+    </div>
+    <div class="section-body">
+        <p>個別のリードの詳細分析結果を確認し、営業メールの生成・編集・送信を行うページです。</p>
+
+        <div class="manual-subsection">
+            <h3>分析結果の確認</h3>
+            <p>左側に分析結果がまとめて表示されます。</p>
+            <ul>
+                <li><strong>スコア</strong> — 総合スコアと各項目の内訳</li>
+                <li><strong>スクリーンショット</strong> — 「スクリーンショット取得」ボタンでPC版・スマホ版のキャプチャを取得</li>
+                <li><strong>デザイン分析</strong> — OGP画像、ファビコン、構造化データ等の有無</li>
+            </ul>
+        </div>
+
+        <div class="manual-subsection">
+            <h3>メールの生成・送信</h3>
+            <ol class="manual-steps">
+                <li>
+                    <strong>「メールを生成」ボタンをクリック</strong>
+                    <p>Claude AIが分析結果をもとに、そのサイトの問題点を指摘する営業メールを自動生成します。ポートフォリオに同業種の実績があれば、自動的に文面に組み込まれます。</p>
+                </li>
+                <li>
+                    <strong>件名・本文を確認・編集</strong>
+                    <p>生成されたメールは自由に編集できます。送信先のメールアドレスも確認してください。</p>
+                </li>
+                <li>
+                    <strong>「メールを送信」ボタンをクリック</strong>
+                    <p>Gmail経由でメールが送信されます。BCCで自分宛にも控えが届きます。</p>
+                </li>
+            </ol>
+        </div>
+
+        <div class="manual-subsection">
+            <h3>営業状況の管理</h3>
+            <p>右下の「営業状況管理」から、リードのステータスを手動で更新できます。</p>
+            <table class="manual-table">
+                <thead>
+                    <tr><th>ステータス</th><th>意味</th><th>操作</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>返信あり</td><td>先方から返信が来た</td><td>ステータスを「返信あり」に変更</td></tr>
+                    <tr><td>商談中</td><td>商談の予定が決まった</td><td>「商談予定」ボタンで日時を記録</td></tr>
+                    <tr><td>成約</td><td>成約が決まった</td><td>「成約」ボタンで金額を記録</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- フォローアップ -->
+<section class="manual-section" id="followup">
+    <div class="section-header">
+        <h2>📩 フォローアップ</h2>
+        <span class="section-nav-link">ナビ：フォローアップ</span>
+    </div>
+    <div class="section-body">
+        <p>1通で返信がなかった見込み客に、自動でフォローアップメールを送信する機能です。</p>
+
+        <div class="manual-subsection">
+            <h3>フォローアップの開始方法</h3>
+            <ol class="manual-steps">
+                <li>
+                    <strong>リード詳細ページを開く</strong>
+                    <p>リード一覧から「詳細」ボタンで移動します。</p>
+                </li>
+                <li>
+                    <strong>「フォローアップ開始」ボタンをクリック</strong>
+                    <p>Claudeが3〜5通のステップメールを自動生成します。各ステップで異なる切り口のメールが作られます。</p>
+                </li>
+            </ol>
+        </div>
+
+        <div class="manual-subsection">
+            <h3>ステップメールの内容</h3>
+            <table class="manual-table">
+                <thead>
+                    <tr><th>ステップ</th><th>タイミング</th><th>内容の切り口</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>1通目</td><td>即時</td><td>初回と同じ問題提起</td></tr>
+                    <tr><td>2通目</td><td>3日後</td><td>別の切り口で再アプローチ</td></tr>
+                    <tr><td>3通目</td><td>7日後</td><td>事例紹介・期間限定提案</td></tr>
+                    <tr><td>4〜5通目</td><td>14日後〜</td><td>最終アプローチ</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="manual-subsection">
+            <h3>管理画面での操作</h3>
+            <p>「フォローアップ」ページで全リードのフォローアップ状況を一覧管理できます。</p>
+            <ul>
+                <li><strong>一時停止</strong> — フォローアップを一時的に止める</li>
+                <li><strong>再開</strong> — 一時停止中のフォローアップを再開</li>
+                <li><strong>キャンセル</strong> — フォローアップを完全に停止</li>
+                <li><strong>各ステップの編集</strong> — リード詳細ページから各ステップのメール内容を編集可能</li>
+                <li><strong>即時送信</strong> — スケジュールを待たずに「今すぐ送信」も可能</li>
+            </ul>
+            <div class="manual-note">
+                <strong>自動停止：</strong>先方から返信があった場合、フォローアップは自動的に停止します。
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 競合分析 -->
+<section class="manual-section" id="competitors">
+    <div class="section-header">
+        <h2>🔎 競合分析</h2>
+        <span class="section-nav-link">リード詳細 → 競合分析</span>
+    </div>
+    <div class="section-body">
+        <p>営業対象の競合サイトを自動で調査し、比較データをメールに活用する機能です。</p>
+
+        <div class="manual-subsection">
+            <h3>使い方</h3>
+            <ol class="manual-steps">
+                <li>
+                    <strong>リード詳細ページの「競合分析」セクションで「実行」をクリック</strong>
+                    <p>同業種・同エリアの競合サイトを自動で検索・分析します。</p>
+                </li>
+                <li>
+                    <strong>分析結果を確認</strong>
+                    <p>競合サイトの数、スコア比較のサマリーが表示されます。</p>
+                </li>
+                <li>
+                    <strong>「競合比較メールを生成」をクリック</strong>
+                    <p>「同業の○○社はすでにリニューアル済みです」のような比較情報を含んだメールが生成されます。</p>
+                </li>
+            </ol>
+        </div>
+
+        <div class="manual-note">
+            <strong>効果：</strong>競合情報を入れることで「うちだけ遅れている」という危機感を持ってもらい、返信率の向上が期待できます。
+        </div>
+    </div>
+</section>
+
+<!-- ポートフォリオ -->
+<section class="manual-section" id="portfolio">
+    <div class="section-header">
+        <h2>📁 ポートフォリオ</h2>
+        <span class="section-nav-link">ナビ：ポートフォリオ</span>
+    </div>
+    <div class="section-body">
+        <p>自社の制作実績を登録しておくことで、営業メールに「同業種での実績」を自動挿入する機能です。</p>
+
+        <div class="manual-subsection">
+            <h3>登録方法</h3>
+            <ol class="manual-steps">
+                <li>
+                    <strong>「新規登録」をクリック</strong>
+                </li>
+                <li>
+                    <strong>情報を入力</strong>
+                    <ul>
+                        <li><strong>実績タイトル</strong>（必須）— 例：「医療法人○○クリニック 公式サイトリニューアル」</li>
+                        <li><strong>クライアント名</strong> — 例：「医療法人○○」</li>
+                        <li><strong>実績URL</strong> — サイトのURL</li>
+                        <li><strong>業種カテゴリ</strong>（必須）— メール生成時のマッチングに使用</li>
+                        <li><strong>改善内容の説明</strong> — 何をどう改善したか</li>
+                        <li><strong>成果の要約</strong> — 「問い合わせ数が2倍に」等の具体的成果</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>保存</strong>
+                </li>
+            </ol>
+        </div>
+
+        <div class="manual-subsection">
+            <h3>メールへの自動挿入</h3>
+            <p>リードの業種と同じカテゴリのポートフォリオが登録されていると、メール生成時に自動で「同業種での制作実績」として文面に組み込まれます。</p>
+            <div class="manual-note">
+                <strong>ポイント：</strong>ポートフォリオは各業種ごとに1つ以上登録しておくと、幅広いリードに対して実績アピールができて効果的です。
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ダッシュボード -->
+<section class="manual-section" id="dashboard">
+    <div class="section-header">
+        <h2>📊 ダッシュボード</h2>
+        <span class="section-nav-link">ナビ：ダッシュボード</span>
+    </div>
+    <div class="section-body">
+        <p>営業活動の全体的な成果をグラフや数値で確認できるページです。</p>
+
+        <div class="manual-subsection">
+            <h3>KPI（主要指標）</h3>
+            <table class="manual-table">
+                <thead>
+                    <tr><th>指標</th><th>説明</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><strong>リード数</strong></td><td>発見した営業候補の総数</td></tr>
+                    <tr><td><strong>送信数</strong></td><td>送信したメールの総数</td></tr>
+                    <tr><td><strong>返信率</strong></td><td>送信数に対する返信の割合</td></tr>
+                    <tr><td><strong>商談数</strong></td><td>商談に至った件数</td></tr>
+                    <tr><td><strong>成約数</strong></td><td>成約した件数</td></tr>
+                    <tr><td><strong>売上合計</strong></td><td>成約金額の合計</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="manual-subsection">
+            <h3>グラフの見方</h3>
+            <ul>
+                <li><strong>営業ファネル</strong> — 分析完了→メール送信→返信→商談→成約の各段階の人数と変換率</li>
+                <li><strong>業種別返信率</strong> — どの業種に営業が効果的かを確認</li>
+                <li><strong>スコア帯別返信率</strong> — 高スコアのリードほど返信率が高いかを検証</li>
+                <li><strong>効果分析</strong> — どの問題点の指摘が最も返信につながったかを分析</li>
+                <li><strong>レポート</strong> — 週次/月次の活動量とコストの推移</li>
+            </ul>
+            <div class="manual-note">
+                <strong>活用法：</strong>返信率の高い業種やスコア帯に注力して検索すると、効率よく営業できます。
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 案件モニター -->
+<section class="manual-section" id="jobs">
+    <div class="section-header">
+        <h2>📡 案件モニター</h2>
+        <span class="section-nav-link">ナビ：案件モニター</span>
+    </div>
+    <div class="section-body">
+        <p>CrowdWorks・Lancersの案件を自動監視し、マッチする案件を通知・自動応募する機能です。</p>
+
+        <div class="manual-subsection">
+            <h3>仕組み</h3>
+            <ol class="manual-steps">
+                <li>
+                    <strong>自動監視（バックグラウンド）</strong>
+                    <p>30分ごとにCrowdWorks・Lancersの新着案件をチェックします。設定済みのスキルプロフィールとマッチ度を自動計算し、高スコアの案件だけをピックアップします。</p>
+                </li>
+                <li>
+                    <strong>LINE通知を受信</strong>
+                    <p>マッチする案件が見つかると、LINEに通知が届きます。案件タイトル・予算・マッチ度が表示されます。</p>
+                </li>
+                <li>
+                    <strong>応募 or スキップ</strong>
+                    <p>LINEのボタンまたはWeb画面から「応募」か「スキップ」を選択します。</p>
+                </li>
+                <li>
+                    <strong>提案文の自動生成</strong>
+                    <p>「応募」を選ぶと、Claude AIが案件内容に合わせた提案文を自動生成します。</p>
+                </li>
+                <li>
+                    <strong>提案文の確認・送信</strong>
+                    <p>生成された提案文を確認し、「この内容で送信」をクリックすると、Playwrightが自動でフォームに入力して応募します。</p>
+                </li>
+            </ol>
+        </div>
+
+        <div class="manual-subsection">
+            <h3>画面の操作</h3>
+            <table class="manual-table">
+                <thead>
+                    <tr><th>ステータス</th><th>表示</th><th>操作</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>新規</td><td>🔔 新規</td><td>「応募」or「スキップ」ボタン</td></tr>
+                    <tr><td>生成中</td><td>⚙️ 生成中</td><td>提案文が生成されるまで待ちます</td></tr>
+                    <tr><td>確認待ち</td><td>📋 確認待ち</td><td>「提案文確認」→ 内容を確認して「送信」or「再生成」</td></tr>
+                    <tr><td>応募完了</td><td>✅ 応募完了</td><td>「提案文」ボタンで内容を再確認可能</td></tr>
+                    <tr><td>エラー</td><td>❌ エラー</td><td>「再試行」ボタンで再実行</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="manual-note">
+            <strong>設定：</strong>マッチ度の閾値（デフォルト70%）やモニター間隔（デフォルト30分）は環境変数で変更可能です。
+        </div>
+    </div>
+</section>
+
+<!-- LINE連携 -->
+<section class="manual-section" id="line">
+    <div class="section-header">
+        <h2>💬 LINE連携</h2>
+    </div>
+    <div class="section-body">
+        <p>案件モニターの通知・操作をLINEから行えます。</p>
+
+        <div class="manual-subsection">
+            <h3>LINEで使えるコマンド</h3>
+            <table class="manual-table">
+                <thead>
+                    <tr><th>操作</th><th>方法</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>案件通知の受信</strong></td>
+                        <td>マッチ案件が見つかると自動で通知が届きます</td>
+                    </tr>
+                    <tr>
+                        <td><strong>応募する</strong></td>
+                        <td>通知の「応募する」ボタンをタップ</td>
+                    </tr>
+                    <tr>
+                        <td><strong>スキップ</strong></td>
+                        <td>通知の「スキップ」ボタンをタップ</td>
+                    </tr>
+                    <tr>
+                        <td><strong>提案文を確認</strong></td>
+                        <td>生成完了通知で「この内容で送信」or「再生成」を選択</td>
+                    </tr>
+                    <tr>
+                        <td><strong>状況確認</strong></td>
+                        <td>「状況」とメッセージを送ると、現在のモニター状況を返信</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

@@ -219,3 +219,8 @@ async def followups_page(request: Request, db: Session = Depends(get_db)):
 @router.get("/roadmap", response_class=HTMLResponse)
 async def roadmap_page(request: Request):
     return _get_templates().TemplateResponse("roadmap.html", {"request": request})
+
+
+@router.get("/manual", response_class=HTMLResponse)
+async def manual_page(request: Request):
+    return _get_templates().TemplateResponse("manual.html", {"request": request})
