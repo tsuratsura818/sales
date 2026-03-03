@@ -1308,57 +1308,73 @@ textarea.form-control { resize: vertical; font-family: inherit; }
     padding-left: 0;
     list-style: none;
     counter-reset: manual-step;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 .manual-steps > li {
     counter-increment: manual-step;
-    position: relative;
-    padding: 18px 20px 18px 60px;
-    margin-bottom: 12px;
-    background: #f8f9fb;
-    border-radius: 10px;
-    border-left: 3px solid #4a90d9;
-    transition: box-shadow .2s;
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    padding: 20px 24px;
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e8ecf1;
+    box-shadow: 0 1px 4px rgba(0,0,0,.04);
+    transition: box-shadow .2s, transform .2s;
 }
 .manual-steps > li:hover {
-    box-shadow: 0 2px 8px rgba(74,144,217,.1);
+    box-shadow: 0 4px 16px rgba(74,144,217,.1);
+    transform: translateY(-1px);
 }
 .manual-steps > li::before {
     content: counter(manual-step);
-    position: absolute;
-    left: 16px;
-    top: 18px;
-    width: 30px;
-    height: 30px;
-    line-height: 30px;
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    line-height: 36px;
     text-align: center;
     background: linear-gradient(135deg, #4a90d9, #5dade2);
     color: #fff;
     border-radius: 50%;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 700;
-    box-shadow: 0 2px 6px rgba(74,144,217,.3);
+    box-shadow: 0 2px 8px rgba(74,144,217,.3);
+    margin-top: 2px;
+}
+.manual-step-content {
+    flex: 1;
+    min-width: 0;
 }
 .manual-steps > li strong {
     display: block;
-    font-size: 15px;
+    font-size: 16px;
     color: #1a1a2e;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+    line-height: 1.4;
 }
 .manual-steps > li p {
     font-size: 14px;
     color: #666;
-    line-height: 1.8;
+    line-height: 1.9;
     margin: 4px 0;
 }
 .manual-steps > li ul {
-    margin-top: 8px;
-    padding-left: 20px;
+    margin-top: 10px;
+    padding-left: 0;
 }
 .manual-steps > li ul li {
     font-size: 14px;
     color: #555;
     line-height: 1.9;
-    padding: 2px 0;
+    padding: 3px 0 3px 22px;
+}
+.manual-steps > li ul li::before {
+    width: 6px;
+    height: 6px;
+    top: 13px;
+    background: #95b8db;
 }
 
 /* テーブル */
