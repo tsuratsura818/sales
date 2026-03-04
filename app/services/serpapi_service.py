@@ -21,6 +21,22 @@ def _is_excluded(url: str) -> bool:
     return False
 
 
+def build_query(base_query: str, region: str | None = None, industry: str | None = None) -> str:
+    """検索クエリを最適化（地域・業界付加 + 除外ドメイン演算子）"""
+    parts = [base_query]
+    if region:
+        parts.append(region)
+    if industry:
+        parts.append(industry)
+    # 主要ポータルをGoogle検索レベルで除外（API節約）
+    top_excludes = ["tabelog.com", "hotpepper.jp", "jalan.net", "booking.com",
+                    "amazon.co.jp", "rakuten.co.jp", "yahoo.co.jp",
+                    "indeed.com", "mynavi.jp", "rikunabi.com"]
+    for domain in top_excludes:
+        parts.append(f"-site:{domain}")
+    return " ".join(parts)
+
+
 async def fetch_one_page(
     query: str, start: int = 0, hl: str = "ja", gl: str = "jp"
 ) -> tuple[list[dict], bool]:

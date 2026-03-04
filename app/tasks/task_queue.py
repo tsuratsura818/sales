@@ -94,13 +94,18 @@ async def _run_search_job(job_id: int) -> None:
         analyzed_count = 0
         empty_page_streak = 0  # 連続して新規リードが0のページ数
 
+        # 地域・業界を含む最適化クエリを構築
+        optimized_query = serpapi_service.build_query(
+            job.query, region=job.region, industry=job.industry
+        )
+
         # 進捗ストア初期化
         progress_store.init_job(job_id, target)
 
         while lead_count < target and page < MAX_PAGES:
-            # SerpAPI 1ページ取得
+            # SerpAPI 1ページ取得（最適化クエリ使用）
             items, has_next = await serpapi_service.fetch_one_page(
-                query=job.query, start=page * 10
+                query=optimized_query, start=page * 10
             )
             calls_used += 1
             job.serpapi_calls_used = calls_used
