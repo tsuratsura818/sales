@@ -1525,3 +1525,337 @@ textarea.form-control { resize: vertical; font-family: inherit; }
     .section-header { padding: 14px 20px; }
     .section-header h2 { font-size: 17px; }
 }
+
+/* ========================================
+   案件管理: カンバンボード
+   ======================================== */
+
+.kanban-board {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 16px;
+    min-height: 400px;
+}
+
+.kanban-column {
+    flex: 0 0 200px;
+    background: #f0f2f5;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 260px);
+}
+
+.kanban-column-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    font-weight: 700;
+    font-size: 13px;
+    color: #555;
+    border-bottom: 1px solid #e0e4ea;
+}
+
+.kanban-column-count {
+    background: #ddd;
+    color: #555;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.kanban-cards {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 60px;
+    transition: background .2s;
+}
+
+.kanban-drop-target {
+    background: rgba(74, 144, 217, .1);
+    border-radius: 8px;
+}
+
+.kanban-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    cursor: grab;
+    transition: box-shadow .2s, transform .1s;
+    border-left: 3px solid #4a90d9;
+}
+.kanban-card:hover {
+    box-shadow: 0 3px 10px rgba(0,0,0,.12);
+    transform: translateY(-1px);
+}
+.kanban-card-dragging {
+    opacity: .5;
+    transform: rotate(2deg);
+}
+
+.kanban-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+.kanban-card-client {
+    font-size: 11px;
+    color: #888;
+}
+.kanban-card-amount {
+    font-size: 12px;
+    color: #e67e22;
+    font-weight: 600;
+    margin-top: 4px;
+}
+.kanban-card-date {
+    font-size: 11px;
+    color: #999;
+    margin-top: 4px;
+}
+
+/* タスクアイテム（モーダル内） */
+.task-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: #f8f9fa;
+    margin-bottom: 6px;
+    gap: 8px;
+}
+.task-item-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+.task-item-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.task-status-select {
+    padding: 2px 4px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 11px;
+    background: #fff;
+}
+.task-name {
+    font-size: 13px;
+    color: #333;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.task-done {
+    text-decoration: line-through;
+    color: #999;
+}
+.task-priority {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+.task-priority-高 { background: #fde8e8; color: #c0392b; }
+.task-priority-中 { background: #fef3cd; color: #e67e22; }
+.task-priority-低 { background: #e8f5e9; color: #27ae60; }
+.task-due {
+    font-size: 11px;
+    color: #888;
+    white-space: nowrap;
+}
+.btn-icon {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px;
+    opacity: .5;
+    transition: opacity .2s;
+}
+.btn-icon:hover { opacity: 1; }
+
+/* ========================================
+   案件管理: ガントチャート
+   ======================================== */
+
+.gantt-container {
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: calc(100vh - 280px);
+    position: relative;
+}
+
+.gantt-wrapper {
+    position: relative;
+    min-width: 100%;
+}
+
+.gantt-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: #f8f9fb;
+    border-bottom: 2px solid #eee;
+}
+
+.gantt-label-header {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    font-weight: 700;
+    font-size: 12px;
+    color: #555;
+    background: #f8f9fb;
+    border-right: 1px solid #eee;
+    z-index: 11;
+}
+
+.gantt-month-label {
+    position: absolute;
+    top: 2px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #333;
+    white-space: nowrap;
+}
+
+.gantt-date-label {
+    position: absolute;
+    top: 24px;
+    font-size: 10px;
+    color: #888;
+    white-space: nowrap;
+}
+
+.gantt-today-line {
+    position: absolute;
+    top: 0;
+    width: 2px;
+    background: #e74c3c;
+    z-index: 5;
+    opacity: .6;
+}
+
+.gantt-weekend {
+    position: absolute;
+    top: 0;
+    background: rgba(0,0,0,.02);
+    z-index: 1;
+}
+
+.gantt-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #f2f2f2;
+}
+.gantt-row-even {
+    background: #fafbfc;
+}
+
+.gantt-label {
+    position: absolute;
+    left: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    background: inherit;
+    border-right: 1px solid #eee;
+    z-index: 3;
+    overflow: hidden;
+}
+.gantt-label-text {
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.gantt-label-project {
+    font-weight: 600;
+    color: #333;
+}
+.gantt-label-task {
+    color: #888;
+}
+
+.gantt-bar-container {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+}
+
+.gantt-bar {
+    position: absolute;
+    height: 20px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    z-index: 2;
+    transition: opacity .2s;
+}
+.gantt-bar:hover {
+    opacity: .85;
+    cursor: pointer;
+}
+.gantt-bar-project {
+    height: 22px;
+    border-radius: 4px;
+}
+.gantt-bar-task {
+    height: 14px;
+    border-radius: 3px;
+    opacity: .8;
+}
+.gantt-bar-label {
+    font-size: 10px;
+    color: #fff;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.gantt-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #555;
+}
+.gantt-legend-bar {
+    display: inline-block;
+    width: 20px;
+    height: 10px;
+    border-radius: 3px;
+}
+.gantt-legend-bar-task {
+    background: #8e44ad;
+    height: 6px;
+}

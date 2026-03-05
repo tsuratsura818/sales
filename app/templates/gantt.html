@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}ガントチャート{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
+    <div>
+        <h1>📊 ガントチャート</h1>
+        <p>案件とタスクのスケジュールを可視化。バーをドラッグして期日を変更できます。</p>
+    </div>
+    <div style="display:flex; gap:8px;">
+        <a href="/projects" class="btn btn-secondary">📋 カンバン</a>
+        <div class="report-toggle" id="viewToggle">
+            <button class="active" onclick="setView('week')">週</button>
+            <button onclick="setView('month')">月</button>
+            <button onclick="setView('quarter')">四半期</button>
+        </div>
+    </div>
+</div>
+
+{% if not connected %}
+<div class="card">
+    <div class="alert alert-warning">
+        ⚠️ Notion未接続: {{ error or 'NOTION_API_KEY を設定してください' }}
+        <br><a href="/projects">→ セットアップ手順を見る</a>
+    </div>
+</div>
+{% elif not projects %}
+<div class="card">
+    <div class="empty-message">
+        案件がまだありません。<a href="/projects">案件ボード</a>から追加してください。
+    </div>
+</div>
+{% else %}
+
+<!-- ガントチャート -->
+<div class="card" style="padding:0; overflow-x:auto;">
+    <div id="ganttChart" class="gantt-container"></div>
+</div>
+
+<!-- 凡例 -->
+<div class="card" style="display:flex; gap:20px; flex-wrap:wrap; align-items:center;">
+    <span style="font-weight:600; font-size:13px;">凡例:</span>
+    <span class="gantt-legend"><span class="gantt-legend-bar" style="background:#4a90d9;"></span> 見込み</span>
+    <span class="gantt-legend"><span class="gantt-legend-bar" style="background:#f39c12;"></span> 提案中</span>
+    <span class="gantt-legend"><span class="gantt-legend-bar" style="background:#e67e22;"></span> 商談中</span>
+    <span class="gantt-legend"><span class="gantt-legend-bar" style="background:#27ae60;"></span> 受注</span>
+    <span class="gantt-legend"><span class="gantt-legend-bar" style="background:#2ecc71;"></span> 進行中</span>
+    <span class="gantt-legend"><span class="gantt-legend-bar" style="background:#95a5a6;"></span> 完了</span>
+    <span class="gantt-legend"><span class="gantt-legend-bar" style="background:#e74c3c;"></span> 失注</span>
+    <span class="gantt-legend"><span class="gantt-legend-bar gantt-legend-bar-task"></span> タスク</span>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if connected and projects %}
+<script>
+const STATUS_COLORS = {
+    '見込み': '#4a90d9',
+    '提案中': '#f39c12',
+    '商談中': '#e67e22',
+    '受注': '#27ae60',
+    '進行中': '#2ecc71',
+    '完了': '#95a5a6',
+    '失注': '#e74c3c',
+};
+const TASK_COLOR = '#8e44ad';
+
+const projects = {{ projects | tojson }};
+const tasks = {{ tasks | tojson }};
+
+let currentView = 'week';
+let ganttData = [];
+
+function buildGanttData() {
+    ganttData = [];
+    const today = new Date().toISOString().slice(0, 10);
+
+    for (const p of projects) {
+        const start = p.start_date || p.end_date || today;
+        const end = p.end_date || p.start_date || today;
+        ganttData.push({
+            id: p.id,
+            type: 'project',
+            name: p.name || '（無題）',
+            start: start,
+            end: end,
+            color: STATUS_COLORS[p.status] || '#999',
+            status: p.status,
+            client: p.client,
+            amount: p.amount,
+        });
+
+        const relatedTasks = tasks.filter(t =>
+            t.project_ids && t.project_ids.includes(p.id)
+        );
+        for (const t of relatedTasks) {
+            ganttData.push({
+                id: t.id,
+                type: 'task',
+                name: '  └ ' + (t.name || '（無題）'),
+                start: t.due_date || today,
+                end: t.due_date || today,
+                color: TASK_COLOR,
+                status: t.status,
+                priority: t.priority,
+                parentId: p.id,
+            });
+        }
+    }
+
+    // 案件に紐づかないタスク
+    const orphanTasks = tasks.filter(t => !t.project_ids || t.project_ids.length === 0);
+    for (const t of orphanTasks) {
+        ganttData.push({
+            id: t.id,
+            type: 'task',
+            name: t.name || '（無題）',
+            start: t.due_date || today,
+            end: t.due_date || today,
+            color: TASK_COLOR,
+            status: t.status,
+            priority: t.priority,
+        });
+    }
+}
+
+function getDateRange() {
+    if (ganttData.length === 0) return { start: new Date(), end: new Date() };
+
+    let minDate = new Date('2099-12-31');
+    let maxDate = new Date('2000-01-01');
+
+    for (const item of ganttData) {
+        const s = new Date(item.start);
+        const e = new Date(item.end);
+        if (s < minDate) minDate = s;
+        if (e > maxDate) maxDate = e;
+    }
+
+    // パディング
+    const pad = currentView === 'quarter' ? 30 : currentView === 'month' ? 14 : 7;
+    minDate.setDate(minDate.getDate() - pad);
+    maxDate.setDate(maxDate.getDate() + pad);
+
+    return { start: minDate, end: maxDate };
+}
+
+function daysBetween(d1, d2) {
+    return Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+}
+
+function formatDate(d) {
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function renderGantt() {
+    const container = document.getElementById('ganttChart');
+    if (!container) return;
+
+    buildGanttData();
+    if (ganttData.length === 0) {
+        container.innerHTML = '<div class="empty-message">表示するデータがありません</div>';
+        return;
+    }
+
+    const range = getDateRange();
+    const totalDays = daysBetween(range.start, range.end);
+    const dayWidth = currentView === 'quarter' ? 4 : currentView === 'month' ? 8 : 20;
+    const chartWidth = totalDays * dayWidth;
+    const rowHeight = 36;
+    const labelWidth = 220;
+    const headerHeight = 50;
+
+    // ヘッダー（日付）
+    let headerHtml = '';
+    const d = new Date(range.start);
+    let lastMonth = -1;
+    while (d <= range.end) {
+        const x = daysBetween(range.start, d) * dayWidth;
+        const isToday = d.toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10);
+        const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+
+        if (d.getMonth() !== lastMonth) {
+            headerHtml += `<div class="gantt-month-label" style="left:${labelWidth + x}px;">${d.getFullYear()}/${d.getMonth() + 1}月</div>`;
+            lastMonth = d.getMonth();
+        }
+
+        if (currentView === 'week' || (currentView === 'month' && d.getDate() % 5 === 1) || (currentView === 'quarter' && d.getDate() === 1)) {
+            headerHtml += `<div class="gantt-date-label" style="left:${labelWidth + x}px;">${formatDate(d)}</div>`;
+        }
+
+        if (isToday) {
+            headerHtml += `<div class="gantt-today-line" style="left:${labelWidth + x}px; height:${headerHeight + ganttData.length * rowHeight}px;"></div>`;
+        }
+
+        if (isWeekend && currentView === 'week') {
+            headerHtml += `<div class="gantt-weekend" style="left:${labelWidth + x}px; width:${dayWidth}px; height:${headerHeight + ganttData.length * rowHeight}px;"></div>`;
+        }
+
+        d.setDate(d.getDate() + 1);
+    }
+
+    // 行
+    let rowsHtml = '';
+    ganttData.forEach((item, i) => {
+        const y = headerHeight + i * rowHeight;
+        const startX = daysBetween(range.start, new Date(item.start)) * dayWidth;
+        const duration = Math.max(1, daysBetween(new Date(item.start), new Date(item.end)) + 1);
+        const barWidth = Math.max(duration * dayWidth, 6);
+        const isProject = item.type === 'project';
+
+        rowsHtml += `
+            <div class="gantt-row ${i % 2 === 0 ? 'gantt-row-even' : ''}" style="top:${y}px; height:${rowHeight}px;">
+                <div class="gantt-label" style="width:${labelWidth}px;">
+                    <span class="gantt-label-text ${isProject ? 'gantt-label-project' : 'gantt-label-task'}"
+                          title="${item.name}${item.client ? ' - ' + item.client : ''}">
+                        ${item.name}
+                    </span>
+                </div>
+                <div class="gantt-bar-container" style="left:${labelWidth}px;">
+                    <div class="gantt-bar ${isProject ? 'gantt-bar-project' : 'gantt-bar-task'}"
+                         style="left:${startX}px; width:${barWidth}px; background:${item.color};"
+                         title="${item.name}: ${item.start} 〜 ${item.end}"
+                         ${isProject ? `onclick="window.location.href='/projects'"` : ''}>
+                        ${barWidth > 60 && isProject ? `<span class="gantt-bar-label">${item.amount ? new Intl.NumberFormat('ja-JP').format(item.amount) + '円' : ''}</span>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = `
+        <div class="gantt-wrapper" style="width:${labelWidth + chartWidth}px; height:${headerHeight + ganttData.length * rowHeight}px;">
+            <div class="gantt-header" style="height:${headerHeight}px;">
+                <div class="gantt-label-header" style="width:${labelWidth}px;">案件 / タスク</div>
+                ${headerHtml}
+            </div>
+            ${rowsHtml}
+        </div>
+    `;
+}
+
+function setView(view) {
+    currentView = view;
+    document.querySelectorAll('#viewToggle button').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent.includes(
+            view === 'week' ? '週' : view === 'month' ? '月' : '四半期'
+        ));
+    });
+    renderGantt();
+}
+
+renderGantt();
+</script>
+{% endif %}
+{% endblock %}

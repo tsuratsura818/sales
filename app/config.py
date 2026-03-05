@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     JOB_MATCH_THRESHOLD: int = 70
     USER_PROFILE_TEXT: str = ""
 
+    # Notion連携（案件管理）
+    NOTION_API_KEY: str = ""
+    NOTION_PROJECT_DB_ID: str = ""
+    NOTION_TASK_DB_ID: str = ""
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

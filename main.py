@@ -9,7 +9,7 @@ from app.tasks import task_queue
 from app.tasks.followup_scheduler import followup_scheduler
 from app.tasks.job_monitor import job_monitor
 from app.tasks.keep_alive import keep_alive
-from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook
+from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects
 
 STATUS_JA = {
     # リードステータス
@@ -99,6 +99,7 @@ app.include_router(dashboard_api.router)
 app.include_router(portfolios.router)
 app.include_router(jobs.router)
 app.include_router(line_webhook.router)
+app.include_router(projects.router)
 
 
 @app.get("/health")

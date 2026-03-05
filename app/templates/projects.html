@@ -1,0 +1,567 @@
+{% extends "base.html" %}
+{% block title %}案件管理{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
+    <div>
+        <h1>📋 案件管理ボード</h1>
+        <p>Notion連携の案件管理。ドラッグ&ドロップでステータスを変更できます。</p>
+    </div>
+    <div style="display:flex; gap:8px;">
+        <a href="/gantt" class="btn btn-secondary">📊 ガントチャート</a>
+        <button class="btn btn-primary" onclick="showAddModal()">＋ 案件追加</button>
+    </div>
+</div>
+
+{% if not connected %}
+<div class="card">
+    <div class="alert alert-warning">
+        ⚠️ Notion未接続: {{ error or 'NOTION_API_KEY, NOTION_PROJECT_DB_ID, NOTION_TASK_DB_ID を .env に設定してください' }}
+    </div>
+    <div style="margin-top:16px;">
+        <h3>セットアップ手順</h3>
+        <ol style="padding-left:20px; line-height:2;">
+            <li><a href="https://www.notion.so/my-integrations" target="_blank">Notion Integrations</a> で Internal Integration を作成</li>
+            <li>APIキーをコピー</li>
+            <li>Notionに「案件DB」「タスクDB」を作成（下記プロパティ）</li>
+            <li>各DBページで「コネクト」→作成したIntegrationを追加</li>
+            <li>DBのURLからID（32文字）をコピー</li>
+            <li><code>.env</code> に以下を追加:
+                <pre style="background:#f5f5f5; padding:10px; border-radius:6px; margin-top:8px;">NOTION_API_KEY=ntn_xxxx
+NOTION_PROJECT_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+NOTION_TASK_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</pre>
+            </li>
+        </ol>
+        <div style="margin-top:16px;">
+            <h4>案件DBプロパティ</h4>
+            <table class="data-table" style="margin-top:8px;">
+                <thead><tr><th>プロパティ名</th><th>タイプ</th><th>備考</th></tr></thead>
+                <tbody>
+                    <tr><td>案件名</td><td>タイトル</td><td>（デフォルト）</td></tr>
+                    <tr><td>ステータス</td><td>セレクト</td><td>見込み / 提案中 / 商談中 / 受注 / 進行中 / 完了 / 失注</td></tr>
+                    <tr><td>クライアント</td><td>テキスト</td><td></td></tr>
+                    <tr><td>金額</td><td>数値</td><td>円</td></tr>
+                    <tr><td>開始日</td><td>日付</td><td></td></tr>
+                    <tr><td>期日</td><td>日付</td><td></td></tr>
+                    <tr><td>URL</td><td>URL</td><td></td></tr>
+                    <tr><td>リードID</td><td>テキスト</td><td>営業Toolのリード連携用</td></tr>
+                    <tr><td>メモ</td><td>テキスト</td><td></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div style="margin-top:16px;">
+            <h4>タスクDBプロパティ</h4>
+            <table class="data-table" style="margin-top:8px;">
+                <thead><tr><th>プロパティ名</th><th>タイプ</th><th>備考</th></tr></thead>
+                <tbody>
+                    <tr><td>タスク名</td><td>タイトル</td><td>（デフォルト）</td></tr>
+                    <tr><td>ステータス</td><td>セレクト</td><td>未着手 / 進行中 / 完了</td></tr>
+                    <tr><td>優先度</td><td>セレクト</td><td>高 / 中 / 低</td></tr>
+                    <tr><td>期日</td><td>日付</td><td></td></tr>
+                    <tr><td>案件</td><td>リレーション</td><td>→ 案件DB</td></tr>
+                    <tr><td>メモ</td><td>テキスト</td><td></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+
+<!-- 集計カード -->
+<div class="stats-row">
+    {% set ns = namespace(prospect=0, proposal=0, meeting=0, won=0, active=0, done=0, lost=0, total_amount=0) %}
+    {% for p in projects %}
+        {% if p.status == '見込み' %}{% set ns.prospect = ns.prospect + 1 %}
+        {% elif p.status == '提案中' %}{% set ns.proposal = ns.proposal + 1 %}
+        {% elif p.status == '商談中' %}{% set ns.meeting = ns.meeting + 1 %}
+        {% elif p.status == '受注' %}{% set ns.won = ns.won + 1 %}
+        {% elif p.status == '進行中' %}{% set ns.active = ns.active + 1 %}
+        {% elif p.status == '完了' %}{% set ns.done = ns.done + 1 %}
+        {% elif p.status == '失注' %}{% set ns.lost = ns.lost + 1 %}
+        {% endif %}
+        {% if p.amount %}{% set ns.total_amount = ns.total_amount + p.amount %}{% endif %}
+    {% endfor %}
+    <div class="stat-card stat-leads">
+        <div class="stat-number">{{ projects|length }}</div>
+        <div class="stat-label">総案件数</div>
+    </div>
+    <div class="stat-card stat-active">
+        <div class="stat-number">{{ ns.prospect + ns.proposal + ns.meeting }}</div>
+        <div class="stat-label">商談パイプライン</div>
+    </div>
+    <div class="stat-card stat-meeting">
+        <div class="stat-number">{{ ns.won + ns.active }}</div>
+        <div class="stat-label">受注・進行中</div>
+    </div>
+    <div class="stat-card stat-completed">
+        <div class="stat-number">{{ ns.done }}</div>
+        <div class="stat-label">完了</div>
+    </div>
+    <div class="stat-card stat-revenue" style="border-top-color:#e74c3c;">
+        <div class="stat-number">{{ "{:,}".format(ns.total_amount) }}</div>
+        <div class="stat-label">合計金額（円）</div>
+    </div>
+</div>
+
+<!-- カンバンボード -->
+<div class="kanban-board" id="kanbanBoard">
+    {% for status in statuses %}
+    <div class="kanban-column" data-status="{{ status }}">
+        <div class="kanban-column-header">
+            <span class="kanban-column-title">{{ status }}</span>
+            <span class="kanban-column-count">
+                {{ projects | selectattr('status', 'equalto', status) | list | length }}
+            </span>
+        </div>
+        <div class="kanban-cards" data-status="{{ status }}"
+             ondragover="event.preventDefault(); this.classList.add('kanban-drop-target')"
+             ondragleave="this.classList.remove('kanban-drop-target')"
+             ondrop="handleDrop(event, '{{ status }}')">
+            {% for p in projects if p.status == status %}
+            <div class="kanban-card" draggable="true" data-id="{{ p.id }}"
+                 ondragstart="handleDragStart(event, '{{ p.id }}')"
+                 onclick="showDetailModal('{{ p.id }}')">
+                <div class="kanban-card-title">{{ p.name or '（無題）' }}</div>
+                {% if p.client %}
+                <div class="kanban-card-client">{{ p.client }}</div>
+                {% endif %}
+                {% if p.amount %}
+                <div class="kanban-card-amount">{{ "{:,}".format(p.amount) }}円</div>
+                {% endif %}
+                {% if p.end_date %}
+                <div class="kanban-card-date">📅 {{ p.end_date }}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- 案件追加モーダル -->
+<div id="addModal" class="modal-overlay" style="display:none;" onclick="closeAddModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3>案件を追加</h3>
+            <button class="modal-close" onclick="closeAddModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-grid">
+                <div class="form-group full-width">
+                    <label>案件名 <span class="required">*</span></label>
+                    <input type="text" id="addName" class="form-control" placeholder="例: 株式会社○○ Webリニューアル">
+                </div>
+                <div class="form-group">
+                    <label>クライアント</label>
+                    <input type="text" id="addClient" class="form-control" placeholder="会社名">
+                </div>
+                <div class="form-group">
+                    <label>ステータス</label>
+                    <select id="addStatus" class="form-control">
+                        {% for s in statuses %}
+                        <option value="{{ s }}" {% if s == '見込み' %}selected{% endif %}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>金額（円）</label>
+                    <input type="number" id="addAmount" class="form-control" placeholder="500000">
+                </div>
+                <div class="form-group">
+                    <label>URL</label>
+                    <input type="url" id="addUrl" class="form-control" placeholder="https://...">
+                </div>
+                <div class="form-group">
+                    <label>開始日</label>
+                    <input type="date" id="addStartDate" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>期日</label>
+                    <input type="date" id="addEndDate" class="form-control">
+                </div>
+                <div class="form-group full-width">
+                    <label>メモ</label>
+                    <textarea id="addMemo" class="form-control" rows="3" placeholder="備考"></textarea>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeAddModal()">キャンセル</button>
+            <button class="btn btn-primary" id="btnAdd" onclick="addProject()">追加</button>
+        </div>
+    </div>
+</div>
+
+<!-- 案件詳細/編集モーダル -->
+<div id="detailModal" class="modal-overlay" style="display:none;" onclick="closeDetailModal(event)">
+    <div class="modal-content" style="max-width:720px;" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3 id="detailTitle">案件詳細</h3>
+            <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="detailLoading" class="modal-loading">読み込み中...</div>
+            <div id="detailContent" style="display:none;">
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label>案件名</label>
+                        <input type="text" id="editName" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>クライアント</label>
+                        <input type="text" id="editClient" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>ステータス</label>
+                        <select id="editStatus" class="form-control">
+                            {% for s in statuses %}
+                            <option value="{{ s }}">{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>金額（円）</label>
+                        <input type="number" id="editAmount" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>URL</label>
+                        <input type="url" id="editUrl" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>開始日</label>
+                        <input type="date" id="editStartDate" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>期日</label>
+                        <input type="date" id="editEndDate" class="form-control">
+                    </div>
+                    <div class="form-group full-width">
+                        <label>メモ</label>
+                        <textarea id="editMemo" class="form-control" rows="3"></textarea>
+                    </div>
+                </div>
+
+                <!-- タスク一覧 -->
+                <div style="margin-top:20px; border-top:1px solid #eee; padding-top:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <h4 style="margin:0;">タスク</h4>
+                        <button class="btn btn-sm btn-primary" onclick="showAddTaskForm()">＋ タスク追加</button>
+                    </div>
+                    <div id="addTaskForm" style="display:none; margin-bottom:12px;">
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <input type="text" id="newTaskName" class="form-control" style="flex:1; min-width:200px;" placeholder="タスク名">
+                            <select id="newTaskPriority" class="form-control" style="width:80px;">
+                                <option value="高">高</option>
+                                <option value="中" selected>中</option>
+                                <option value="低">低</option>
+                            </select>
+                            <input type="date" id="newTaskDue" class="form-control" style="width:150px;">
+                            <button class="btn btn-sm btn-primary" onclick="addTask()">追加</button>
+                        </div>
+                    </div>
+                    <div id="tasksList"></div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer" id="detailActions" style="display:none;">
+            <button class="btn btn-secondary" style="margin-right:auto;" onclick="deleteProject()">🗑 削除</button>
+            <button class="btn btn-secondary" onclick="closeDetailModal()">キャンセル</button>
+            <button class="btn btn-primary" onclick="saveProject()">保存</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentProjectId = null;
+let draggedId = null;
+
+// ========== ドラッグ&ドロップ ==========
+
+function handleDragStart(e, id) {
+    draggedId = id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.target.classList.add('kanban-card-dragging');
+}
+
+async function handleDrop(e, newStatus) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('kanban-drop-target');
+    if (!draggedId) return;
+
+    const card = document.querySelector(`[data-id="${draggedId}"]`);
+    if (card) card.classList.remove('kanban-card-dragging');
+
+    try {
+        const resp = await fetch(`/api/projects/${draggedId}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({status: newStatus}),
+        });
+        if (resp.ok) {
+            location.reload();
+        } else {
+            const data = await resp.json();
+            alert(data.detail || 'エラーが発生しました');
+        }
+    } catch (err) {
+        alert('通信エラー: ' + err.message);
+    }
+    draggedId = null;
+}
+
+// ========== 案件追加 ==========
+
+function showAddModal() {
+    document.getElementById('addModal').style.display = 'flex';
+    document.getElementById('addName').focus();
+}
+
+function closeAddModal(e) {
+    if (e && e.target !== e.currentTarget) return;
+    document.getElementById('addModal').style.display = 'none';
+}
+
+async function addProject() {
+    const name = document.getElementById('addName').value.trim();
+    if (!name) { alert('案件名を入力してください'); return; }
+
+    const btn = document.getElementById('btnAdd');
+    btn.disabled = true;
+    btn.textContent = '追加中...';
+
+    const body = {
+        name,
+        status: document.getElementById('addStatus').value,
+        client: document.getElementById('addClient').value.trim(),
+        amount: document.getElementById('addAmount').value ? parseInt(document.getElementById('addAmount').value) : null,
+        start_date: document.getElementById('addStartDate').value || null,
+        end_date: document.getElementById('addEndDate').value || null,
+        url: document.getElementById('addUrl').value.trim(),
+        memo: document.getElementById('addMemo').value.trim(),
+    };
+
+    try {
+        const resp = await fetch('/api/projects', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+        });
+        if (resp.ok) {
+            location.reload();
+        } else {
+            const data = await resp.json();
+            alert(data.detail || 'エラーが発生しました');
+        }
+    } catch (err) {
+        alert('通信エラー: ' + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '追加';
+    }
+}
+
+// ========== 案件詳細/編集 ==========
+
+async function showDetailModal(projectId) {
+    currentProjectId = projectId;
+    const modal = document.getElementById('detailModal');
+    const loading = document.getElementById('detailLoading');
+    const content = document.getElementById('detailContent');
+    const actions = document.getElementById('detailActions');
+
+    modal.style.display = 'flex';
+    loading.style.display = 'block';
+    content.style.display = 'none';
+    actions.style.display = 'none';
+
+    try {
+        const resp = await fetch(`/api/projects/${projectId}`);
+        const p = await resp.json();
+
+        document.getElementById('detailTitle').textContent = p.name || '案件詳細';
+        document.getElementById('editName').value = p.name || '';
+        document.getElementById('editClient').value = p.client || '';
+        document.getElementById('editStatus').value = p.status || '見込み';
+        document.getElementById('editAmount').value = p.amount || '';
+        document.getElementById('editUrl').value = p.url || '';
+        document.getElementById('editStartDate').value = p.start_date || '';
+        document.getElementById('editEndDate').value = p.end_date || '';
+        document.getElementById('editMemo').value = p.memo || '';
+
+        loading.style.display = 'none';
+        content.style.display = 'block';
+        actions.style.display = 'flex';
+
+        loadTasks(projectId);
+    } catch (err) {
+        loading.textContent = '読み込みに失敗しました';
+    }
+}
+
+function closeDetailModal(e) {
+    if (e && e.target !== e.currentTarget) return;
+    document.getElementById('detailModal').style.display = 'none';
+    document.getElementById('addTaskForm').style.display = 'none';
+    currentProjectId = null;
+}
+
+async function saveProject() {
+    if (!currentProjectId) return;
+
+    const body = {
+        name: document.getElementById('editName').value.trim(),
+        status: document.getElementById('editStatus').value,
+        client: document.getElementById('editClient').value.trim(),
+        amount: document.getElementById('editAmount').value ? parseInt(document.getElementById('editAmount').value) : null,
+        start_date: document.getElementById('editStartDate').value || null,
+        end_date: document.getElementById('editEndDate').value || null,
+        url: document.getElementById('editUrl').value.trim(),
+        memo: document.getElementById('editMemo').value.trim(),
+    };
+
+    // null値を除外（Pydanticが部分更新として処理）
+    const filtered = {};
+    for (const [k, v] of Object.entries(body)) {
+        if (v !== null && v !== '') filtered[k] = v;
+    }
+
+    try {
+        const resp = await fetch(`/api/projects/${currentProjectId}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(filtered),
+        });
+        if (resp.ok) {
+            location.reload();
+        } else {
+            const data = await resp.json();
+            alert(data.detail || '保存に失敗しました');
+        }
+    } catch (err) {
+        alert('通信エラー: ' + err.message);
+    }
+}
+
+async function deleteProject() {
+    if (!currentProjectId) return;
+    if (!confirm('この案件を削除しますか？')) return;
+
+    try {
+        const resp = await fetch(`/api/projects/${currentProjectId}`, {method: 'DELETE'});
+        if (resp.ok) {
+            location.reload();
+        } else {
+            const data = await resp.json();
+            alert(data.detail || '削除に失敗しました');
+        }
+    } catch (err) {
+        alert('通信エラー: ' + err.message);
+    }
+}
+
+// ========== タスク管理 ==========
+
+async function loadTasks(projectId) {
+    const container = document.getElementById('tasksList');
+    container.innerHTML = '<div style="color:#888; text-align:center; padding:12px;">読み込み中...</div>';
+
+    try {
+        const resp = await fetch(`/api/projects/${projectId}/tasks`);
+        const data = await resp.json();
+        const tasks = data.tasks || [];
+
+        if (tasks.length === 0) {
+            container.innerHTML = '<div style="color:#888; text-align:center; padding:12px;">タスクなし</div>';
+            return;
+        }
+
+        container.innerHTML = tasks.map(t => `
+            <div class="task-item" data-task-id="${t.id}">
+                <div class="task-item-left">
+                    <select class="task-status-select" onchange="updateTaskStatus('${t.id}', this.value)">
+                        <option value="未着手" ${t.status === '未着手' ? 'selected' : ''}>未着手</option>
+                        <option value="進行中" ${t.status === '進行中' ? 'selected' : ''}>進行中</option>
+                        <option value="完了" ${t.status === '完了' ? 'selected' : ''}>完了</option>
+                    </select>
+                    <span class="task-name ${t.status === '完了' ? 'task-done' : ''}">${t.name || '（無題）'}</span>
+                </div>
+                <div class="task-item-right">
+                    ${t.priority ? `<span class="task-priority task-priority-${t.priority}">${t.priority}</span>` : ''}
+                    ${t.due_date ? `<span class="task-due">${t.due_date}</span>` : ''}
+                    <button class="btn-icon" onclick="deleteTask('${t.id}')" title="削除">🗑</button>
+                </div>
+            </div>
+        `).join('');
+    } catch (err) {
+        container.innerHTML = '<div style="color:#e74c3c; text-align:center; padding:12px;">読み込みに失敗しました</div>';
+    }
+}
+
+function showAddTaskForm() {
+    document.getElementById('addTaskForm').style.display = 'block';
+    document.getElementById('newTaskName').focus();
+}
+
+async function addTask() {
+    if (!currentProjectId) return;
+    const name = document.getElementById('newTaskName').value.trim();
+    if (!name) return;
+
+    try {
+        const resp = await fetch('/api/tasks', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name,
+                project_id: currentProjectId,
+                priority: document.getElementById('newTaskPriority').value,
+                due_date: document.getElementById('newTaskDue').value || null,
+            }),
+        });
+        if (resp.ok) {
+            document.getElementById('newTaskName').value = '';
+            document.getElementById('newTaskDue').value = '';
+            loadTasks(currentProjectId);
+        }
+    } catch (err) {
+        alert('タスク追加に失敗しました');
+    }
+}
+
+async function updateTaskStatus(taskId, newStatus) {
+    try {
+        await fetch(`/api/tasks/${taskId}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({status: newStatus}),
+        });
+        if (currentProjectId) loadTasks(currentProjectId);
+    } catch (err) {
+        alert('更新に失敗しました');
+    }
+}
+
+async function deleteTask(taskId) {
+    if (!confirm('このタスクを削除しますか？')) return;
+    try {
+        await fetch(`/api/tasks/${taskId}`, {method: 'DELETE'});
+        if (currentProjectId) loadTasks(currentProjectId);
+    } catch (err) {
+        alert('削除に失敗しました');
+    }
+}
+
+// ========== キーボード ==========
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeAddModal();
+        closeDetailModal();
+    }
+});
+</script>
+{% endblock %}
