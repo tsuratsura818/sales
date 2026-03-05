@@ -212,7 +212,7 @@ async def regenerate_proposal(job_id: int, db: Session = Depends(get_db)):
 
 # ---------- Lancers手動取得（ローカルPC→サーバー） ----------
 
-@router.get("/api/jobs/known")
+@router.get("/api/job-monitor/known")
 async def get_known_jobs(db: Session = Depends(get_db)):
     """既知の案件IDとタイトルを返す（ローカルスクリプト用）"""
     known_ids = [
@@ -224,7 +224,7 @@ async def get_known_jobs(db: Session = Depends(get_db)):
     return {"external_ids": known_ids, "titles": known_titles}
 
 
-@router.post("/api/jobs/import")
+@router.post("/api/job-monitor/import")
 async def import_jobs(request: Request, db: Session = Depends(get_db)):
     """ローカルPCから送信された案件データを受け取ってAI評価→LINE通知"""
     from app.services import job_matcher, line_service

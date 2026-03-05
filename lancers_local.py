@@ -107,7 +107,7 @@ async def main():
     print("\n[1/3] サーバーから既知案件を取得中...")
     async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
         try:
-            resp = await client.get(f"{SERVER_URL}/api/jobs/known")
+            resp = await client.get(f"{SERVER_URL}/api/job-monitor/known")
             resp.raise_for_status()
             known = resp.json()
             known_ids = set(known["external_ids"])
@@ -150,7 +150,7 @@ async def main():
     async with httpx.AsyncClient(timeout=300, follow_redirects=True) as client:
         try:
             resp = await client.post(
-                f"{SERVER_URL}/api/jobs/import",
+                f"{SERVER_URL}/api/job-monitor/import",
                 json={"jobs": jobs},
             )
             resp.raise_for_status()

@@ -174,7 +174,7 @@ async function fetchLancers() {
 
     try {
         // 1. サーバーから既知の案件ID/タイトルを取得
-        const knownResp = await fetch('/api/jobs/known');
+        const knownResp = await fetch('/api/job-monitor/known');
         const known = await knownResp.json();
 
         // 2. ローカルプロキシ経由でLancersをスクレイピング
@@ -197,7 +197,7 @@ async function fetchLancers() {
         }
 
         // 3. サーバーに案件データを送信（AI評価→LINE通知）
-        const importResp = await fetch('/api/jobs/import', {
+        const importResp = await fetch('/api/job-monitor/import', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({jobs: lancersJobs.jobs}),
