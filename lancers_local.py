@@ -1,17 +1,19 @@
 """
-Lancers案件取得ローカルサーバー
-ダッシュボードの「Lancers案件を取得」ボタンから呼び出される
+Lancers案件取得スクリプト（ローカルPC実行用）
 
-起動方法: py lancers_local.py
-停止: Ctrl+C
+使い方: py lancers_local.py
+→ ローカルPCからLancersをスクレイピング
+→ サーバーに送信してAI評価→LINE通知
 """
 import asyncio
 import json
 import re
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import sys
 
 import httpx
 from bs4 import BeautifulSoup
+
+SERVER_URL = "https://sales-6g78.onrender.com"
 
 LC_SELECTORS = {
     "job_list_item": ".c-search-result__item, .p-search-job__item, .c-media",
@@ -77,8 +79,8 @@ def parse_job_list(html, known_ids, known_titles):
 def parse_budget(text):
     if not text:
         return None, None, None
-    text = text.replace(",", "").replace("，", "")
-    budget_type = "hourly" if "時間" in text else "fixed"
+    text = text.replace(",", "").replace("\uff0c", "")
+    budget_type = "hourly" if "\u6642\u9593" in text else "fixed"
     numbers = re.findall(r'(\d+)', text)
     if len(numbers) >= 2:
         return int(numbers[0]), int(numbers[1]), budget_type
@@ -89,14 +91,34 @@ def parse_budget(text):
 
 def classify_category(title):
     title_lower = title.lower()
-    if any(kw in title_lower for kw in ["ec", "ショップ", "ネットショップ", "shopify", "通販"]):
+    if any(kw in title_lower for kw in ["ec", "\u30b7\u30e7\u30c3\u30d7", "\u30cd\u30c3\u30c8\u30b7\u30e7\u30c3\u30d7", "shopify", "\u901a\u8ca9"]):
         return "ec_site"
-    if any(kw in title_lower for kw in ["seo", "マーケ", "広告", "集客", "リスティング"]):
+    if any(kw in title_lower for kw in ["seo", "\u30de\u30fc\u30b1", "\u5e83\u544a", "\u96c6\u5ba2", "\u30ea\u30b9\u30c6\u30a3\u30f3\u30b0"]):
         return "seo_marketing"
     return "web_development"
 
 
-async def fetch_lancers(known_ids, known_titles):
+async def main():
+    print("=" * 50)
+    print("Lancers案件取得スクリプト")
+    print("=" * 50)
+
+    # 1. サーバーから既知の案件を取得
+    print("\n[1/3] サーバーから既知案件を取得中...")
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+        try:
+            resp = await client.get(f"{SERVER_URL}/api/jobs/known")
+            resp.raise_for_status()
+            known = resp.json()
+            known_ids = set(known["external_ids"])
+            known_titles = set(known["titles"])
+            print(f"  既知: {len(known_ids)}件")
+        except Exception as e:
+            print(f"  サーバー接続エラー: {e}")
+            sys.exit(1)
+
+    # 2. Lancersをスクレイピング
+    print("\n[2/3] Lancersから案件を取得中...")
     jobs = []
     seen_ids = set(known_ids)
     seen_titles = set(known_titles)
@@ -111,57 +133,35 @@ async def fetch_lancers(known_ids, known_titles):
                     seen_ids.add(pj["external_id"])
                     seen_titles.add(pj["title"])
                 jobs.extend(page_jobs)
-                print(f"  {url.split('=')[-1]}: {len(page_jobs)}件")
+                cat_id = url.split("=")[-1]
+                print(f"  カテゴリ{cat_id}: {len(page_jobs)}件")
             except Exception as e:
                 print(f"  エラー: {e}")
             await asyncio.sleep(2)
 
-    return jobs
+    print(f"  合計新規: {len(jobs)}件")
 
+    if not jobs:
+        print("\n新規案件なし。終了します。")
+        return
 
-class Handler(BaseHTTPRequestHandler):
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.end_headers()
+    # 3. サーバーに送信
+    print(f"\n[3/3] サーバーに送信中（AI評価 + LINE通知）...")
+    async with httpx.AsyncClient(timeout=300, follow_redirects=True) as client:
+        try:
+            resp = await client.post(
+                f"{SERVER_URL}/api/jobs/import",
+                json={"jobs": jobs},
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            print(f"\n  {result['message']}")
+        except Exception as e:
+            print(f"  送信エラー: {e}")
+            sys.exit(1)
 
-    def do_POST(self):
-        if self.path != "/scrape-lancers":
-            self.send_response(404)
-            self.end_headers()
-            return
-
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = json.loads(self.rfile.read(content_length)) if content_length > 0 else {}
-
-        known_ids = set(body.get("known_ids", []))
-        known_titles = set(body.get("known_titles", []))
-
-        print(f"\nLancers取得開始（既知: {len(known_ids)}件）")
-        jobs = asyncio.run(fetch_lancers(known_ids, known_titles))
-        print(f"新規案件: {len(jobs)}件")
-
-        response = json.dumps({"jobs": jobs}, ensure_ascii=False).encode("utf-8")
-
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(response)
-
-    def log_message(self, format, *args):
-        pass
+    print("\n完了!")
 
 
 if __name__ == "__main__":
-    port = 8765
-    server = HTTPServer(("localhost", port), Handler)
-    print(f"Lancersローカルサーバー起動: http://localhost:{port}")
-    print("ダッシュボードの「Lancers案件を取得」ボタンを押してください")
-    print("停止: Ctrl+C")
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\n停止しました")
+    asyncio.run(main())
