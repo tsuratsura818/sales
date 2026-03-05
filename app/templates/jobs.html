@@ -11,6 +11,7 @@
         <button id="btnFetchLancers" class="btn btn-primary" onclick="fetchLancers()" style="white-space:nowrap;">
             🔍 Lancers案件を取得
         </button>
+        <br><small style="color:#888;">※ローカルPC経由で取得</small>
     </div>
 </div>
 
@@ -169,19 +170,43 @@ let currentJobId = null;
 async function fetchLancers() {
     const btn = document.getElementById('btnFetchLancers');
     btn.disabled = true;
-    btn.textContent = '取得中...';
+    btn.textContent = '取得中...（数分かかります）';
 
     try {
-        const resp = await fetch('/api/jobs/fetch-lancers', {method: 'POST'});
-        const data = await resp.json();
-        if (resp.ok) {
-            alert(`${data.message}`);
-            location.reload();
-        } else {
-            alert(data.detail || 'エラーが発生しました');
+        // 1. サーバーから既知の案件ID/タイトルを取得
+        const knownResp = await fetch('/api/jobs/known');
+        const known = await knownResp.json();
+
+        // 2. ローカルプロキシ経由でLancersをスクレイピング
+        let lancersJobs;
+        try {
+            const scrapeResp = await fetch('http://localhost:8765/scrape-lancers', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({known_ids: known.external_ids, known_titles: known.titles}),
+            });
+            lancersJobs = await scrapeResp.json();
+        } catch (e) {
+            alert('ローカルスクリプトが起動していません。\n\nターミナルで以下を実行してください:\npy lancers_local.py');
+            return;
         }
+
+        if (!lancersJobs.jobs || lancersJobs.jobs.length === 0) {
+            alert('新規Lancers案件なし');
+            return;
+        }
+
+        // 3. サーバーに案件データを送信（AI評価→LINE通知）
+        const importResp = await fetch('/api/jobs/import', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({jobs: lancersJobs.jobs}),
+        });
+        const result = await importResp.json();
+        alert(result.message);
+        location.reload();
     } catch (e) {
-        alert('通信エラー: ' + e.message);
+        alert('エラー: ' + e.message);
     } finally {
         btn.disabled = false;
         btn.textContent = '🔍 Lancers案件を取得';

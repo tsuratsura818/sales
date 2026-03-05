@@ -210,24 +210,27 @@ async def regenerate_proposal(job_id: int, db: Session = Depends(get_db)):
     return {"success": True, "message": "提案文を再生成します"}
 
 
-# ---------- Lancers手動取得 ----------
+# ---------- Lancers手動取得（ローカルPC→サーバー） ----------
 
-@router.post("/api/jobs/fetch-lancers")
-async def fetch_lancers_jobs(db: Session = Depends(get_db)):
-    """Lancers案件を手動で取得（ローカルPC経由用）"""
-    from app.services import lancers_service, job_matcher, line_service
-
-    known_ids = set(
+@router.get("/api/jobs/known")
+async def get_known_jobs(db: Session = Depends(get_db)):
+    """既知の案件IDとタイトルを返す（ローカルスクリプト用）"""
+    known_ids = [
         eid for (eid,) in db.query(JobListing.external_id).all()
-    )
-    known_titles = set(
+    ]
+    known_titles = [
         t for (t,) in db.query(JobListing.title).all()
-    )
+    ]
+    return {"external_ids": known_ids, "titles": known_titles}
 
-    try:
-        jobs = await lancers_service.fetch_new_jobs(known_ids, known_titles)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Lancersスクレイプエラー: {e}")
+
+@router.post("/api/jobs/import")
+async def import_jobs(request: Request, db: Session = Depends(get_db)):
+    """ローカルPCから送信された案件データを受け取ってAI評価→LINE通知"""
+    from app.services import job_matcher, line_service
+
+    body = await request.json()
+    jobs = body.get("jobs", [])
 
     if not jobs:
         return {"success": True, "new_count": 0, "notified_count": 0, "message": "新規案件なし"}
