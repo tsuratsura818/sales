@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.database import init_db
+from app.database import init_db, SessionLocal
 from app.tasks import task_queue
 from app.tasks.followup_scheduler import followup_scheduler
 from app.tasks.job_monitor import job_monitor
@@ -104,6 +104,34 @@ app.include_router(line_webhook.router)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/monitor/status")
+async def monitor_status():
+    """案件モニターの稼働状況を返す"""
+    from app.models.monitor_log import MonitorLog
+    from sqlalchemy import desc
+    db_session = SessionLocal()
+    try:
+        logs = db_session.query(MonitorLog).order_by(desc(MonitorLog.run_at)).limit(20).all()
+        return {
+            "total_runs": db_session.query(MonitorLog).count(),
+            "recent": [
+                {
+                    "id": log.id,
+                    "run_at": log.run_at.isoformat() if log.run_at else None,
+                    "status": log.status,
+                    "message": log.message,
+                    "cw_count": log.cw_count,
+                    "lc_count": log.lc_count,
+                    "notified_count": log.notified_count,
+                    "duration_sec": log.duration_sec,
+                }
+                for log in logs
+            ],
+        }
+    finally:
+        db_session.close()
 
 
 if __name__ == "__main__":

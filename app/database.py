@@ -35,7 +35,7 @@ def get_db():
 
 
 def init_db():
-    from app.models import lead, search_job, email_log, follow_up, competitor, portfolio, job_listing, job_application  # noqa: F401
+    from app.models import lead, search_job, email_log, follow_up, competitor, portfolio, job_listing, job_application, monitor_log  # noqa: F401
     Base.metadata.create_all(bind=engine)
     if _is_sqlite:
         _migrate_sqlite()

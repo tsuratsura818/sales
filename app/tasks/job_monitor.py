@@ -1,10 +1,12 @@
 import asyncio
 import logging
+import time
 from datetime import datetime
 
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models.job_listing import JobListing
+from app.models.monitor_log import MonitorLog
 from app.services import crowdworks_service, lancers_service, job_matcher, line_service
 
 settings = get_settings()
@@ -13,41 +15,75 @@ logger = logging.getLogger(__name__)
 
 async def job_monitor() -> None:
     """バックグラウンドでCrowdWorks/Lancersの案件を定期チェックしLINE通知する"""
-    # 起動直後は少し待つ（DB初期化完了を待つ）
     await asyncio.sleep(15)
 
     # LINE未設定の場合はスキップ
     if not settings.LINE_CHANNEL_ACCESS_TOKEN or not settings.LINE_USER_ID:
         logger.warning("LINE未設定のため、ジョブモニターをスキップ")
+        _log_run("skipped", "LINE未設定")
         return
 
     # CW/LC認証が両方未設定の場合もスキップ
     if not settings.CROWDWORKS_EMAIL and not settings.LANCERS_EMAIL:
         logger.warning("CW/LC認証未設定のため、ジョブモニターをスキップ")
+        _log_run("skipped", "CW/LC認証未設定")
         return
 
     logger.info("ジョブモニター開始")
     interval_seconds = settings.JOB_MONITOR_INTERVAL_MINUTES * 60
 
     while True:
+        start = time.time()
         try:
-            await _monitor_cycle()
+            cw_count, lc_count, notified = await _monitor_cycle()
+            duration = round(time.time() - start, 1)
+            msg = f"CW:{cw_count} LC:{lc_count} 通知:{notified}"
+            logger.info(f"モニターサイクル完了 ({duration}s): {msg}")
+            _log_run("success", msg, cw_count, lc_count, notified, duration)
         except Exception as e:
+            duration = round(time.time() - start, 1)
             logger.error(f"ジョブモニターエラー: {e}")
+            _log_run("error", str(e)[:500], duration_sec=duration)
 
         await asyncio.sleep(interval_seconds)
 
 
-async def _monitor_cycle() -> None:
-    """1回の監視サイクル: スクレイピング → AI評価 → LINE通知"""
-    db = SessionLocal()
+def _log_run(
+    status: str,
+    message: str | None = None,
+    cw_count: int | None = None,
+    lc_count: int | None = None,
+    notified_count: int | None = None,
+    duration_sec: float | None = None,
+) -> None:
+    """モニター実行ログをDBに保存"""
     try:
-        # 既知のexternal_idを取得（重複防止）
+        db = SessionLocal()
+        log = MonitorLog(
+            run_at=datetime.now(),
+            status=status,
+            message=message,
+            cw_count=cw_count,
+            lc_count=lc_count,
+            notified_count=notified_count,
+            duration_sec=duration_sec,
+        )
+        db.add(log)
+        db.commit()
+        db.close()
+    except Exception as e:
+        logger.error(f"モニターログ保存失敗: {e}")
+
+
+async def _monitor_cycle() -> tuple[int, int, int]:
+    """1回の監視サイクル: スクレイピング → AI評価 → LINE通知。件数を返す。"""
+    db = SessionLocal()
+    notified = 0
+    try:
         known_ids = set(
             eid for (eid,) in db.query(JobListing.external_id).all()
         )
 
-        # CW/LCから並行して新着を取得
         tasks = []
         if settings.CROWDWORKS_EMAIL:
             tasks.append(_safe_fetch(crowdworks_service.fetch_new_jobs, known_ids))
@@ -65,13 +101,12 @@ async def _monitor_cycle() -> None:
         all_new_jobs = cw_jobs + lc_jobs
         if not all_new_jobs:
             logger.debug("新規案件なし")
-            return
+            return len(cw_jobs), len(lc_jobs), 0
 
         logger.info(f"新規案件 {len(all_new_jobs)}件 (CW:{len(cw_jobs)} LC:{len(lc_jobs)})")
 
         for job_data in all_new_jobs:
             try:
-                # DBに保存
                 listing = JobListing(
                     platform=job_data["platform"],
                     external_id=job_data["external_id"],
@@ -92,7 +127,6 @@ async def _monitor_cycle() -> None:
                 db.commit()
                 db.refresh(listing)
 
-                # Claudeで評価
                 eval_result = await job_matcher.evaluate_job(
                     title=listing.title,
                     description=listing.description or "",
@@ -109,7 +143,6 @@ async def _monitor_cycle() -> None:
                 if eval_result.get("category"):
                     listing.category = eval_result["category"]
 
-                # 閾値以上ならLINE通知
                 if eval_result["score"] >= settings.JOB_MATCH_THRESHOLD:
                     listing.status = "notified"
 
@@ -136,12 +169,11 @@ async def _monitor_cycle() -> None:
                     )
                     listing.line_message_id = msg_id
                     listing.notified_at = datetime.now()
+                    notified += 1
                 else:
                     listing.status = "skipped"
 
                 db.commit()
-
-                # AI評価のレート制限
                 await asyncio.sleep(2)
 
             except Exception as e:
@@ -154,6 +186,8 @@ async def _monitor_cycle() -> None:
 
     finally:
         db.close()
+
+    return len(cw_jobs), len(lc_jobs), notified
 
 
 async def _safe_fetch(fetch_func, known_ids: set) -> list[dict]:
