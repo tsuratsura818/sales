@@ -2,9 +2,16 @@
 {% block title %}案件モニター{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1>📡 案件モニター（CrowdWorks / Lancers）</h1>
-    <p>自動検出された案件一覧。LINEまたはダッシュボードから応募を管理できます。</p>
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
+    <div>
+        <h1>📡 案件モニター（CrowdWorks / Lancers）</h1>
+        <p>自動検出された案件一覧。LINEまたはダッシュボードから応募を管理できます。</p>
+    </div>
+    <div>
+        <button id="btnFetchLancers" class="btn btn-primary" onclick="fetchLancers()" style="white-space:nowrap;">
+            🔍 Lancers案件を取得
+        </button>
+    </div>
 </div>
 
 <!-- 集計カード -->
@@ -158,6 +165,28 @@
 {% block scripts %}
 <script>
 let currentJobId = null;
+
+async function fetchLancers() {
+    const btn = document.getElementById('btnFetchLancers');
+    btn.disabled = true;
+    btn.textContent = '取得中...';
+
+    try {
+        const resp = await fetch('/api/jobs/fetch-lancers', {method: 'POST'});
+        const data = await resp.json();
+        if (resp.ok) {
+            alert(`${data.message}`);
+            location.reload();
+        } else {
+            alert(data.detail || 'エラーが発生しました');
+        }
+    } catch (e) {
+        alert('通信エラー: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔍 Lancers案件を取得';
+    }
+}
 
 async function approveJob(jobId) {
     const resp = await fetch(`/api/jobs/${jobId}/approve`, {method: 'POST'});

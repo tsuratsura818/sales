@@ -7,7 +7,7 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.models.job_listing import JobListing
 from app.models.monitor_log import MonitorLog
-from app.services import crowdworks_service, lancers_service, job_matcher, line_service
+from app.services import crowdworks_service, job_matcher, line_service
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -87,26 +87,17 @@ async def _monitor_cycle() -> tuple[int, int, int]:
             t for (t,) in db.query(JobListing.title).all()
         )
 
-        tasks = []
+        # CrowdWorksのみ自動取得（LancersはクラウドIPブロックのため手動取得に変更）
+        cw_jobs = []
         if settings.CROWDWORKS_EMAIL:
-            tasks.append(_safe_fetch(crowdworks_service.fetch_new_jobs, known_ids, known_titles))
-        else:
-            tasks.append(_empty_list())
-        if settings.LANCERS_EMAIL:
-            tasks.append(_safe_fetch(lancers_service.fetch_new_jobs, known_ids, known_titles))
-        else:
-            tasks.append(_empty_list())
+            cw_jobs = await _safe_fetch(crowdworks_service.fetch_new_jobs, known_ids, known_titles)
 
-        results = await asyncio.gather(*tasks)
-        cw_jobs = results[0]
-        lc_jobs = results[1]
-
-        all_new_jobs = cw_jobs + lc_jobs
+        all_new_jobs = cw_jobs
         if not all_new_jobs:
             logger.debug("新規案件なし")
-            return len(cw_jobs), len(lc_jobs), 0
+            return len(cw_jobs), 0, 0
 
-        logger.info(f"新規案件 {len(all_new_jobs)}件 (CW:{len(cw_jobs)} LC:{len(lc_jobs)})")
+        logger.info(f"新規案件 {len(all_new_jobs)}件 (CW:{len(cw_jobs)})")
 
         for job_data in all_new_jobs:
             try:
@@ -190,7 +181,7 @@ async def _monitor_cycle() -> tuple[int, int, int]:
     finally:
         db.close()
 
-    return len(cw_jobs), len(lc_jobs), notified
+    return len(cw_jobs), 0, notified
 
 
 async def _safe_fetch(fetch_func, known_ids: set, known_titles: set) -> list[dict]:

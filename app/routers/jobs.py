@@ -10,7 +10,9 @@ from sqlalchemy import desc
 from app.database import get_db, SessionLocal
 from app.models.job_listing import JobListing
 from app.models.job_application import JobApplication
+from app.config import get_settings
 
+settings = get_settings()
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["jobs"])
 
@@ -206,6 +208,114 @@ async def regenerate_proposal(job_id: int, db: Session = Depends(get_db)):
 
     asyncio.create_task(_apply_to_job(job_id))
     return {"success": True, "message": "提案文を再生成します"}
+
+
+# ---------- Lancers手動取得 ----------
+
+@router.post("/api/jobs/fetch-lancers")
+async def fetch_lancers_jobs(db: Session = Depends(get_db)):
+    """Lancers案件を手動で取得（ローカルPC経由用）"""
+    from app.services import lancers_service, job_matcher, line_service
+
+    known_ids = set(
+        eid for (eid,) in db.query(JobListing.external_id).all()
+    )
+    known_titles = set(
+        t for (t,) in db.query(JobListing.title).all()
+    )
+
+    try:
+        jobs = await lancers_service.fetch_new_jobs(known_ids, known_titles)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lancersスクレイプエラー: {e}")
+
+    if not jobs:
+        return {"success": True, "new_count": 0, "notified_count": 0, "message": "新規案件なし"}
+
+    notified = 0
+    for job_data in jobs:
+        try:
+            listing = JobListing(
+                platform=job_data["platform"],
+                external_id=job_data["external_id"],
+                url=job_data["url"],
+                title=job_data["title"],
+                description=job_data.get("description", ""),
+                category=job_data.get("category"),
+                budget_min=job_data.get("budget_min"),
+                budget_max=job_data.get("budget_max"),
+                budget_type=job_data.get("budget_type"),
+                deadline=job_data.get("deadline"),
+                client_name=job_data.get("client_name"),
+                client_rating=job_data.get("client_rating"),
+                client_review_count=job_data.get("client_review_count"),
+                status="analyzing",
+            )
+            db.add(listing)
+            db.commit()
+            db.refresh(listing)
+
+            eval_result = await job_matcher.evaluate_job(
+                title=listing.title,
+                description=listing.description or "",
+                budget_min=listing.budget_min,
+                budget_max=listing.budget_max,
+                budget_type=listing.budget_type,
+                client_name=listing.client_name,
+                client_rating=listing.client_rating,
+                platform=listing.platform,
+            )
+
+            listing.match_score = eval_result["score"]
+            listing.match_reason = eval_result["reason"]
+            if eval_result.get("category"):
+                listing.category = eval_result["category"]
+
+            if eval_result["score"] >= settings.JOB_MATCH_THRESHOLD:
+                listing.status = "notified"
+                budget_text = "未定"
+                if listing.budget_min and listing.budget_max:
+                    if listing.budget_min == listing.budget_max:
+                        budget_text = f"{listing.budget_min:,}円"
+                    else:
+                        budget_text = f"{listing.budget_min:,}〜{listing.budget_max:,}円"
+
+                deadline_text = "期限なし"
+                if listing.deadline:
+                    deadline_text = listing.deadline.strftime("%Y/%m/%d")
+
+                await line_service.push_job_flex_message(
+                    job_id=listing.id,
+                    title=listing.title[:60],
+                    platform=listing.platform,
+                    budget_text=budget_text,
+                    deadline_text=deadline_text,
+                    match_score=eval_result["score"],
+                    match_reason=eval_result["reason"],
+                    job_url=listing.url,
+                )
+                listing.notified_at = datetime.now()
+                notified += 1
+            else:
+                listing.status = "skipped"
+
+            db.commit()
+            await asyncio.sleep(2)
+
+        except Exception as e:
+            logger.error(f"Lancers案件処理エラー ({job_data.get('title', '?')}): {e}")
+            try:
+                listing.status = "error"
+                db.commit()
+            except Exception:
+                pass
+
+    return {
+        "success": True,
+        "new_count": len(jobs),
+        "notified_count": notified,
+        "message": f"Lancers {len(jobs)}件取得、{notified}件LINE通知",
+    }
 
 
 # ---------- 応募バックグラウンド処理 ----------
