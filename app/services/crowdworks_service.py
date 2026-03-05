@@ -25,19 +25,21 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 HEADERS = {"User-Agent": UA, "Accept-Language": "ja,en;q=0.9"}
 
 
-async def fetch_new_jobs(known_external_ids: set[str]) -> list[dict]:
+async def fetch_new_jobs(known_external_ids: set[str], known_titles: set[str] | None = None) -> list[dict]:
     """CrowdWorksから新着案件を取得（Vue SSRデータ方式）"""
     jobs: list[dict] = []
     seen_ids: set[str] = set()
+    seen_titles: set[str] = set(known_titles or set())
 
     async with httpx.AsyncClient(headers=HEADERS, timeout=30, follow_redirects=True) as client:
         for search_url in SEARCH_URLS:
             try:
                 resp = await client.get(search_url)
                 resp.raise_for_status()
-                page_jobs = _parse_vue_data(resp.text, known_external_ids | seen_ids)
+                page_jobs = _parse_vue_data(resp.text, known_external_ids | seen_ids, seen_titles)
                 for pj in page_jobs:
                     seen_ids.add(pj["external_id"])
+                    seen_titles.add(pj["title"])
                 jobs.extend(page_jobs)
             except Exception as e:
                 logger.error(f"CWスクレイプエラー ({search_url}): {e}")
@@ -56,7 +58,7 @@ async def fetch_new_jobs(known_external_ids: set[str]) -> list[dict]:
     return jobs
 
 
-def _parse_vue_data(html: str, known_ids: set[str]) -> list[dict]:
+def _parse_vue_data(html: str, known_ids: set[str], seen_titles: set[str] | None = None) -> list[dict]:
     """Vue containerのdata属性からJSON案件データをパース"""
     soup = BeautifulSoup(html, "lxml")
     vue = soup.find(id="vue-container")
@@ -87,6 +89,8 @@ def _parse_vue_data(html: str, known_ids: set[str]) -> list[dict]:
                 continue
 
             title = jo.get("title", "")
+            if seen_titles and title in seen_titles:
+                continue
             url = f"https://crowdworks.jp/public/jobs/{cw_id}"
             description = jo.get("description_digest", "")
 

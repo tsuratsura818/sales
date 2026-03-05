@@ -83,14 +83,17 @@ async def _monitor_cycle() -> tuple[int, int, int]:
         known_ids = set(
             eid for (eid,) in db.query(JobListing.external_id).all()
         )
+        known_titles = set(
+            t for (t,) in db.query(JobListing.title).all()
+        )
 
         tasks = []
         if settings.CROWDWORKS_EMAIL:
-            tasks.append(_safe_fetch(crowdworks_service.fetch_new_jobs, known_ids))
+            tasks.append(_safe_fetch(crowdworks_service.fetch_new_jobs, known_ids, known_titles))
         else:
             tasks.append(_empty_list())
         if settings.LANCERS_EMAIL:
-            tasks.append(_safe_fetch(lancers_service.fetch_new_jobs, known_ids))
+            tasks.append(_safe_fetch(lancers_service.fetch_new_jobs, known_ids, known_titles))
         else:
             tasks.append(_empty_list())
 
@@ -190,10 +193,10 @@ async def _monitor_cycle() -> tuple[int, int, int]:
     return len(cw_jobs), len(lc_jobs), notified
 
 
-async def _safe_fetch(fetch_func, known_ids: set) -> list[dict]:
+async def _safe_fetch(fetch_func, known_ids: set, known_titles: set) -> list[dict]:
     """エラー時は空リストを返す安全なfetch"""
     try:
-        return await fetch_func(known_ids)
+        return await fetch_func(known_ids, known_titles)
     except Exception as e:
         logger.error(f"Fetchエラー ({fetch_func.__module__}): {e}")
         return []
