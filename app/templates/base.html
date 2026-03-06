@@ -8,26 +8,64 @@
 </head>
 <body>
     <nav class="navbar">
-        <div class="nav-brand">🎯 営業自動化ツール</div>
+        <a href="/dashboard" class="nav-brand">🎯 営業自動化ツール</a>
         <div class="nav-links">
-            <a href="/dashboard">📊 ダッシュボード</a>
-            <a href="/">🔍 検索</a>
-            <a href="/leads">📋 リード一覧</a>
-            <a href="/sent">📨 送信済み</a>
-            <a href="/followups">📩 フォローアップ</a>
-            <a href="/portfolios">📁 ポートフォリオ</a>
-            <a href="/projects">📋 案件管理</a>
-            <a href="/jobs">📡 案件モニター</a>
-            <a href="/links">🔗 リンク一覧</a>
-            <a href="/roadmap">📌 ロードマップ</a>
-            <a href="/manual">📖 マニュアル</a>
+            <a href="/dashboard" class="nav-item">📊 ダッシュボード</a>
+
+            <div class="nav-dropdown">
+                <button class="nav-dropdown-btn">📋 営業 ▾</button>
+                <div class="nav-dropdown-menu">
+                    <a href="/">🔍 企業検索</a>
+                    <a href="/leads">📋 リード一覧</a>
+                    <a href="/sent">📨 送信済み</a>
+                    <a href="/followups">📩 フォローアップ</a>
+                </div>
+            </div>
+
+            <div class="nav-dropdown">
+                <button class="nav-dropdown-btn">📁 案件 ▾</button>
+                <div class="nav-dropdown-menu">
+                    <a href="/projects">📋 案件管理</a>
+                    <a href="/gantt">📊 ガントチャート</a>
+                    <a href="/jobs">📡 案件モニター</a>
+                </div>
+            </div>
+
+            <div class="nav-dropdown">
+                <button class="nav-dropdown-btn">⚙️ その他 ▾</button>
+                <div class="nav-dropdown-menu">
+                    <a href="/portfolios">📁 ポートフォリオ</a>
+                    <a href="/links">🔗 リンク一覧</a>
+                    <a href="/roadmap">📌 ロードマップ</a>
+                    <a href="/manual">📖 マニュアル</a>
+                </div>
+            </div>
         </div>
+        <button class="nav-hamburger" onclick="document.querySelector('.nav-links').classList.toggle('open')">☰</button>
     </nav>
 
     <main class="container">
         {% block content %}{% endblock %}
     </main>
 
+    <script>
+    // モバイル: ドロップダウンをタップで開閉
+    document.querySelectorAll('.nav-dropdown-btn').forEach(btn => {
+        btn.addEventListener('click', e => {
+            if (window.innerWidth <= 768) {
+                e.stopPropagation();
+                btn.closest('.nav-dropdown').classList.toggle('open');
+            }
+        });
+    });
+    // 現在ページのナビをハイライト
+    (() => {
+        const path = location.pathname;
+        document.querySelectorAll('.nav-links a[href]').forEach(a => {
+            if (a.getAttribute('href') === path) a.classList.add('nav-active');
+        });
+    })();
+    </script>
     <script src="/static/js/sse_progress.js"></script>
     {% block scripts %}{% endblock %}
 </body>

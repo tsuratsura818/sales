@@ -15,23 +15,140 @@ body {
     color: #fff;
     display: flex;
     align-items: center;
-    justify-content: space-between;
     padding: 0 24px;
     height: 56px;
     position: sticky;
     top: 0;
     z-index: 100;
     box-shadow: 0 2px 8px rgba(0,0,0,.3);
+    gap: 8px;
 }
-.nav-brand { font-size: 18px; font-weight: 700; }
-.nav-links a {
+.nav-brand {
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+    text-decoration: none;
+    margin-right: 16px;
+    white-space: nowrap;
+}
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.nav-links > a.nav-item {
     color: #ccc;
     text-decoration: none;
-    margin-left: 24px;
-    font-size: 14px;
-    transition: color .2s;
+    font-size: 13px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    transition: background .2s, color .2s;
+    white-space: nowrap;
 }
-.nav-links a:hover { color: #fff; }
+.nav-links > a.nav-item:hover {
+    color: #fff;
+    background: rgba(255,255,255,.1);
+}
+
+/* ドロップダウン */
+.nav-dropdown {
+    position: relative;
+}
+.nav-dropdown-btn {
+    background: none;
+    border: none;
+    color: #ccc;
+    font-size: 13px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background .2s, color .2s;
+    white-space: nowrap;
+    font-family: inherit;
+}
+.nav-dropdown-btn:hover,
+.nav-dropdown:hover .nav-dropdown-btn {
+    color: #fff;
+    background: rgba(255,255,255,.1);
+}
+.nav-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: #252547;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    min-width: 180px;
+    padding: 6px 0;
+    margin-top: 4px;
+    z-index: 200;
+}
+.nav-dropdown:hover .nav-dropdown-menu {
+    display: block;
+}
+.nav-dropdown-menu a {
+    display: block;
+    color: #ccc;
+    text-decoration: none;
+    padding: 10px 16px;
+    font-size: 13px;
+    transition: background .15s, color .15s;
+    white-space: nowrap;
+}
+.nav-dropdown-menu a:hover {
+    background: rgba(255,255,255,.08);
+    color: #fff;
+}
+
+/* ハンバーガー（モバイル） */
+.nav-hamburger {
+    display: none;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 22px;
+    cursor: pointer;
+    padding: 4px 8px;
+    margin-left: auto;
+}
+
+/* アクティブページ */
+.nav-active {
+    color: #fff !important;
+    background: rgba(255,255,255,.12);
+}
+.nav-dropdown-menu .nav-active {
+    border-left: 3px solid #6c63ff;
+    padding-left: 13px;
+}
+
+@media (max-width: 768px) {
+    .nav-links {
+        display: none;
+        position: absolute;
+        top: 56px;
+        left: 0;
+        right: 0;
+        background: #1a1a2e;
+        flex-direction: column;
+        padding: 8px 16px 16px;
+        gap: 2px;
+        box-shadow: 0 4px 12px rgba(0,0,0,.3);
+    }
+    .nav-links.open { display: flex; }
+    .nav-hamburger { display: block; }
+    .nav-dropdown-menu {
+        position: static;
+        box-shadow: none;
+        margin-top: 0;
+        padding-left: 16px;
+        background: transparent;
+    }
+    .nav-dropdown:hover .nav-dropdown-menu { display: none; }
+    .nav-dropdown.open .nav-dropdown-menu { display: block; }
+    .nav-dropdown-btn { width: 100%; text-align: left; }
+}
 
 /* コンテナ */
 .container { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
