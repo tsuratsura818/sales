@@ -100,4 +100,6 @@ def check_connection() -> dict:
         events = get_today_events()
         return {"ok": True, "event_count": len(events)}
     except Exception as e:
-        return {"ok": False, "error": str(e)[:200]}
+        raw = settings.GOOGLE_SERVICE_ACCOUNT_JSON
+        debug = f"len={len(raw)}, first20={repr(raw[:20])}, type={type(raw).__name__}"
+        return {"ok": False, "error": f"{e} | debug: {debug}"}
