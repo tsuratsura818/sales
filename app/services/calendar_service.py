@@ -17,10 +17,13 @@ def _parse_sa_json(raw_value: str) -> dict:
     """環境変数から読んだサービスアカウントJSONを安全にパースする"""
     raw = raw_value.strip()
 
-    # 余計なクォートを繰り返し除去
+    # 余計なクォートの除去（中身が { で始まる場合のみ）
     for q in ["'", '"']:
         if len(raw) > 2 and raw.startswith(q) and raw.endswith(q):
-            raw = raw[1:-1]
+            inner = raw[1:-1].strip()
+            if inner.startswith("{"):
+                raw = inner
+                break
 
     # エスケープされた改行を復元（\\n → \n の前に \\\\n → \\n を処理）
     raw = raw.replace("\\\\n", "\x00ESCAPED_NEWLINE\x00")
@@ -32,14 +35,6 @@ def _parse_sa_json(raw_value: str) -> dict:
         return json.loads(raw)
     except json.JSONDecodeError:
         pass
-
-    # JSON部分だけ抽出（プレフィクスやサフィックスがある場合）
-    match = re.search(r'\{.*\}', raw, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group())
-        except json.JSONDecodeError:
-            pass
 
     # Render環境変数で外側の {} が失われるケースに対応
     if not raw.startswith("{"):
