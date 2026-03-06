@@ -13,38 +13,45 @@ JST = timezone(timedelta(hours=9))
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
 
+def _fix_newlines(s: str) -> str:
+    """エスケープされた改行を復元"""
+    s = s.replace("\\\\n", "\x00ESC\x00")
+    s = s.replace("\\n", "\n")
+    return s.replace("\x00ESC\x00", "\\n")
+
+
+def _try_parse(s: str) -> dict | None:
+    """JSONパースを試みる。失敗時はNone"""
+    try:
+        return json.loads(s)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
 def _parse_sa_json(raw_value: str) -> dict:
     """環境変数から読んだサービスアカウントJSONを安全にパースする"""
     raw = raw_value.strip()
+    candidates = [raw]
 
-    # 余計なクォートの除去（中身が { で始まる場合のみ）
+    # 外側クォート除去版を候補に追加
     for q in ["'", '"']:
         if len(raw) > 2 and raw.startswith(q) and raw.endswith(q):
-            inner = raw[1:-1].strip()
-            if inner.startswith("{"):
-                raw = inner
-                break
+            candidates.append(raw[1:-1].strip())
 
-    # エスケープされた改行を復元（\\n → \n の前に \\\\n → \\n を処理）
-    raw = raw.replace("\\\\n", "\x00ESCAPED_NEWLINE\x00")
-    raw = raw.replace("\\n", "\n")
-    raw = raw.replace("\x00ESCAPED_NEWLINE\x00", "\\n")
+    # 各候補について: そのまま / {} で囲む の2パターンを試行
+    for c in candidates:
+        fixed = _fix_newlines(c)
+        result = _try_parse(fixed)
+        if result:
+            return result
+        if not fixed.startswith("{"):
+            result = _try_parse("{" + fixed + "}")
+            if result:
+                return result
 
-    # まず直接パースを試みる
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        pass
-
-    # Render環境変数で外側の {} が失われるケースに対応
-    if not raw.startswith("{"):
-        wrapped = "{" + raw + "}"
-        try:
-            return json.loads(wrapped)
-        except json.JSONDecodeError:
-            pass
-
-    raise ValueError(f"JSON解析失敗: len={len(raw)}, first30={repr(raw[:30])}")
+    raise ValueError(
+        f"JSON解析失敗: len={len(raw)}, first30={repr(raw[:30])}"
+    )
 
 
 def _get_service():
