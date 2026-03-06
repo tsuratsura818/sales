@@ -139,14 +139,3 @@ def check_connection() -> dict:
         return {"ok": False, "error": str(e)[:300]}
 
 
-def debug_env() -> dict:
-    """環境変数のデバッグ情報（秘密情報はマスク）"""
-    settings = get_settings()
-    raw = settings.GOOGLE_SERVICE_ACCOUNT_JSON or ""
-    return {
-        "has_json": bool(raw),
-        "len": len(raw),
-        "first30": repr(raw[:30]),
-        "last10": repr(raw[-10:]) if raw else "",
-        "calendar_id": settings.GOOGLE_CALENDAR_ID[:20] + "..." if settings.GOOGLE_CALENDAR_ID else "",
-    }

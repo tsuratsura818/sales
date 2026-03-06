@@ -41,7 +41,11 @@ async def today_page(request: Request):
         generated_at = None
         if existing_plan:
             plan_data = json.loads(existing_plan.plan_json)
-            generated_at = existing_plan.created_at.isoformat() if existing_plan.created_at else None
+            if existing_plan.created_at:
+                utc_time = existing_plan.created_at.replace(tzinfo=timezone.utc)
+                jst_time = utc_time.astimezone(JST)
+                generated_at = jst_time.isoformat()
+
     finally:
         db.close()
 
@@ -93,12 +97,6 @@ async def api_get_calendar():
         "today": calendar_service.get_today_events(),
         "week": calendar_service.get_week_events(),
     }
-
-
-@router.get("/api/today/debug-env")
-async def api_debug_env():
-    """カレンダー環境変数のデバッグ情報"""
-    return calendar_service.debug_env()
 
 
 @router.post("/api/today/send-line")
