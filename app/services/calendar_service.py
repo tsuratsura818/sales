@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 from app.config import get_settings
@@ -10,6 +11,37 @@ logger = logging.getLogger(__name__)
 
 JST = timezone(timedelta(hours=9))
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+
+
+def _parse_sa_json(raw_value: str) -> dict:
+    """環境変数から読んだサービスアカウントJSONを安全にパースする"""
+    raw = raw_value.strip()
+
+    # 余計なクォートを繰り返し除去
+    for q in ["'", '"']:
+        if len(raw) > 2 and raw.startswith(q) and raw.endswith(q):
+            raw = raw[1:-1]
+
+    # エスケープされた改行を復元（\\n → \n の前に \\\\n → \\n を処理）
+    raw = raw.replace("\\\\n", "\x00ESCAPED_NEWLINE\x00")
+    raw = raw.replace("\\n", "\n")
+    raw = raw.replace("\x00ESCAPED_NEWLINE\x00", "\\n")
+
+    # まず直接パースを試みる
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # JSON部分だけ抽出（プレフィクスやサフィックスがある場合）
+    match = re.search(r'\{.*\}', raw, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError(f"JSON解析失敗: len={len(raw)}, first30={repr(raw[:30])}")
 
 
 def _get_service():
@@ -21,15 +53,7 @@ def _get_service():
     if not settings.GOOGLE_SERVICE_ACCOUNT_JSON:
         raise ValueError("GOOGLE_SERVICE_ACCOUNT_JSON が未設定です")
 
-    raw = settings.GOOGLE_SERVICE_ACCOUNT_JSON.strip()
-    # Renderの環境変数で余計なクォートが付く場合を除去
-    if raw.startswith("'") and raw.endswith("'"):
-        raw = raw[1:-1]
-    if raw.startswith('"') and raw.endswith('"'):
-        raw = raw[1:-1]
-    # 改行がエスケープされている場合を復元
-    raw = raw.replace("\\n", "\n").replace("\\\\n", "\\n")
-    sa_info = json.loads(raw)
+    sa_info = _parse_sa_json(settings.GOOGLE_SERVICE_ACCOUNT_JSON)
     credentials = service_account.Credentials.from_service_account_info(
         sa_info, scopes=SCOPES
     )
@@ -100,6 +124,17 @@ def check_connection() -> dict:
         events = get_today_events()
         return {"ok": True, "event_count": len(events)}
     except Exception as e:
-        raw = settings.GOOGLE_SERVICE_ACCOUNT_JSON
-        debug = f"len={len(raw)}, first20={repr(raw[:20])}, type={type(raw).__name__}"
-        return {"ok": False, "error": f"{e} | debug: {debug}"}
+        return {"ok": False, "error": str(e)[:300]}
+
+
+def debug_env() -> dict:
+    """環境変数のデバッグ情報（秘密情報はマスク）"""
+    settings = get_settings()
+    raw = settings.GOOGLE_SERVICE_ACCOUNT_JSON or ""
+    return {
+        "has_json": bool(raw),
+        "len": len(raw),
+        "first30": repr(raw[:30]),
+        "last10": repr(raw[-10:]) if raw else "",
+        "calendar_id": settings.GOOGLE_CALENDAR_ID[:20] + "..." if settings.GOOGLE_CALENDAR_ID else "",
+    }

@@ -95,6 +95,12 @@ async def api_get_calendar():
     }
 
 
+@router.get("/api/today/debug-env")
+async def api_debug_env():
+    """カレンダー環境変数のデバッグ情報"""
+    return calendar_service.debug_env()
+
+
 @router.post("/api/today/send-line")
 async def api_send_line():
     """最新のプランをLINEに送信"""
