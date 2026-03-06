@@ -21,7 +21,15 @@ def _get_service():
     if not settings.GOOGLE_SERVICE_ACCOUNT_JSON:
         raise ValueError("GOOGLE_SERVICE_ACCOUNT_JSON が未設定です")
 
-    sa_info = json.loads(settings.GOOGLE_SERVICE_ACCOUNT_JSON)
+    raw = settings.GOOGLE_SERVICE_ACCOUNT_JSON.strip()
+    # Renderの環境変数で余計なクォートが付く場合を除去
+    if raw.startswith("'") and raw.endswith("'"):
+        raw = raw[1:-1]
+    if raw.startswith('"') and raw.endswith('"'):
+        raw = raw[1:-1]
+    # 改行がエスケープされている場合を復元
+    raw = raw.replace("\\n", "\n").replace("\\\\n", "\\n")
+    sa_info = json.loads(raw)
     credentials = service_account.Credentials.from_service_account_info(
         sa_info, scopes=SCOPES
     )
