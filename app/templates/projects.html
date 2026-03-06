@@ -288,15 +288,24 @@
             <button class="modal-close" onclick="closeBulkModal()">&times;</button>
         </div>
         <div class="modal-body">
-            <p style="margin-bottom:8px; color:#666; font-size:14px;">
-                1行1案件で入力してください。カンマ区切り（CSV形式）で項目を指定できます。
-            </p>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <p style="margin:0; color:#666; font-size:14px;">
+                    1行1案件で入力してください。カンマ区切り（CSV形式）で項目を指定できます。
+                </p>
+                <button class="btn btn-sm btn-secondary" onclick="downloadCsvTemplate()" style="white-space:nowrap;">📄 CSVテンプレート</button>
+            </div>
             <div style="background:#f8f9fa; border:1px solid #e9ecef; border-radius:6px; padding:10px 14px; margin-bottom:12px; font-size:13px; color:#555;">
                 <strong>形式:</strong> 案件名, クライアント, 金額, ステータス, 契約タイプ, 請求サイクル<br>
                 <strong>例:</strong><br>
                 <code style="color:#333;">SEO対策, 株式会社ABC, 50000, 見込み, 継続, 月次</code><br>
                 <code style="color:#333;">LP制作, DEF商事, 300000</code><br>
                 <span style="color:#888;">※ 案件名のみ必須。省略項目はデフォルト値（見込み/単発）が適用されます</span>
+            </div>
+            <div style="display:flex; gap:8px; margin-bottom:8px;">
+                <label class="btn btn-sm btn-secondary" style="cursor:pointer; margin:0;">
+                    📂 CSVファイルを読み込み
+                    <input type="file" id="bulkFileInput" accept=".csv,.txt" style="display:none;" onchange="loadCsvFile(this)">
+                </label>
             </div>
             <textarea id="bulkInput" class="form-control" rows="10" style="font-family:monospace; font-size:13px;" placeholder="SEO対策, 株式会社ABC, 50000, 見込み, 継続, 月次&#10;LP制作, DEF商事, 300000&#10;SNS運用, GHI株式会社, 80000, 見込み, 継続, 月次"></textarea>
             <div id="bulkPreview" style="margin-top:12px; display:none;">
@@ -678,6 +687,42 @@ async function generateMonthlyTasks() {
         btn.disabled = false;
         btn.textContent = '📅 今月のタスクを生成';
     }
+}
+
+// ========== CSVテンプレートダウンロード ==========
+
+function downloadCsvTemplate() {
+    const bom = '\uFEFF';
+    const header = '案件名,クライアント,金額,ステータス,契約タイプ,請求サイクル';
+    const rows = [
+        'SEO対策,株式会社ABC,50000,見込み,継続,月次',
+        'LP制作,DEF商事,300000,見込み,単発,',
+        'SNS運用,GHI株式会社,80000,見込み,継続,月次',
+    ];
+    const csv = bom + header + '\n' + rows.join('\n') + '\n';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '案件一括登録テンプレート.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ========== CSVファイル読み込み ==========
+
+function loadCsvFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        let text = e.target.result;
+        // ヘッダー行を除去（「案件名」で始まる行）
+        const lines = text.split('\n').filter(l => l.trim() && !l.trim().startsWith('案件名'));
+        document.getElementById('bulkInput').value = lines.join('\n');
+        input.value = '';
+    };
+    reader.readAsText(file, 'UTF-8');
 }
 
 // ========== 一括登録 ==========
