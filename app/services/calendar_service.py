@@ -14,10 +14,12 @@ SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
 
 def _fix_newlines(s: str) -> str:
-    """エスケープされた改行を復元"""
-    s = s.replace("\\\\n", "\x00ESC\x00")
-    s = s.replace("\\n", "\n")
-    return s.replace("\x00ESC\x00", "\\n")
+    """JSON文字列の外側にある \\n だけ実際の改行に変換する。
+    文字列内（private_key等）の \\n はJSON escape として保持。"""
+    parts = s.split('"')
+    for i in range(0, len(parts), 2):
+        parts[i] = parts[i].replace("\\n", "\n")
+    return '"'.join(parts)
 
 
 def _try_parse(s: str) -> dict | None:
