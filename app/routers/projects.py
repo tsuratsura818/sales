@@ -282,6 +282,42 @@ async def api_monthly_summary(month: Optional[str] = Query(None)):
 
 # ========== リード→案件化 ==========
 
+class BulkProjectCreate(BaseModel):
+    projects: list[ProjectCreate]
+
+
+@router.post("/api/projects/bulk")
+async def api_bulk_create_projects(data: BulkProjectCreate):
+    """案件一括作成API"""
+    results: list[dict] = []
+    errors: list[dict] = []
+    for i, item in enumerate(data.projects):
+        try:
+            project = await notion_service.create_project(
+                name=item.name,
+                status=item.status,
+                client_name=item.client,
+                amount=item.amount,
+                start_date=item.start_date,
+                end_date=item.end_date,
+                url=item.url,
+                lead_id=item.lead_id,
+                memo=item.memo,
+                contract_type=item.contract_type,
+                billing_cycle=item.billing_cycle,
+            )
+            results.append(project)
+        except Exception as e:
+            errors.append({"index": i, "name": item.name, "error": str(e)})
+    return {
+        "success": len(errors) == 0,
+        "created_count": len(results),
+        "error_count": len(errors),
+        "projects": results,
+        "errors": errors,
+    }
+
+
 class LeadToProjectRequest(BaseModel):
     lead_id: int
     name: str

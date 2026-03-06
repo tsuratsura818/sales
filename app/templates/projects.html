@@ -9,6 +9,7 @@
     </div>
     <div style="display:flex; gap:8px;">
         <a href="/gantt" class="btn btn-secondary">📊 ガントチャート</a>
+        <button class="btn btn-secondary" onclick="showBulkModal()">📥 一括登録</button>
         <button class="btn btn-primary" onclick="showAddModal()">＋ 案件追加</button>
     </div>
 </div>
@@ -275,6 +276,38 @@
             <button class="btn btn-secondary" style="margin-right:auto;" onclick="deleteProject()">🗑 削除</button>
             <button class="btn btn-secondary" onclick="closeDetailModal()">キャンセル</button>
             <button class="btn btn-primary" onclick="saveProject()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 一括登録モーダル -->
+<div id="bulkModal" class="modal-overlay" style="display:none;" onclick="closeBulkModal(event)">
+    <div class="modal-content" style="max-width:800px;" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3>📥 案件を一括登録</h3>
+            <button class="modal-close" onclick="closeBulkModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p style="margin-bottom:8px; color:#666; font-size:14px;">
+                1行1案件で入力してください。カンマ区切り（CSV形式）で項目を指定できます。
+            </p>
+            <div style="background:#f8f9fa; border:1px solid #e9ecef; border-radius:6px; padding:10px 14px; margin-bottom:12px; font-size:13px; color:#555;">
+                <strong>形式:</strong> 案件名, クライアント, 金額, ステータス, 契約タイプ, 請求サイクル<br>
+                <strong>例:</strong><br>
+                <code style="color:#333;">SEO対策, 株式会社ABC, 50000, 見込み, 継続, 月次</code><br>
+                <code style="color:#333;">LP制作, DEF商事, 300000</code><br>
+                <span style="color:#888;">※ 案件名のみ必須。省略項目はデフォルト値（見込み/単発）が適用されます</span>
+            </div>
+            <textarea id="bulkInput" class="form-control" rows="10" style="font-family:monospace; font-size:13px;" placeholder="SEO対策, 株式会社ABC, 50000, 見込み, 継続, 月次&#10;LP制作, DEF商事, 300000&#10;SNS運用, GHI株式会社, 80000, 見込み, 継続, 月次"></textarea>
+            <div id="bulkPreview" style="margin-top:12px; display:none;">
+                <h4 style="margin-bottom:8px;">プレビュー</h4>
+                <div id="bulkPreviewContent" style="max-height:200px; overflow-y:auto;"></div>
+            </div>
+            <div id="bulkResult" style="margin-top:12px; display:none;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="previewBulk()">👁 プレビュー</button>
+            <button class="btn btn-primary" id="btnBulk" onclick="executeBulk()">一括登録</button>
         </div>
     </div>
 </div>
@@ -647,12 +680,133 @@ async function generateMonthlyTasks() {
     }
 }
 
+// ========== 一括登録 ==========
+
+function showBulkModal() {
+    document.getElementById('bulkModal').style.display = 'flex';
+    document.getElementById('bulkInput').focus();
+    document.getElementById('bulkResult').style.display = 'none';
+    document.getElementById('bulkPreview').style.display = 'none';
+}
+
+function closeBulkModal(e) {
+    if (e && e.target !== e.currentTarget) return;
+    document.getElementById('bulkModal').style.display = 'none';
+}
+
+function parseBulkInput() {
+    const text = document.getElementById('bulkInput').value.trim();
+    if (!text) return [];
+
+    const statusList = ['見込み', '提案中', '商談中', '受注', '進行中', '完了', '失注'];
+    const contractList = ['単発', '継続'];
+    const cycleList = ['月次', '四半期', '年次'];
+
+    return text.split('\n').filter(l => l.trim()).map(line => {
+        const parts = line.split(',').map(s => s.trim());
+        const name = parts[0] || '';
+        const client = parts[1] || '';
+        const amount = parts[2] ? parseInt(parts[2].replace(/[^0-9]/g, '')) || null : null;
+        const status = (parts[3] && statusList.includes(parts[3])) ? parts[3] : '見込み';
+        const contractType = (parts[4] && contractList.includes(parts[4])) ? parts[4] : '単発';
+        const billingCycle = (parts[5] && cycleList.includes(parts[5])) ? parts[5] : '';
+
+        return { name, client, amount, status, contract_type: contractType, billing_cycle: billingCycle };
+    }).filter(p => p.name);
+}
+
+function previewBulk() {
+    const projects = parseBulkInput();
+    const preview = document.getElementById('bulkPreview');
+    const content = document.getElementById('bulkPreviewContent');
+
+    if (projects.length === 0) {
+        alert('入力内容がありません');
+        return;
+    }
+
+    content.innerHTML = `
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead>
+                <tr style="background:#f1f3f5;">
+                    <th style="padding:6px 8px; text-align:left; border-bottom:1px solid #dee2e6;">#</th>
+                    <th style="padding:6px 8px; text-align:left; border-bottom:1px solid #dee2e6;">案件名</th>
+                    <th style="padding:6px 8px; text-align:left; border-bottom:1px solid #dee2e6;">クライアント</th>
+                    <th style="padding:6px 8px; text-align:right; border-bottom:1px solid #dee2e6;">金額</th>
+                    <th style="padding:6px 8px; text-align:left; border-bottom:1px solid #dee2e6;">ステータス</th>
+                    <th style="padding:6px 8px; text-align:left; border-bottom:1px solid #dee2e6;">契約</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${projects.map((p, i) => `
+                    <tr style="border-bottom:1px solid #eee;">
+                        <td style="padding:6px 8px; color:#888;">${i + 1}</td>
+                        <td style="padding:6px 8px; font-weight:500;">${p.name}</td>
+                        <td style="padding:6px 8px;">${p.client || '-'}</td>
+                        <td style="padding:6px 8px; text-align:right;">${p.amount ? p.amount.toLocaleString() + '円' : '-'}</td>
+                        <td style="padding:6px 8px;">${p.status}</td>
+                        <td style="padding:6px 8px;">${p.contract_type}${p.billing_cycle ? '/' + p.billing_cycle : ''}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+        <p style="margin-top:8px; color:#666; font-size:13px;">${projects.length} 件の案件が登録されます</p>
+    `;
+    preview.style.display = 'block';
+}
+
+async function executeBulk() {
+    const projects = parseBulkInput();
+    if (projects.length === 0) {
+        alert('入力内容がありません');
+        return;
+    }
+
+    const btn = document.getElementById('btnBulk');
+    btn.disabled = true;
+    btn.textContent = `登録中... (0/${projects.length})`;
+    const resultDiv = document.getElementById('bulkResult');
+    resultDiv.style.display = 'none';
+
+    try {
+        const resp = await fetch('/api/projects/bulk', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ projects }),
+        });
+        const data = await resp.json();
+
+        resultDiv.style.display = 'block';
+        if (data.error_count === 0) {
+            resultDiv.innerHTML = `<div class="alert alert-success">✅ ${data.created_count} 件すべて登録完了しました</div>`;
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            resultDiv.innerHTML = `
+                <div class="alert alert-warning">
+                    ⚠️ ${data.created_count} 件登録、${data.error_count} 件エラー<br>
+                    ${data.errors.map(e => `<small>行${e.index + 1}「${e.name}」: ${e.error}</small>`).join('<br>')}
+                </div>
+            `;
+            if (data.created_count > 0) {
+                setTimeout(() => location.reload(), 3000);
+            }
+        }
+    } catch (err) {
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `<div class="alert alert-danger">通信エラー: ${err.message}</div>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '一括登録';
+    }
+}
+
 // ========== キーボード ==========
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeAddModal();
         closeDetailModal();
+        closeBulkModal();
     }
 });
 </script>
