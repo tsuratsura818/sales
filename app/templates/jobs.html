@@ -7,11 +7,16 @@
         <h1>📡 案件モニター（CrowdWorks / Lancers）</h1>
         <p>自動検出された案件一覧。LINEまたはダッシュボードから応募を管理できます。</p>
     </div>
-    <div>
-        <button id="btnFetchLancers" class="btn btn-primary" onclick="fetchLancers()" style="white-space:nowrap;">
-            🔍 Lancers案件を取得
+    <div style="display:flex; gap:8px; align-items:flex-start;">
+        <button id="btnSettings" class="btn btn-secondary" onclick="openSettings()" style="white-space:nowrap;">
+            ⚙ 設定
         </button>
-        <br><small style="color:#888;">※ローカルPC経由で取得</small>
+        <div>
+            <button id="btnFetchLancers" class="btn btn-primary" onclick="fetchLancers()" style="white-space:nowrap;">
+                🔍 Lancers案件を取得
+            </button>
+            <br><small style="color:#888;">※ローカルPC経由で取得</small>
+        </div>
     </div>
 </div>
 
@@ -158,6 +163,57 @@
         <div id="modalActions" class="modal-footer" style="display:none;">
             <button id="btnConfirm" class="btn btn-primary" onclick="confirmProposal()">この内容で応募する</button>
             <button id="btnRegenerate" class="btn btn-secondary" onclick="regenerateProposal()">再生成</button>
+        </div>
+    </div>
+</div>
+<!-- 設定モーダル -->
+<div id="settingsModal" class="modal-overlay" style="display:none;" onclick="closeSettingsModal(event)">
+    <div class="modal-content" style="max-width:720px;" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3>案件モニター設定</h3>
+            <button class="modal-close" onclick="closeSettingsModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="set-threshold">マッチング閾値（点）</label>
+                    <input type="number" id="set-threshold" class="form-control" min="0" max="100" step="5" value="70">
+                    <small style="color:#888;">この点数以上の案件をLINE通知します（0-100）</small>
+                </div>
+                <div class="form-group">
+                    <label for="set-interval">モニター間隔（分）</label>
+                    <input type="number" id="set-interval" class="form-control" min="10" max="1440" step="10" value="120">
+                    <small style="color:#888;">案件の自動チェック間隔（最小10分）</small>
+                </div>
+                <div class="form-group">
+                    <label for="set-cw-cats">CrowdWorks カテゴリID</label>
+                    <input type="text" id="set-cw-cats" class="form-control" placeholder="6,7,28">
+                    <small style="color:#888;">カンマ区切り（6=Web制作, 7=Webデザイン, 28=HP制作）</small>
+                </div>
+                <div class="form-group">
+                    <label for="set-lc-cats">Lancers カテゴリID</label>
+                    <input type="text" id="set-lc-cats" class="form-control" placeholder="80,90,100">
+                    <small style="color:#888;">カンマ区切り（80=Web制作, 90=Webデザイン, 100=ECサイト）</small>
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label for="set-profile">スキルセット・プロフィール文</label>
+                    <textarea id="set-profile" class="form-control" rows="4" placeholder="例: Web制作5年以上、WordPress/Next.js対応可..."></textarea>
+                    <small style="color:#888;">提案文生成やマッチング評価に使用されます</small>
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label for="set-eval-prompt">
+                        評価基準（システムプロンプト）
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="resetEvalPrompt()" style="margin-left:8px; font-size:11px; padding:2px 8px;">デフォルトに戻す</button>
+                    </label>
+                    <textarea id="set-eval-prompt" class="form-control" rows="12" style="font-family:monospace; font-size:12px; line-height:1.5;" placeholder="空欄の場合はデフォルトの評価基準が適用されます"></textarea>
+                    <small style="color:#888;">空欄ならデフォルト適用。スキルセット・スコア基準などを自由にカスタマイズできます</small>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer" style="display:flex; align-items:center;">
+            <div id="settingsMessage" style="flex:1; font-size:13px;"></div>
+            <button class="btn btn-secondary" onclick="closeSettingsModal()">キャンセル</button>
+            <button id="btnSaveSettings" class="btn btn-primary" onclick="saveSettings()" style="margin-left:8px;">保存</button>
         </div>
     </div>
 </div>
@@ -319,8 +375,92 @@ async function regenerateProposal() {
     }
 }
 
+// === 設定モーダル ===
+let defaultEvalPrompt = '';
+
+async function openSettings() {
+    const modal = document.getElementById('settingsModal');
+    modal.style.display = 'flex';
+    document.getElementById('settingsMessage').textContent = '';
+
+    try {
+        const resp = await fetch('/api/monitor-settings');
+        if (!resp.ok) throw new Error('設定の取得に失敗しました');
+        const data = await resp.json();
+
+        defaultEvalPrompt = data.default_evaluate_prompt || '';
+        document.getElementById('set-threshold').value = data.match_threshold;
+        document.getElementById('set-interval').value = data.monitor_interval_minutes;
+        document.getElementById('set-profile').value = data.user_profile_text || '';
+        document.getElementById('set-cw-cats').value = (data.cw_categories || []).join(',');
+        document.getElementById('set-lc-cats').value = (data.lc_categories || []).join(',');
+        document.getElementById('set-eval-prompt').value = data.evaluate_system_prompt || '';
+    } catch (e) {
+        const msg = document.getElementById('settingsMessage');
+        msg.textContent = 'エラー: ' + e.message;
+        msg.style.color = '#e74c3c';
+    }
+}
+
+function closeSettingsModal(e) {
+    if (e && e.target !== e.currentTarget) return;
+    document.getElementById('settingsModal').style.display = 'none';
+    document.getElementById('settingsMessage').textContent = '';
+}
+
+function resetEvalPrompt() {
+    if (defaultEvalPrompt && confirm('評価基準をデフォルトに戻しますか？')) {
+        document.getElementById('set-eval-prompt').value = defaultEvalPrompt;
+    }
+}
+
+async function saveSettings() {
+    const btn = document.getElementById('btnSaveSettings');
+    const msgEl = document.getElementById('settingsMessage');
+    btn.disabled = true;
+    btn.textContent = '保存中...';
+    msgEl.textContent = '';
+
+    const cwText = document.getElementById('set-cw-cats').value.trim();
+    const lcText = document.getElementById('set-lc-cats').value.trim();
+    const cwCats = cwText ? cwText.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n)) : [];
+    const lcCats = lcText ? lcText.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n)) : [];
+
+    const payload = {
+        match_threshold: parseInt(document.getElementById('set-threshold').value),
+        monitor_interval_minutes: parseInt(document.getElementById('set-interval').value),
+        user_profile_text: document.getElementById('set-profile').value,
+        cw_categories: cwCats,
+        lc_categories: lcCats,
+        evaluate_system_prompt: document.getElementById('set-eval-prompt').value,
+    };
+
+    try {
+        const resp = await fetch('/api/monitor-settings', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+        const result = await resp.json();
+        if (!resp.ok) throw new Error(result.detail || '保存に失敗しました');
+
+        msgEl.textContent = '保存しました';
+        msgEl.style.color = '#27ae60';
+        setTimeout(() => closeSettingsModal(), 1200);
+    } catch (e) {
+        msgEl.textContent = 'エラー: ' + e.message;
+        msgEl.style.color = '#e74c3c';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '保存';
+    }
+}
+
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeModal();
+    if (e.key === 'Escape') {
+        closeModal();
+        closeSettingsModal();
+    }
 });
 </script>
 {% endblock %}

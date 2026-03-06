@@ -30,9 +30,12 @@ async def job_monitor() -> None:
         return
 
     logger.info("ジョブモニター開始")
-    interval_seconds = settings.JOB_MONITOR_INTERVAL_MINUTES * 60
 
     while True:
+        from app.services.settings_service import get_monitor_settings
+        ms = get_monitor_settings()
+        interval_seconds = ms.monitor_interval_minutes * 60
+
         start = time.time()
         try:
             cw_count, lc_count, notified = await _monitor_cycle()
@@ -137,7 +140,9 @@ async def _monitor_cycle() -> tuple[int, int, int]:
                 if eval_result.get("category"):
                     listing.category = eval_result["category"]
 
-                if eval_result["score"] >= settings.JOB_MATCH_THRESHOLD:
+                from app.services.settings_service import get_monitor_settings
+                ms = get_monitor_settings()
+                if eval_result["score"] >= ms.match_threshold:
                     listing.status = "notified"
 
                     budget_text = "未定"

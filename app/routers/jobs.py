@@ -1,4 +1,5 @@
 import asyncio
+import json as json_mod
 import logging
 from datetime import datetime
 
@@ -10,7 +11,9 @@ from sqlalchemy import desc
 from app.database import get_db, SessionLocal
 from app.models.job_listing import JobListing
 from app.models.job_application import JobApplication
+from app.models.monitor_settings import MonitorSettings
 from app.config import get_settings
+from app.services.settings_service import get_monitor_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -274,7 +277,8 @@ async def import_jobs(request: Request, db: Session = Depends(get_db)):
             if eval_result.get("category"):
                 listing.category = eval_result["category"]
 
-            if eval_result["score"] >= settings.JOB_MATCH_THRESHOLD:
+            ms = get_monitor_settings(db)
+            if eval_result["score"] >= ms.match_threshold:
                 listing.status = "notified"
                 budget_text = "未定"
                 if listing.budget_min and listing.budget_max:
@@ -319,6 +323,70 @@ async def import_jobs(request: Request, db: Session = Depends(get_db)):
         "notified_count": notified,
         "message": f"Lancers {len(jobs)}件取得、{notified}件LINE通知",
     }
+
+
+# ---------- モニター設定 API ----------
+
+@router.get("/api/monitor-settings")
+async def get_settings_api(db: Session = Depends(get_db)):
+    """モニター設定を取得"""
+    from app.services.job_matcher import EVALUATE_SYSTEM_PROMPT
+
+    ms = get_monitor_settings(db)
+    return {
+        "match_threshold": ms.match_threshold,
+        "monitor_interval_minutes": ms.monitor_interval_minutes,
+        "user_profile_text": ms.user_profile_text,
+        "cw_categories": ms.cw_categories,
+        "lc_categories": ms.lc_categories,
+        "evaluate_system_prompt": ms.evaluate_system_prompt,
+        "default_evaluate_prompt": EVALUATE_SYSTEM_PROMPT,
+    }
+
+
+@router.put("/api/monitor-settings")
+async def update_settings_api(request: Request, db: Session = Depends(get_db)):
+    """モニター設定を更新（upsert）"""
+    body = await request.json()
+
+    row = db.query(MonitorSettings).first()
+    if not row:
+        row = MonitorSettings()
+        db.add(row)
+
+    if "match_threshold" in body:
+        val = int(body["match_threshold"])
+        if not (0 <= val <= 100):
+            raise HTTPException(400, "閾値は0〜100の範囲で指定してください")
+        row.match_threshold = val
+
+    if "monitor_interval_minutes" in body:
+        val = int(body["monitor_interval_minutes"])
+        if val < 10:
+            raise HTTPException(400, "間隔は10分以上を指定してください")
+        row.monitor_interval_minutes = val
+
+    if "user_profile_text" in body:
+        row.user_profile_text = str(body["user_profile_text"])[:5000]
+
+    if "cw_categories" in body or "lc_categories" in body:
+        existing = {}
+        if row.search_categories:
+            try:
+                existing = json_mod.loads(row.search_categories)
+            except (json_mod.JSONDecodeError, TypeError):
+                pass
+        if "cw_categories" in body:
+            existing["crowdworks"] = [int(c) for c in body["cw_categories"]]
+        if "lc_categories" in body:
+            existing["lancers"] = [int(c) for c in body["lc_categories"]]
+        row.search_categories = json_mod.dumps(existing)
+
+    if "evaluate_system_prompt" in body:
+        row.evaluate_system_prompt = str(body["evaluate_system_prompt"])[:10000]
+
+    db.commit()
+    return {"success": True, "message": "設定を保存しました"}
 
 
 # ---------- 応募バックグラウンド処理 ----------

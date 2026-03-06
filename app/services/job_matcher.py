@@ -107,14 +107,14 @@ async def evaluate_job(
         if client_rating:
             client_info += f"（評価: {client_rating}）"
 
-    profile_section = ""
-    if user_profile or settings.USER_PROFILE_TEXT:
-        profile_text = user_profile or settings.USER_PROFILE_TEXT
-        profile_section = f"\n\nユーザーの追加プロフィール:\n{profile_text}"
+    from app.services.settings_service import get_monitor_settings
+    ms = get_monitor_settings()
 
-    system_prompt = EVALUATE_SYSTEM_PROMPT
-    if profile_section:
-        system_prompt += profile_section
+    system_prompt = ms.evaluate_system_prompt if ms.evaluate_system_prompt else EVALUATE_SYSTEM_PROMPT
+
+    profile_text = user_profile or ms.user_profile_text or settings.USER_PROFILE_TEXT
+    if profile_text:
+        system_prompt += f"\n\nユーザーの追加プロフィール:\n{profile_text}"
 
     user_prompt = f"""以下の案件を評価してください。
 
@@ -168,7 +168,9 @@ async def generate_proposal(
     """案件に合わせた提案文をClaudeで生成"""
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
-    profile_text = user_profile or settings.USER_PROFILE_TEXT or "Web制作・デザインの経験あり"
+    from app.services.settings_service import get_monitor_settings
+    ms = get_monitor_settings()
+    profile_text = user_profile or ms.user_profile_text or settings.USER_PROFILE_TEXT or "Web制作・デザインの経験あり"
 
     budget_text = "記載なし"
     if budget_min and budget_max:

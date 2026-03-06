@@ -37,12 +37,19 @@ HEADERS = {"User-Agent": UA, "Accept-Language": "ja,en;q=0.9"}
 
 async def fetch_new_jobs(known_external_ids: set[str], known_titles: set[str] | None = None) -> list[dict]:
     """Lancersから新着案件をスクレイピング（httpx版）"""
+    from app.services.settings_service import get_monitor_settings
+    ms = get_monitor_settings()
+    search_urls = [
+        f"https://www.lancers.jp/work/search?open=1&show_description=0&sort=started&work_category_ids%5B%5D={cat_id}"
+        for cat_id in ms.lc_categories
+    ]
+
     jobs: list[dict] = []
     seen_ids: set[str] = set()
     seen_titles: set[str] = set(known_titles or set())
 
     async with httpx.AsyncClient(headers=HEADERS, timeout=30, follow_redirects=True) as client:
-        for search_url in SEARCH_URLS:
+        for search_url in search_urls:
             try:
                 resp = await client.get(search_url)
                 resp.raise_for_status()
