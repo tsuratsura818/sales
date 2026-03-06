@@ -9,6 +9,8 @@ NOTION_VERSION = "2022-06-28"
 
 # 案件ステータス定義
 PROJECT_STATUSES = ["見込み", "提案中", "商談中", "受注", "進行中", "完了", "失注"]
+CONTRACT_TYPES = ["単発", "継続"]
+BILLING_CYCLES = ["月次", "四半期", "年次"]
 TASK_STATUSES = ["未着手", "進行中", "完了"]
 TASK_PRIORITIES = ["高", "中", "低"]
 
@@ -66,6 +68,8 @@ def _parse_project(page: dict) -> dict:
         "url": _parse_page_property(props.get("URL", {})),
         "lead_id": _parse_page_property(props.get("リードID", {})),
         "memo": _parse_page_property(props.get("メモ", {})),
+        "contract_type": _parse_page_property(props.get("契約タイプ", {})),
+        "billing_cycle": _parse_page_property(props.get("請求サイクル", {})),
         "created_time": page.get("created_time"),
         "last_edited_time": page.get("last_edited_time"),
     }
@@ -82,6 +86,8 @@ def _parse_task(page: dict) -> dict:
         "due_date": _parse_page_property(props.get("期日", {})),
         "project_ids": _parse_page_property(props.get("案件", {})),
         "memo": _parse_page_property(props.get("メモ", {})),
+        "recurring": _parse_page_property(props.get("繰り返し", {})),
+        "target_month": _parse_page_property(props.get("対象年月", {})),
         "created_time": page.get("created_time"),
         "last_edited_time": page.get("last_edited_time"),
     }
@@ -139,6 +145,8 @@ async def create_project(
     url: str = "",
     lead_id: str = "",
     memo: str = "",
+    contract_type: str = "",
+    billing_cycle: str = "",
 ) -> dict:
     """案件作成"""
     project_db_id, _ = _db_ids()
@@ -163,6 +171,10 @@ async def create_project(
         properties["リードID"] = {"rich_text": [{"text": {"content": str(lead_id)}}]}
     if memo:
         properties["メモ"] = {"rich_text": [{"text": {"content": memo}}]}
+    if contract_type:
+        properties["契約タイプ"] = {"select": {"name": contract_type}}
+    if billing_cycle:
+        properties["請求サイクル"] = {"select": {"name": billing_cycle}}
 
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(
@@ -187,6 +199,8 @@ async def update_project(project_id: str, updates: dict) -> dict:
         "end_date": ("期日", lambda v: {"date": {"start": v}} if v else {"date": None}),
         "url": ("URL", lambda v: {"url": v or None}),
         "memo": ("メモ", lambda v: {"rich_text": [{"text": {"content": v}}]}),
+        "contract_type": ("契約タイプ", lambda v: {"select": {"name": v}} if v else {"select": None}),
+        "billing_cycle": ("請求サイクル", lambda v: {"select": {"name": v}} if v else {"select": None}),
     }
 
     for key, value in updates.items():
@@ -221,6 +235,7 @@ async def archive_project(project_id: str) -> bool:
 async def list_tasks(
     project_id: Optional[str] = None,
     status: Optional[str] = None,
+    month: Optional[str] = None,
 ) -> list[dict]:
     """タスク一覧取得"""
     _, task_db_id = _db_ids()
@@ -235,6 +250,11 @@ async def list_tasks(
         filters.append({
             "property": "ステータス",
             "select": {"equals": status},
+        })
+    if month:
+        filters.append({
+            "property": "対象年月",
+            "rich_text": {"equals": month},
         })
 
     payload: dict = {
@@ -265,6 +285,8 @@ async def create_task(
     priority: str = "中",
     due_date: Optional[str] = None,
     memo: str = "",
+    recurring: bool = False,
+    target_month: str = "",
 ) -> dict:
     """タスク作成"""
     _, task_db_id = _db_ids()
@@ -279,6 +301,10 @@ async def create_task(
         properties["期日"] = {"date": {"start": due_date}}
     if memo:
         properties["メモ"] = {"rich_text": [{"text": {"content": memo}}]}
+    if recurring:
+        properties["繰り返し"] = {"checkbox": True}
+    if target_month:
+        properties["対象年月"] = {"rich_text": [{"text": {"content": target_month}}]}
 
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(
@@ -301,6 +327,8 @@ async def update_task(task_id: str, updates: dict) -> dict:
         "due_date": ("期日", lambda v: {"date": {"start": v}} if v else {"date": None}),
         "memo": ("メモ", lambda v: {"rich_text": [{"text": {"content": v}}]}),
         "project_id": ("案件", lambda v: {"relation": [{"id": v}]} if v else {"relation": []}),
+        "recurring": ("繰り返し", lambda v: {"checkbox": bool(v)}),
+        "target_month": ("対象年月", lambda v: {"rich_text": [{"text": {"content": v}}]}),
     }
 
     for key, value in updates.items():
@@ -328,6 +356,33 @@ async def archive_task(task_id: str) -> bool:
         )
         resp.raise_for_status()
     return True
+
+
+# ========== 繰り返しタスク生成 ==========
+
+async def generate_monthly_tasks(project_id: str, year_month: str) -> list[dict]:
+    """繰り返しタスクのテンプレートから指定月のタスクを生成"""
+    all_tasks = await list_tasks(project_id=project_id)
+
+    templates = [t for t in all_tasks if t.get("recurring")]
+    existing = [t for t in all_tasks if t.get("target_month") == year_month]
+    existing_names = {t["name"] for t in existing}
+
+    created: list[dict] = []
+    for tmpl in templates:
+        if tmpl["name"] in existing_names:
+            continue
+        task = await create_task(
+            name=tmpl["name"],
+            project_id=project_id,
+            status="未着手",
+            priority=tmpl.get("priority", "中"),
+            memo=tmpl.get("memo", ""),
+            target_month=year_month,
+        )
+        created.append(task)
+
+    return created
 
 
 # ========== Notion DB初期化ヘルパー ==========

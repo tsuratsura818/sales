@@ -1976,3 +1976,40 @@ textarea.form-control { resize: vertical; font-family: inherit; }
     background: #8e44ad;
     height: 6px;
 }
+
+/* ========================================
+   案件管理: 継続案件・フィルター
+   ======================================== */
+
+/* フィルターバー */
+.project-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+/* 継続案件カード */
+.kanban-card-retainer {
+    border-left-color: #8e44ad;
+}
+
+/* 継続バッジ */
+.badge-retainer {
+    display: inline-block;
+    background: #f3e8fd;
+    color: #8e44ad;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+}
+
+/* 繰り返しバッジ */
+.badge-recurring {
+    font-size: 12px;
+    padding: 0 2px;
+    flex-shrink: 0;
+}

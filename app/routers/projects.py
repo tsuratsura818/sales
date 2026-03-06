@@ -28,6 +28,8 @@ async def projects_page(request: Request):
         "request": request,
         "projects": projects,
         "statuses": notion_service.PROJECT_STATUSES,
+        "contract_types": notion_service.CONTRACT_TYPES,
+        "billing_cycles": notion_service.BILLING_CYCLES,
         "connected": conn["ok"],
         "error": conn.get("error"),
     })
@@ -63,6 +65,8 @@ class ProjectCreate(BaseModel):
     url: str = ""
     lead_id: str = ""
     memo: str = ""
+    contract_type: str = "単発"
+    billing_cycle: str = ""
 
 
 class ProjectUpdate(BaseModel):
@@ -74,6 +78,8 @@ class ProjectUpdate(BaseModel):
     end_date: Optional[str] = None
     url: Optional[str] = None
     memo: Optional[str] = None
+    contract_type: Optional[str] = None
+    billing_cycle: Optional[str] = None
 
 
 @router.get("/api/projects")
@@ -110,6 +116,8 @@ async def api_create_project(data: ProjectCreate):
             url=data.url,
             lead_id=data.lead_id,
             memo=data.memo,
+            contract_type=data.contract_type,
+            billing_cycle=data.billing_cycle,
         )
         return {"success": True, "project": project}
     except Exception as e:
@@ -148,6 +156,8 @@ class TaskCreate(BaseModel):
     priority: str = "中"
     due_date: Optional[str] = None
     memo: str = ""
+    recurring: bool = False
+    target_month: str = ""
 
 
 class TaskUpdate(BaseModel):
@@ -157,23 +167,31 @@ class TaskUpdate(BaseModel):
     due_date: Optional[str] = None
     memo: Optional[str] = None
     project_id: Optional[str] = None
+    recurring: Optional[bool] = None
+    target_month: Optional[str] = None
 
 
 @router.get("/api/projects/{project_id}/tasks")
-async def api_list_tasks(project_id: str):
+async def api_list_tasks(
+    project_id: str,
+    month: Optional[str] = Query(None),
+):
     """案件のタスク一覧API"""
     try:
-        tasks = await notion_service.list_tasks(project_id=project_id)
+        tasks = await notion_service.list_tasks(project_id=project_id, month=month)
         return {"tasks": tasks}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/api/tasks")
-async def api_list_all_tasks(status: Optional[str] = Query(None)):
+async def api_list_all_tasks(
+    status: Optional[str] = Query(None),
+    month: Optional[str] = Query(None),
+):
     """全タスク一覧API"""
     try:
-        tasks = await notion_service.list_tasks(status=status)
+        tasks = await notion_service.list_tasks(status=status, month=month)
         return {"tasks": tasks}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -190,6 +208,8 @@ async def api_create_task(data: TaskCreate):
             priority=data.priority,
             due_date=data.due_date,
             memo=data.memo,
+            recurring=data.recurring,
+            target_month=data.target_month,
         )
         return {"success": True, "task": task}
     except Exception as e:
@@ -215,6 +235,47 @@ async def api_delete_task(task_id: str):
     try:
         await notion_service.archive_task(task_id)
         return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== 繰り返しタスク生成 ==========
+
+class GenerateTasksRequest(BaseModel):
+    year_month: str  # "2026-03" 形式
+
+
+@router.post("/api/projects/{project_id}/generate-tasks")
+async def api_generate_monthly_tasks(project_id: str, data: GenerateTasksRequest):
+    """繰り返しタスクから指定月のタスクを生成"""
+    try:
+        created = await notion_service.generate_monthly_tasks(
+            project_id=project_id,
+            year_month=data.year_month,
+        )
+        return {"success": True, "created_count": len(created), "tasks": created}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/projects/monthly-summary")
+async def api_monthly_summary(month: Optional[str] = Query(None)):
+    """月別の継続案件サマリー"""
+    try:
+        projects = await notion_service.list_projects()
+        retainer = [p for p in projects if p.get("contract_type") == "継続"]
+        onetime = [p for p in projects if p.get("contract_type") != "継続"]
+
+        retainer_revenue = sum(p.get("amount") or 0 for p in retainer)
+        onetime_revenue = sum(p.get("amount") or 0 for p in onetime)
+
+        return {
+            "retainer_count": len(retainer),
+            "retainer_revenue": retainer_revenue,
+            "onetime_count": len(onetime),
+            "onetime_revenue": onetime_revenue,
+            "total_revenue": retainer_revenue + onetime_revenue,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

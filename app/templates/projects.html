@@ -18,58 +18,21 @@
     <div class="alert alert-warning">
         ⚠️ Notion未接続: {{ error or 'NOTION_API_KEY, NOTION_PROJECT_DB_ID, NOTION_TASK_DB_ID を .env に設定してください' }}
     </div>
-    <div style="margin-top:16px;">
-        <h3>セットアップ手順</h3>
-        <ol style="padding-left:20px; line-height:2;">
-            <li><a href="https://www.notion.so/my-integrations" target="_blank">Notion Integrations</a> で Internal Integration を作成</li>
-            <li>APIキーをコピー</li>
-            <li>Notionに「案件DB」「タスクDB」を作成（下記プロパティ）</li>
-            <li>各DBページで「コネクト」→作成したIntegrationを追加</li>
-            <li>DBのURLからID（32文字）をコピー</li>
-            <li><code>.env</code> に以下を追加:
-                <pre style="background:#f5f5f5; padding:10px; border-radius:6px; margin-top:8px;">NOTION_API_KEY=ntn_xxxx
-NOTION_PROJECT_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-NOTION_TASK_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</pre>
-            </li>
-        </ol>
-        <div style="margin-top:16px;">
-            <h4>案件DBプロパティ</h4>
-            <table class="data-table" style="margin-top:8px;">
-                <thead><tr><th>プロパティ名</th><th>タイプ</th><th>備考</th></tr></thead>
-                <tbody>
-                    <tr><td>案件名</td><td>タイトル</td><td>（デフォルト）</td></tr>
-                    <tr><td>ステータス</td><td>セレクト</td><td>見込み / 提案中 / 商談中 / 受注 / 進行中 / 完了 / 失注</td></tr>
-                    <tr><td>クライアント</td><td>テキスト</td><td></td></tr>
-                    <tr><td>金額</td><td>数値</td><td>円</td></tr>
-                    <tr><td>開始日</td><td>日付</td><td></td></tr>
-                    <tr><td>期日</td><td>日付</td><td></td></tr>
-                    <tr><td>URL</td><td>URL</td><td></td></tr>
-                    <tr><td>リードID</td><td>テキスト</td><td>営業Toolのリード連携用</td></tr>
-                    <tr><td>メモ</td><td>テキスト</td><td></td></tr>
-                </tbody>
-            </table>
-        </div>
-        <div style="margin-top:16px;">
-            <h4>タスクDBプロパティ</h4>
-            <table class="data-table" style="margin-top:8px;">
-                <thead><tr><th>プロパティ名</th><th>タイプ</th><th>備考</th></tr></thead>
-                <tbody>
-                    <tr><td>タスク名</td><td>タイトル</td><td>（デフォルト）</td></tr>
-                    <tr><td>ステータス</td><td>セレクト</td><td>未着手 / 進行中 / 完了</td></tr>
-                    <tr><td>優先度</td><td>セレクト</td><td>高 / 中 / 低</td></tr>
-                    <tr><td>期日</td><td>日付</td><td></td></tr>
-                    <tr><td>案件</td><td>リレーション</td><td>→ 案件DB</td></tr>
-                    <tr><td>メモ</td><td>テキスト</td><td></td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
 </div>
 {% else %}
 
+<!-- フィルターバー -->
+<div class="project-filter-bar">
+    <div class="filter-toggle-group">
+        <button class="filter-toggle active" data-filter="all" onclick="filterProjects('all')">全案件</button>
+        <button class="filter-toggle" data-filter="継続" onclick="filterProjects('継続')">🔄 継続</button>
+        <button class="filter-toggle" data-filter="単発" onclick="filterProjects('単発')">📌 単発</button>
+    </div>
+</div>
+
 <!-- 集計カード -->
 <div class="stats-row">
-    {% set ns = namespace(prospect=0, proposal=0, meeting=0, won=0, active=0, done=0, lost=0, total_amount=0) %}
+    {% set ns = namespace(prospect=0, proposal=0, meeting=0, won=0, active=0, done=0, lost=0, total_amount=0, retainer_amount=0, retainer_count=0) %}
     {% for p in projects %}
         {% if p.status == '見込み' %}{% set ns.prospect = ns.prospect + 1 %}
         {% elif p.status == '提案中' %}{% set ns.proposal = ns.proposal + 1 %}
@@ -80,6 +43,10 @@ NOTION_TASK_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</pre>
         {% elif p.status == '失注' %}{% set ns.lost = ns.lost + 1 %}
         {% endif %}
         {% if p.amount %}{% set ns.total_amount = ns.total_amount + p.amount %}{% endif %}
+        {% if p.contract_type == '継続' and p.amount %}
+            {% set ns.retainer_amount = ns.retainer_amount + p.amount %}
+            {% set ns.retainer_count = ns.retainer_count + 1 %}
+        {% endif %}
     {% endfor %}
     <div class="stat-card stat-leads">
         <div class="stat-number">{{ projects|length }}</div>
@@ -93,9 +60,9 @@ NOTION_TASK_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</pre>
         <div class="stat-number">{{ ns.won + ns.active }}</div>
         <div class="stat-label">受注・進行中</div>
     </div>
-    <div class="stat-card stat-completed">
-        <div class="stat-number">{{ ns.done }}</div>
-        <div class="stat-label">完了</div>
+    <div class="stat-card" style="border-top-color:#8e44ad;">
+        <div class="stat-number">{{ "{:,}".format(ns.retainer_amount) }}</div>
+        <div class="stat-label">🔄 月額売上（円）</div>
     </div>
     <div class="stat-card stat-revenue" style="border-top-color:#e74c3c;">
         <div class="stat-number">{{ "{:,}".format(ns.total_amount) }}</div>
@@ -118,15 +85,19 @@ NOTION_TASK_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</pre>
              ondragleave="this.classList.remove('kanban-drop-target')"
              ondrop="handleDrop(event, '{{ status }}')">
             {% for p in projects if p.status == status %}
-            <div class="kanban-card" draggable="true" data-id="{{ p.id }}"
+            <div class="kanban-card {% if p.contract_type == '継続' %}kanban-card-retainer{% endif %}"
+                 draggable="true" data-id="{{ p.id }}" data-contract="{{ p.contract_type or '単発' }}"
                  ondragstart="handleDragStart(event, '{{ p.id }}')"
                  onclick="showDetailModal('{{ p.id }}')">
+                {% if p.contract_type == '継続' %}
+                <span class="badge badge-retainer">🔄 継続</span>
+                {% endif %}
                 <div class="kanban-card-title">{{ p.name or '（無題）' }}</div>
                 {% if p.client %}
                 <div class="kanban-card-client">{{ p.client }}</div>
                 {% endif %}
                 {% if p.amount %}
-                <div class="kanban-card-amount">{{ "{:,}".format(p.amount) }}円</div>
+                <div class="kanban-card-amount">{{ "{:,}".format(p.amount) }}円{% if p.contract_type == '継続' %}<span style="font-size:11px;color:#888;">/{{ p.billing_cycle or '月' }}</span>{% endif %}</div>
                 {% endif %}
                 {% if p.end_date %}
                 <div class="kanban-card-date">📅 {{ p.end_date }}</div>
@@ -162,6 +133,21 @@ NOTION_TASK_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</pre>
                         {% for s in statuses %}
                         <option value="{{ s }}" {% if s == '見込み' %}selected{% endif %}>{{ s }}</option>
                         {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>契約タイプ</label>
+                    <select id="addContractType" class="form-control" onchange="toggleBillingCycle('add')">
+                        <option value="単発">単発</option>
+                        <option value="継続">継続</option>
+                    </select>
+                </div>
+                <div class="form-group" id="addBillingCycleGroup" style="display:none;">
+                    <label>請求サイクル</label>
+                    <select id="addBillingCycle" class="form-control">
+                        <option value="月次">月次</option>
+                        <option value="四半期">四半期</option>
+                        <option value="年次">年次</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -221,6 +207,21 @@ NOTION_TASK_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</pre>
                         </select>
                     </div>
                     <div class="form-group">
+                        <label>契約タイプ</label>
+                        <select id="editContractType" class="form-control" onchange="toggleBillingCycle('edit')">
+                            <option value="単発">単発</option>
+                            <option value="継続">継続</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="editBillingCycleGroup" style="display:none;">
+                        <label>請求サイクル</label>
+                        <select id="editBillingCycle" class="form-control">
+                            <option value="月次">月次</option>
+                            <option value="四半期">四半期</option>
+                            <option value="年次">年次</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
                         <label>金額（円）</label>
                         <input type="number" id="editAmount" class="form-control">
                     </div>
@@ -244,9 +245,12 @@ NOTION_TASK_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</pre>
 
                 <!-- タスク一覧 -->
                 <div style="margin-top:20px; border-top:1px solid #eee; padding-top:16px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
                         <h4 style="margin:0;">タスク</h4>
-                        <button class="btn btn-sm btn-primary" onclick="showAddTaskForm()">＋ タスク追加</button>
+                        <div style="display:flex; gap:6px; align-items:center;">
+                            <button class="btn btn-sm btn-secondary" id="btnGenerateTasks" style="display:none;" onclick="generateMonthlyTasks()">📅 今月のタスクを生成</button>
+                            <button class="btn btn-sm btn-primary" onclick="showAddTaskForm()">＋ タスク追加</button>
+                        </div>
                     </div>
                     <div id="addTaskForm" style="display:none; margin-bottom:12px;">
                         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
@@ -257,6 +261,9 @@ NOTION_TASK_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</pre>
                                 <option value="低">低</option>
                             </select>
                             <input type="date" id="newTaskDue" class="form-control" style="width:150px;">
+                            <label class="checkbox-label" title="毎月繰り返すタスク">
+                                <input type="checkbox" id="newTaskRecurring"> 🔄 繰り返し
+                            </label>
                             <button class="btn btn-sm btn-primary" onclick="addTask()">追加</button>
                         </div>
                     </div>
@@ -277,7 +284,38 @@ NOTION_TASK_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</pre>
 {% block scripts %}
 <script>
 let currentProjectId = null;
+let currentProjectData = null;
 let draggedId = null;
+
+// ========== フィルター ==========
+
+function filterProjects(type) {
+    document.querySelectorAll('.project-filter-bar .filter-toggle').forEach(b => b.classList.remove('active'));
+    document.querySelector(`.filter-toggle[data-filter="${type}"]`).classList.add('active');
+
+    document.querySelectorAll('.kanban-card').forEach(card => {
+        const ct = card.dataset.contract || '単発';
+        if (type === 'all') {
+            card.style.display = '';
+        } else {
+            card.style.display = ct === type ? '' : 'none';
+        }
+    });
+
+    // カウント更新
+    document.querySelectorAll('.kanban-column').forEach(col => {
+        const visible = col.querySelectorAll('.kanban-card:not([style*="display: none"])').length;
+        col.querySelector('.kanban-column-count').textContent = visible;
+    });
+}
+
+// ========== 契約タイプ切替 ==========
+
+function toggleBillingCycle(prefix) {
+    const ct = document.getElementById(prefix + 'ContractType').value;
+    const group = document.getElementById(prefix + 'BillingCycleGroup');
+    group.style.display = ct === '継続' ? '' : 'none';
+}
 
 // ========== ドラッグ&ドロップ ==========
 
@@ -333,6 +371,7 @@ async function addProject() {
     btn.disabled = true;
     btn.textContent = '追加中...';
 
+    const contractType = document.getElementById('addContractType').value;
     const body = {
         name,
         status: document.getElementById('addStatus').value,
@@ -342,6 +381,8 @@ async function addProject() {
         end_date: document.getElementById('addEndDate').value || null,
         url: document.getElementById('addUrl').value.trim(),
         memo: document.getElementById('addMemo').value.trim(),
+        contract_type: contractType,
+        billing_cycle: contractType === '継続' ? document.getElementById('addBillingCycle').value : '',
     };
 
     try {
@@ -381,6 +422,7 @@ async function showDetailModal(projectId) {
     try {
         const resp = await fetch(`/api/projects/${projectId}`);
         const p = await resp.json();
+        currentProjectData = p;
 
         document.getElementById('detailTitle').textContent = p.name || '案件詳細';
         document.getElementById('editName').value = p.name || '';
@@ -391,6 +433,13 @@ async function showDetailModal(projectId) {
         document.getElementById('editStartDate').value = p.start_date || '';
         document.getElementById('editEndDate').value = p.end_date || '';
         document.getElementById('editMemo').value = p.memo || '';
+        document.getElementById('editContractType').value = p.contract_type || '単発';
+        document.getElementById('editBillingCycle').value = p.billing_cycle || '月次';
+        toggleBillingCycle('edit');
+
+        // 継続案件の場合、タスク生成ボタンを表示
+        const btnGen = document.getElementById('btnGenerateTasks');
+        btnGen.style.display = p.contract_type === '継続' ? '' : 'none';
 
         loading.style.display = 'none';
         content.style.display = 'block';
@@ -407,11 +456,13 @@ function closeDetailModal(e) {
     document.getElementById('detailModal').style.display = 'none';
     document.getElementById('addTaskForm').style.display = 'none';
     currentProjectId = null;
+    currentProjectData = null;
 }
 
 async function saveProject() {
     if (!currentProjectId) return;
 
+    const contractType = document.getElementById('editContractType').value;
     const body = {
         name: document.getElementById('editName').value.trim(),
         status: document.getElementById('editStatus').value,
@@ -421,9 +472,10 @@ async function saveProject() {
         end_date: document.getElementById('editEndDate').value || null,
         url: document.getElementById('editUrl').value.trim(),
         memo: document.getElementById('editMemo').value.trim(),
+        contract_type: contractType,
+        billing_cycle: contractType === '継続' ? document.getElementById('editBillingCycle').value : '',
     };
 
-    // null値を除外（Pydanticが部分更新として処理）
     const filtered = {};
     for (const [k, v] of Object.entries(body)) {
         if (v !== null && v !== '') filtered[k] = v;
@@ -487,9 +539,11 @@ async function loadTasks(projectId) {
                         <option value="進行中" ${t.status === '進行中' ? 'selected' : ''}>進行中</option>
                         <option value="完了" ${t.status === '完了' ? 'selected' : ''}>完了</option>
                     </select>
+                    ${t.recurring ? '<span class="badge badge-recurring" title="繰り返しタスク">🔄</span>' : ''}
                     <span class="task-name ${t.status === '完了' ? 'task-done' : ''}">${t.name || '（無題）'}</span>
                 </div>
                 <div class="task-item-right">
+                    ${t.target_month ? `<span class="task-due" style="color:#8e44ad;">${t.target_month}</span>` : ''}
                     ${t.priority ? `<span class="task-priority task-priority-${t.priority}">${t.priority}</span>` : ''}
                     ${t.due_date ? `<span class="task-due">${t.due_date}</span>` : ''}
                     <button class="btn-icon" onclick="deleteTask('${t.id}')" title="削除">🗑</button>
@@ -520,11 +574,13 @@ async function addTask() {
                 project_id: currentProjectId,
                 priority: document.getElementById('newTaskPriority').value,
                 due_date: document.getElementById('newTaskDue').value || null,
+                recurring: document.getElementById('newTaskRecurring').checked,
             }),
         });
         if (resp.ok) {
             document.getElementById('newTaskName').value = '';
             document.getElementById('newTaskDue').value = '';
+            document.getElementById('newTaskRecurring').checked = false;
             loadTasks(currentProjectId);
         }
     } catch (err) {
@@ -552,6 +608,42 @@ async function deleteTask(taskId) {
         if (currentProjectId) loadTasks(currentProjectId);
     } catch (err) {
         alert('削除に失敗しました');
+    }
+}
+
+// ========== 繰り返しタスク生成 ==========
+
+async function generateMonthlyTasks() {
+    if (!currentProjectId) return;
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    const btn = document.getElementById('btnGenerateTasks');
+    btn.disabled = true;
+    btn.textContent = '生成中...';
+
+    try {
+        const resp = await fetch(`/api/projects/${currentProjectId}/generate-tasks`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({year_month: ym}),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            if (data.created_count > 0) {
+                alert(`${ym} のタスクを ${data.created_count} 件生成しました`);
+            } else {
+                alert(`${ym} のタスクは既に生成済みです`);
+            }
+            loadTasks(currentProjectId);
+        } else {
+            alert(data.detail || '生成に失敗しました');
+        }
+    } catch (err) {
+        alert('通信エラー: ' + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '📅 今月のタスクを生成';
     }
 }
 
