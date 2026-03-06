@@ -2014,3 +2014,18 @@ textarea.form-control { resize: vertical; font-family: inherit; }
     padding: 0 2px;
     flex-shrink: 0;
 }
+
+/* タイムライン（/today） */
+.timeline { display: flex; flex-direction: column; gap: 4px; }
+.timeline-item {
+    display: flex; gap: 16px; padding: 12px 16px;
+    border-left: 4px solid #ddd; border-radius: 0 8px 8px 0;
+    background: #fafafa;
+}
+.timeline-meeting { border-left-color: #4a90d9; background: #f0f6ff; }
+.timeline-work    { border-left-color: #27ae60; background: #f0fff4; }
+.timeline-break   { border-left-color: #95a5a6; background: #f8f9fa; }
+.timeline-admin   { border-left-color: #f39c12; background: #fffdf0; }
+.timeline-time { font-weight: bold; min-width: 110px; color: #333; white-space: nowrap; }
+.timeline-title { font-weight: 600; }
+.timeline-note { font-size: 13px; color: #888; margin-top: 2px; }

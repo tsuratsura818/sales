@@ -9,7 +9,8 @@ from app.tasks import task_queue
 from app.tasks.followup_scheduler import followup_scheduler
 from app.tasks.job_monitor import job_monitor
 from app.tasks.keep_alive import keep_alive
-from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects
+from app.tasks.daily_plan_scheduler import daily_plan_scheduler
+from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects, today
 
 STATUS_JA = {
     # リードステータス
@@ -56,28 +57,16 @@ async def lifespan(app: FastAPI):
     scheduler_task = asyncio.create_task(followup_scheduler())
     monitor_task = asyncio.create_task(job_monitor())
     keepalive_task = asyncio.create_task(keep_alive())
+    daily_plan_task = asyncio.create_task(daily_plan_scheduler())
     yield
     # 終了時
-    worker_task.cancel()
-    scheduler_task.cancel()
-    monitor_task.cancel()
-    keepalive_task.cancel()
-    try:
-        await worker_task
-    except asyncio.CancelledError:
-        pass
-    try:
-        await scheduler_task
-    except asyncio.CancelledError:
-        pass
-    try:
-        await monitor_task
-    except asyncio.CancelledError:
-        pass
-    try:
-        await keepalive_task
-    except asyncio.CancelledError:
-        pass
+    for task in [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task]:
+        task.cancel()
+    for task in [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task]:
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="営業自動化ツール", lifespan=lifespan)
@@ -100,6 +89,7 @@ app.include_router(portfolios.router)
 app.include_router(jobs.router)
 app.include_router(line_webhook.router)
 app.include_router(projects.router)
+app.include_router(today.router)
 
 
 @app.get("/health")

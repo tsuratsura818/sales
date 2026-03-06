@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}今日のスケジュール{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
+    <div>
+        <h1>📋 今日のスケジュール</h1>
+        <p>{{ today_str }} - AIが最適な1日を提案します</p>
+    </div>
+    <div style="display:flex; gap:8px;">
+        <button class="btn btn-primary" onclick="generatePlan()" id="generateBtn">
+            🤖 AIでスケジュール生成
+        </button>
+        <button class="btn btn-secondary" onclick="sendToLine()" id="lineBtn"
+                {% if not plan %}disabled{% endif %}>
+            📱 LINEに送信
+        </button>
+    </div>
+</div>
+
+<!-- 接続ステータス -->
+<div class="stats-row">
+    <div class="stat-card" style="border-top-color: {{ '#27ae60' if cal_connected else '#e74c3c' }};">
+        <div class="stat-number">{{ '✅' if cal_connected else '❌' }}</div>
+        <div class="stat-label">Googleカレンダー</div>
+        {% if cal_error %}<small style="color:#e74c3c;">{{ cal_error[:40] }}</small>{% endif %}
+    </div>
+    <div class="stat-card" style="border-top-color: {{ '#27ae60' if notion_connected else '#e74c3c' }};">
+        <div class="stat-number">{{ '✅' if notion_connected else '❌' }}</div>
+        <div class="stat-label">Notion</div>
+    </div>
+    <div class="stat-card" style="border-top-color: #4a90d9;">
+        <div class="stat-number">{{ plan.schedule|length if plan and plan.schedule else '-' }}</div>
+        <div class="stat-label">スケジュール項目</div>
+    </div>
+    <div class="stat-card" style="border-top-color: #f39c12;">
+        <div class="stat-number">{{ generated_at[11:16] if generated_at else '-' }}</div>
+        <div class="stat-label">最終生成</div>
+    </div>
+</div>
+
+<!-- プラン表示エリア -->
+<div id="planArea">
+    {% if plan %}
+        <!-- AIサマリー -->
+        <div class="card" style="margin-bottom:16px;">
+            <h3 style="margin-top:0;">{{ plan.greeting }}</h3>
+            <p style="color:#666; margin-bottom:0;">{{ plan.summary }}</p>
+        </div>
+
+        <!-- タイムライン -->
+        <div class="card" style="margin-bottom:16px;">
+            <h3 style="margin-top:0;">タイムライン</h3>
+            <div class="timeline">
+                {% for item in plan.schedule %}
+                <div class="timeline-item timeline-{{ item.type }}">
+                    <div class="timeline-time">{{ item.time }}</div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">
+                            {{ item.title }}
+                            {% if item.priority == 'high' %}
+                                <span style="background:#e74c3c; color:#fff; font-size:11px; padding:2px 8px; border-radius:10px; margin-left:4px;">高優先</span>
+                            {% elif item.priority == 'fixed' %}
+                                <span style="background:#4a90d9; color:#fff; font-size:11px; padding:2px 8px; border-radius:10px; margin-left:4px;">予定</span>
+                            {% endif %}
+                        </div>
+                        {% if item.note %}
+                        <div class="timeline-note">{{ item.note }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Tips + 未スケジュール -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:16px;">
+            {% if plan.tips %}
+            <div class="card">
+                <h3 style="margin-top:0;">💡 Tips</h3>
+                <ul style="margin-bottom:0; padding-left:20px;">
+                    {% for tip in plan.tips %}
+                    <li style="margin-bottom:6px;">{{ tip }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            {% if plan.unscheduled %}
+            <div class="card">
+                <h3 style="margin-top:0;">📌 今日中でなくてもOK</h3>
+                <ul style="margin-bottom:0; padding-left:20px;">
+                    {% for item in plan.unscheduled %}
+                    <li style="margin-bottom:6px;">{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+
+    {% else %}
+        <div class="card" style="text-align:center; padding:60px 20px;">
+            <p style="font-size:48px; margin:0 0 16px;">🤖</p>
+            <p style="font-size:16px; color:#666; margin:0;">
+                「AIでスケジュール生成」ボタンを押すと、<br>
+                カレンダー・Notion・案件状況をもとに<br>
+                最適な1日のプランを提案します。
+            </p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function generatePlan() {
+    const btn = document.getElementById('generateBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ 生成中...（数秒かかります）';
+
+    try {
+        const resp = await fetch('/api/today/generate', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('生成に失敗しました: ' + (data.error || ''));
+        }
+    } catch (e) {
+        alert('エラー: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🤖 AIでスケジュール生成';
+    }
+}
+
+async function sendToLine() {
+    const btn = document.getElementById('lineBtn');
+    btn.disabled = true;
+    btn.textContent = '📱 送信中...';
+
+    try {
+        const resp = await fetch('/api/today/send-line', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            alert('LINEに送信しました！');
+        } else {
+            alert('送信失敗: ' + (data.error || ''));
+        }
+    } catch (e) {
+        alert('エラー: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '📱 LINEに送信';
+    }
+}
+</script>
+{% endblock %}

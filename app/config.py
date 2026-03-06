@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     NOTION_PROJECT_DB_ID: str = ""
     NOTION_TASK_DB_ID: str = ""
 
+    # Googleカレンダー連携
+    GOOGLE_SERVICE_ACCOUNT_JSON: str = ""
+    GOOGLE_CALENDAR_ID: str = ""
+
+    # 1日のタスク自動立案
+    DAILY_PLAN_HOUR_JST: int = 8
+    DAILY_PLAN_ENABLED: bool = True
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
