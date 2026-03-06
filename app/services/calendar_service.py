@@ -41,6 +41,14 @@ def _parse_sa_json(raw_value: str) -> dict:
         except json.JSONDecodeError:
             pass
 
+    # Render環境変数で外側の {} が失われるケースに対応
+    if not raw.startswith("{"):
+        wrapped = "{" + raw + "}"
+        try:
+            return json.loads(wrapped)
+        except json.JSONDecodeError:
+            pass
+
     raise ValueError(f"JSON解析失敗: len={len(raw)}, first30={repr(raw[:30])}")
 
 
