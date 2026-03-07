@@ -1,0 +1,17 @@
+name: Auto Deploy to Render
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger Render Deploy
+        run: |
+          curl -s --max-time 30 \
+            -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}" \
+            -o /dev/null -w "HTTP %{http_code}\n"
