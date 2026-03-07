@@ -1,5 +1,6 @@
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
@@ -11,6 +12,10 @@ from app.services.portfolio_service import get_portfolios_for_lead, format_portf
 from app.schemas.lead import EmailUpdateRequest
 
 router = APIRouter(prefix="/api", tags=["emails"])
+
+
+class SendEmailRequest(BaseModel):
+    to_email: str = ""
 
 
 @router.post("/leads/{lead_id}/generate-email")
@@ -52,19 +57,25 @@ async def update_email(
 
 
 @router.post("/leads/{lead_id}/send-email")
-async def send_email(lead_id: int, db: Session = Depends(get_db)):
-    """Outlookでメールを送信する"""
+async def send_email(lead_id: int, req: SendEmailRequest = SendEmailRequest(), db: Session = Depends(get_db)):
+    """Gmailでメールを送信する"""
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
         raise HTTPException(status_code=404, detail="リードが見つかりません")
     if not lead.generated_email_subject or not lead.generated_email_body:
         raise HTTPException(status_code=400, detail="まずメールを生成してください")
-    if not lead.contact_email:
-        raise HTTPException(status_code=400, detail="送信先メールアドレスが見つかりません")
+
+    to_address = req.to_email.strip() or lead.contact_email or ""
+    if not to_address:
+        raise HTTPException(status_code=400, detail="送信先メールアドレスを入力してください")
+
+    # 入力されたアドレスをリードに保存
+    if req.to_email.strip() and req.to_email.strip() != lead.contact_email:
+        lead.contact_email = req.to_email.strip()
 
     log = EmailLog(
         lead_id=lead_id,
-        to_address=lead.contact_email,
+        to_address=to_address,
         subject=lead.generated_email_subject,
         body=lead.generated_email_body,
     )
@@ -74,7 +85,7 @@ async def send_email(lead_id: int, db: Session = Depends(get_db)):
 
     try:
         entry_id = await gmail_service.send_email(
-            to=lead.contact_email,
+            to=to_address,
             subject=lead.generated_email_subject,
             body=lead.generated_email_body,
         )
@@ -82,7 +93,7 @@ async def send_email(lead_id: int, db: Session = Depends(get_db)):
         log.outlook_message_id = entry_id
         lead.status = "sent"
         db.commit()
-        return {"success": True, "message": f"{lead.contact_email} に送信しました"}
+        return {"success": True, "message": f"{to_address} に送信しました"}
     except Exception as e:
         log.error_message = str(e)[:500]
         db.commit()

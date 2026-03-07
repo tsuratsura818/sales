@@ -561,15 +561,20 @@
                     placeholder="メールを生成してください">{{ lead.generated_email_body or '' }}</textarea>
             </div>
 
+            <div class="form-group">
+                <label for="send-to-email">送信先メールアドレス</label>
+                <input type="email" id="send-to-email" class="form-control"
+                    value="{{ lead.contact_email or '' }}"
+                    placeholder="送信先を入力してください">
+            </div>
+
             <div class="email-send-actions">
                 <button class="btn btn-secondary" onclick="saveEmail({{ lead.id }})">
                     💾 内容を保存
                 </button>
-                {% if lead.contact_email %}
                 <button class="btn btn-primary" onclick="sendEmail({{ lead.id }})" id="send-btn">
-                    📤 Gmailで送信（{{ lead.contact_email }}）
+                    📤 Gmailで送信
                 </button>
-                {% endif %}
             </div>
 
             <div id="email-message" class="alert hidden"></div>
@@ -738,7 +743,12 @@ async function saveEmail(leadId) {
 }
 
 async function sendEmail(leadId) {
-    if (!confirm('このメールを送信しますか？')) return;
+    const toEmail = document.getElementById('send-to-email').value.trim();
+    if (!toEmail) {
+        showMessage('❌ 送信先メールアドレスを入力してください', 'error');
+        return;
+    }
+    if (!confirm(`${toEmail} にメールを送信しますか？`)) return;
 
     // まず内容を保存
     await saveEmail(leadId);
@@ -748,7 +758,11 @@ async function sendEmail(leadId) {
     btn.textContent = '⏳ 送信中...';
 
     try {
-        const resp = await fetch(`/api/leads/${leadId}/send-email`, {method: 'POST'});
+        const resp = await fetch(`/api/leads/${leadId}/send-email`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({to_email: toEmail}),
+        });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.detail);
 
