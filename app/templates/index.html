@@ -199,49 +199,65 @@ function formatETA(sec) {
 
 function startSSE(jobId) {
     var retryCount = 0;
-    var maxRetries = 10;
+    var maxRetries = 3;
     var completed = false;
+    var pollingId = null;
+
+    function updateUI(d) {
+        if (d.ping) return;
+        var t = d.total || 0, done = d.completed || 0;
+        var excluded = d.excluded || 0;
+        var pct = t > 0 ? Math.round(done / t * 100) : 0;
+        document.getElementById("progress-bar").style.width = pct + "%";
+        var statusText = "有効 " + done + " / " + t + " 件 (" + pct + "%)";
+        if (excluded > 0) statusText += "　除外: " + excluded + "件";
+        document.getElementById("progress-text").textContent = statusText;
+
+        var etaEl = document.getElementById("progress-eta");
+        if (d.eta_seconds > 0 && done > 0) {
+            etaEl.textContent = "残り " + formatETA(d.eta_seconds) +
+                " (平均" + (d.avg_seconds || 0) + "秒/件)";
+        } else if (done === 0 && t > 0) {
+            etaEl.textContent = "検索結果を分析しています...";
+        } else {
+            etaEl.textContent = "";
+        }
+
+        if (d.current_url) {
+            var url = d.current_url;
+            if (url.length > 60) url = url.substring(0, 60) + "...";
+            document.getElementById("current-url").textContent = "分析中: " + url;
+        }
+        if (d.status === "completed") {
+            completed = true;
+            if (pollingId) clearInterval(pollingId);
+            document.getElementById("progress-bar").style.width = "100%";
+            var doneMsg = "✅ 有効" + done + "件の分析が完了しました！";
+            if (excluded > 0) doneMsg += "（除外: " + excluded + "件）";
+            document.getElementById("progress-text").textContent = doneMsg;
+            etaEl.textContent = "";
+            document.getElementById("current-url").textContent = "リード一覧に移動します...";
+            setTimeout(function() { window.location.href = "/leads?job_id=" + jobId; }, 1500);
+        }
+    }
+
+    function startPolling() {
+        document.getElementById("progress-eta").textContent = "";
+        pollingId = setInterval(function() {
+            if (completed) { clearInterval(pollingId); return; }
+            fetch("/api/progress/" + jobId)
+                .then(function(r) { return r.json(); })
+                .then(updateUI)
+                .catch(function() {});
+        }, 3000);
+    }
 
     function connect() {
         var es = new EventSource("/api/events/" + jobId);
         es.onmessage = function(event) {
             retryCount = 0;
-            var d = JSON.parse(event.data);
-            if (d.ping) return;
-            var t = d.total || 0, done = d.completed || 0;
-            var excluded = d.excluded || 0;
-            var pct = t > 0 ? Math.round(done / t * 100) : 0;
-            document.getElementById("progress-bar").style.width = pct + "%";
-            var statusText = "有効 " + done + " / " + t + " 件 (" + pct + "%)";
-            if (excluded > 0) statusText += "　除外: " + excluded + "件";
-            document.getElementById("progress-text").textContent = statusText;
-
-            var etaEl = document.getElementById("progress-eta");
-            if (d.eta_seconds > 0 && done > 0) {
-                etaEl.textContent = "残り " + formatETA(d.eta_seconds) +
-                    " (平均" + (d.avg_seconds || 0) + "秒/件)";
-            } else if (done === 0 && t > 0) {
-                etaEl.textContent = "検索結果を分析しています...";
-            } else {
-                etaEl.textContent = "";
-            }
-
-            if (d.current_url) {
-                var url = d.current_url;
-                if (url.length > 60) url = url.substring(0, 60) + "...";
-                document.getElementById("current-url").textContent = "分析中: " + url;
-            }
-            if (d.status === "completed") {
-                completed = true;
-                es.close();
-                document.getElementById("progress-bar").style.width = "100%";
-                var doneMsg = "✅ 有効" + done + "件の分析が完了しました！";
-                if (excluded > 0) doneMsg += "（除外: " + excluded + "件）";
-                document.getElementById("progress-text").textContent = doneMsg;
-                etaEl.textContent = "";
-                document.getElementById("current-url").textContent = "リード一覧に移動します...";
-                setTimeout(function() { window.location.href = "/leads?job_id=" + jobId; }, 1500);
-            }
+            updateUI(JSON.parse(event.data));
+            if (completed) es.close();
         };
         es.onerror = function() {
             es.close();
@@ -252,11 +268,7 @@ function startSSE(jobId) {
                     "接続を再試行中... (" + retryCount + "/" + maxRetries + ")";
                 setTimeout(connect, 3000);
             } else {
-                document.getElementById("progress-text").textContent =
-                    "⚠️ 接続が切断されました。バックグラウンドで処理は継続中です。";
-                document.getElementById("progress-eta").textContent = "";
-                document.getElementById("current-url").innerHTML =
-                    '<a href="/leads?job_id=' + jobId + '">リード一覧を確認する →</a>';
+                startPolling();
             }
         };
     }
