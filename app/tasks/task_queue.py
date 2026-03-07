@@ -33,6 +33,7 @@ async def worker() -> None:
         try:
             await _run_search_job(job_id)
         except Exception as e:
+            await progress_store.update(job_id, status="failed")
             db = SessionLocal()
             try:
                 job = db.query(SearchJob).filter(SearchJob.id == job_id).first()
