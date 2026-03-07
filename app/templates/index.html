@@ -202,6 +202,8 @@ function startSSE(jobId) {
     var maxRetries = 3;
     var completed = false;
     var pollingId = null;
+    var startTime = Date.now();
+    var firstDone = 0;
 
     function updateUI(d) {
         if (d.ping) return;
@@ -214,9 +216,17 @@ function startSSE(jobId) {
         document.getElementById("progress-text").textContent = statusText;
 
         var etaEl = document.getElementById("progress-eta");
-        if (d.eta_seconds > 0 && done > 0) {
-            etaEl.textContent = "残り " + formatETA(d.eta_seconds) +
-                " (平均" + (d.avg_seconds || 0) + "秒/件)";
+        var etaSec = d.eta_seconds || 0;
+        // サーバーからETAが来ない場合はクライアント側で計算
+        if (etaSec <= 0 && done > 0 && t > 0 && done < t) {
+            if (firstDone === 0) firstDone = done;
+            var elapsed = (Date.now() - startTime) / 1000;
+            var rate = done / elapsed;
+            etaSec = rate > 0 ? Math.round((t - done) / rate) : 0;
+        }
+        if (etaSec > 0 && done > 0) {
+            var avgLabel = d.avg_seconds > 0 ? " (平均" + d.avg_seconds + "秒/件)" : "";
+            etaEl.textContent = "残り " + formatETA(etaSec) + avgLabel;
         } else if (done === 0 && t > 0) {
             etaEl.textContent = "検索結果を分析しています...";
         } else {
