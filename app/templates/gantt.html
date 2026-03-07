@@ -170,7 +170,7 @@ function renderGantt() {
 
     const range = getDateRange();
     const totalDays = daysBetween(range.start, range.end);
-    const dayWidth = currentView === 'quarter' ? 4 : currentView === 'month' ? 8 : 20;
+    const dayWidth = currentView === 'quarter' ? 4 : currentView === 'month' ? 12 : 30;
     const chartWidth = totalDays * dayWidth;
     const rowHeight = 36;
     const labelWidth = 220;
@@ -186,11 +186,14 @@ function renderGantt() {
         const isWeekend = d.getDay() === 0 || d.getDay() === 6;
 
         if (d.getMonth() !== lastMonth) {
-            headerHtml += `<div class="gantt-month-label" style="left:${labelWidth + x}px;">${d.getFullYear()}/${d.getMonth() + 1}月</div>`;
+            headerHtml += `<div class="gantt-month-label" style="left:${labelWidth + x}px;">${d.getFullYear()}年${d.getMonth() + 1}月</div>`;
             lastMonth = d.getMonth();
         }
 
-        if (currentView === 'week' || (currentView === 'month' && d.getDate() % 5 === 1) || (currentView === 'quarter' && d.getDate() === 1)) {
+        const showLabel = (currentView === 'week' && (d.getDay() === 1 || d.getDate() === 1))
+            || (currentView === 'month' && d.getDate() % 5 === 1)
+            || (currentView === 'quarter' && d.getDate() === 1);
+        if (showLabel) {
             headerHtml += `<div class="gantt-date-label" style="left:${labelWidth + x}px;">${formatDate(d)}</div>`;
         }
 
