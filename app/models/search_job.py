@@ -24,6 +24,9 @@ class SearchJob(Base):
     filter_no_mobile: Mapped[bool] = mapped_column(Boolean, default=False)
     filter_cms_list: Mapped[str | None] = mapped_column(String, nullable=True)  # JSON list
 
+    # 検索方法: "serpapi" or "local"
+    search_method: Mapped[str] = mapped_column(String, default="serpapi")
+
     # コスト追跡
     serpapi_calls_used: Mapped[int] = mapped_column(Integer, default=0)
 

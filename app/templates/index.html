@@ -47,6 +47,13 @@
                     <option value="100" selected>100件</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label for="search_method">検索方法</label>
+                <select id="search_method" name="search_method" class="form-control">
+                    <option value="serpapi">SerpAPI（安定・有料）</option>
+                    <option value="local">ローカル検索（無料・直接取得）</option>
+                </select>
+            </div>
         </div>
 
         <div class="filter-section">
@@ -71,9 +78,15 @@
             </div>
         </div>
 
-        <div class="cost-preview">
+        <div class="cost-preview" id="cost-preview">
             <span class="cost-label">💰 コスト目安:</span>
             <span id="cost-serpapi">SerpAPI: 約15円（100件 = 10回呼び出し）</span>
+            <span class="cost-sep">|</span>
+            <span>Claude メール生成: 約4.5円/件</span>
+        </div>
+        <div class="cost-preview" id="cost-local" style="display:none;">
+            <span class="cost-label">💰 コスト目安:</span>
+            <span style="color: #10b981; font-weight: 600;">検索: 無料（ローカル直接取得）</span>
             <span class="cost-sep">|</span>
             <span>Claude メール生成: 約4.5円/件</span>
         </div>
@@ -121,7 +134,9 @@
                 <td>{{ job.total_urls }}</td>
                 <td>{{ job.analyzed_count }}</td>
                 <td>
-                    {% if cost.serpapi_calls > 0 %}
+                    {% if job.search_method == 'local' %}
+                    <span class="cost-chip" style="background:#10b981;color:#fff;">無料</span>
+                    {% elif cost.serpapi_calls > 0 %}
                     <span class="cost-chip">{{ cost.serpapi_calls }}回 / 約{{ cost.serpapi_cost_jpy }}円</span>
                     {% else %}-{% endif %}
                 </td>
@@ -138,13 +153,22 @@
 {% block scripts %}
 <script>
 document.getElementById("num_results").addEventListener("change", updateCost);
+document.getElementById("search_method").addEventListener("change", updateCost);
 updateCost();
 function updateCost() {
     var n = parseInt(document.getElementById("num_results").value) || 100;
-    var c = Math.ceil(n / 10);
-    var yen = Math.round(c * 1.5);
-    document.getElementById("cost-serpapi").textContent =
-        "SerpAPI: 約" + yen + "円（" + n + "件 = " + c + "回呼び出し）";
+    var method = document.getElementById("search_method").value;
+    if (method === "local") {
+        document.getElementById("cost-preview").style.display = "none";
+        document.getElementById("cost-local").style.display = "";
+    } else {
+        document.getElementById("cost-preview").style.display = "";
+        document.getElementById("cost-local").style.display = "none";
+        var c = Math.ceil(n / 10);
+        var yen = Math.round(c * 1.5);
+        document.getElementById("cost-serpapi").textContent =
+            "SerpAPI: 約" + yen + "円（" + n + "件 = " + c + "回呼び出し）";
+    }
 }
 
 document.getElementById("search-form").addEventListener("submit", async function(e) {
@@ -158,6 +182,7 @@ document.getElementById("search-form").addEventListener("submit", async function
         industry: document.getElementById("industry").value || null,
         region: document.getElementById("region").value || null,
         num_results: parseInt(document.getElementById("num_results").value),
+        search_method: document.getElementById("search_method").value,
         filter_http_only: document.getElementById("filter_http_only").checked,
         filter_no_mobile: document.getElementById("filter_no_mobile").checked,
         filter_cms_list: cms

@@ -7,6 +7,7 @@ from app.database import SessionLocal
 from app.models.search_job import SearchJob
 from app.models.lead import Lead
 from app.services import serpapi_service, analyzer
+from app.services import google_scraper
 from app.tasks import progress_store
 from app.config import get_settings
 
@@ -95,19 +96,32 @@ async def _run_search_job(job_id: int) -> None:
         analyzed_count = 0
         empty_page_streak = 0  # 連続して新規リードが0のページ数
 
+        # 検索方法を判定
+        use_local = getattr(job, "search_method", "serpapi") == "local"
+
         # 地域・業界を含む最適化クエリを構築
-        optimized_query = serpapi_service.build_query(
-            job.query, region=job.region, industry=job.industry
-        )
+        if use_local:
+            optimized_query = google_scraper.build_query(
+                job.query, region=job.region, industry=job.industry
+            )
+        else:
+            optimized_query = serpapi_service.build_query(
+                job.query, region=job.region, industry=job.industry
+            )
 
         # 進捗ストア初期化
         progress_store.init_job(job_id, target)
 
         while lead_count < target and page < MAX_PAGES:
-            # SerpAPI 1ページ取得（最適化クエリ使用）
-            items, has_next = await serpapi_service.fetch_one_page(
-                query=optimized_query, start=page * 10
-            )
+            # 1ページ取得（ローカル or SerpAPI）
+            if use_local:
+                items, has_next = await google_scraper.fetch_one_page(
+                    query=optimized_query, start=page * 10
+                )
+            else:
+                items, has_next = await serpapi_service.fetch_one_page(
+                    query=optimized_query, start=page * 10
+                )
             calls_used += 1
             job.serpapi_calls_used = calls_used
             db.commit()

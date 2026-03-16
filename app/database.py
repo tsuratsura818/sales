@@ -39,6 +39,8 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     if _is_sqlite:
         _migrate_sqlite()
+    else:
+        _migrate_postgres()
 
 
 def _migrate_sqlite():
@@ -72,12 +74,29 @@ def _migrate_sqlite():
         ("leads", "meeting_scheduled_at",  "TIMESTAMP"),
         ("leads", "deal_closed_at",        "TIMESTAMP"),
         ("leads", "deal_amount",           "INTEGER"),
+        ("search_jobs", "search_method",   "TEXT DEFAULT 'serpapi'"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
             try:
                 conn.execute(text(
                     f"ALTER TABLE {table} ADD COLUMN {col} {col_def}"
+                ))
+                conn.commit()
+            except Exception:
+                pass
+
+
+def _migrate_postgres():
+    """既存PostgreSQL DBに新規列を追加するマイグレーション"""
+    new_columns = [
+        ("search_jobs", "search_method", "TEXT DEFAULT 'serpapi'"),
+    ]
+    with engine.connect() as conn:
+        for table, col, col_def in new_columns:
+            try:
+                conn.execute(text(
+                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {col_def}"
                 ))
                 conn.commit()
             except Exception:

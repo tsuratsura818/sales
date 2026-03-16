@@ -13,7 +13,11 @@
 
 {% if cost %}
 <div class="cost-bar">
+    {% if job and job.search_method == 'local' %}
+    💰 検索コスト: 無料（ローカル直接取得）　｜
+    {% else %}
     💰 SerpAPIコスト: {{ cost.serpapi_calls }}回 / 約{{ cost.serpapi_cost_jpy }}円　｜
+    {% endif %}
     Claude メール生成: 約{{ cost.claude_cost_per_email_jpy }}円/件
     （全件生成なら 約{{ (leads|length * cost.claude_cost_per_email_jpy)|int }}円）
 </div>
