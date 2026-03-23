@@ -1,0 +1,437 @@
+{% extends "base.html" %}
+{% block title %}メモ - 営業自動化ツール{% endblock %}
+
+{% block content %}
+<div class="memo-app">
+    <!-- ヘッダー -->
+    <div class="memo-header">
+        <h1>📝 メモ</h1>
+        <div class="memo-header-actions">
+            <select id="filterSelect" onchange="filterMemos(this.value)">
+                <option value="all">すべて</option>
+                <option value="linked">案件紐付済</option>
+                <option value="unlinked">未分類</option>
+            </select>
+            <button class="btn btn-primary" onclick="createMemo()">＋ 新規メモ</button>
+        </div>
+    </div>
+
+    <div class="memo-layout">
+        <!-- 左: メモ一覧 -->
+        <div class="memo-sidebar">
+            <div class="memo-search">
+                <input type="text" id="searchInput" placeholder="メモを検索..." oninput="searchMemos(this.value)">
+            </div>
+            <div class="memo-list" id="memoList">
+                {% for memo in memos %}
+                <div class="memo-item" data-id="{{ memo.id }}" onclick="selectMemo({{ memo.id }})">
+                    <div class="memo-item-title">{{ memo.title or '無題' }}</div>
+                    <div class="memo-item-meta">
+                        {% if memo.notion_project_name %}
+                        <span class="memo-badge badge-linked">{{ memo.notion_project_name }}</span>
+                        {% elif memo.classification_status == 'pending' %}
+                        <span class="memo-badge badge-pending">分類中...</span>
+                        {% else %}
+                        <span class="memo-badge badge-unlinked">未分類</span>
+                        {% endif %}
+                    </div>
+                    <div class="memo-item-date">
+                        {{ memo.updated_at.strftime('%m/%d %H:%M') if memo.updated_at else '' }}
+                    </div>
+                </div>
+                {% endfor %}
+                {% if not memos %}
+                <div class="memo-empty">メモがありません。<br>「＋ 新規メモ」で作成してください。</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 右: メモ編集エリア -->
+        <div class="memo-editor" id="memoEditor">
+            <div class="memo-editor-placeholder" id="editorPlaceholder">
+                <p>左のリストからメモを選択するか、<br>「＋ 新規メモ」で作成してください。</p>
+            </div>
+            <div class="memo-editor-content" id="editorContent" style="display:none;">
+                <div class="memo-editor-toolbar">
+                    <div class="memo-editor-project" id="projectBadge"></div>
+                    <div class="memo-editor-actions">
+                        <button class="btn btn-sm" onclick="reclassifyMemo()" title="AIで再分類">🔄 再分類</button>
+                        <button class="btn btn-sm" onclick="linkManually()" title="手動で案件を選択">🔗 手動リンク</button>
+                        <button class="btn btn-sm" onclick="syncToNotion()" title="Notionに同期" id="syncBtn">📤 Notion同期</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteMemo()">🗑️</button>
+                    </div>
+                </div>
+                <textarea id="memoTextarea" placeholder="メモを入力..." oninput="onMemoInput()"></textarea>
+                <div class="memo-editor-status" id="editorStatus"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 手動リンクモーダル -->
+<div class="modal-overlay" id="linkModal" style="display:none;" onclick="if(event.target===this)closeLinkModal()">
+    <div class="modal-content">
+        <h3>案件を選択</h3>
+        <input type="text" id="projectSearchInput" placeholder="案件名で検索..." oninput="filterProjects(this.value)">
+        <div class="project-list" id="projectList">
+            <div class="memo-empty">読み込み中...</div>
+        </div>
+        <div style="text-align:right;margin-top:12px;">
+            <button class="btn btn-sm" onclick="unlinkMemo()">紐付け解除</button>
+            <button class="btn btn-sm" onclick="closeLinkModal()">閉じる</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.memo-app { margin: -20px -20px 0; }
+.memo-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px; border-bottom: 1px solid #e0e0e0; background: #fff;
+}
+.memo-header h1 { margin: 0; font-size: 1.3rem; }
+.memo-header-actions { display: flex; gap: 8px; align-items: center; }
+.memo-header-actions select {
+    padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.85rem;
+}
+
+.memo-layout { display: flex; height: calc(100vh - 130px); }
+
+/* 左サイドバー */
+.memo-sidebar {
+    width: 320px; min-width: 280px; border-right: 1px solid #e0e0e0;
+    background: #fafafa; display: flex; flex-direction: column;
+}
+.memo-search { padding: 12px; border-bottom: 1px solid #e8e8e8; }
+.memo-search input {
+    width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;
+    font-size: 0.85rem; box-sizing: border-box;
+}
+.memo-list { flex: 1; overflow-y: auto; }
+.memo-item {
+    padding: 12px 16px; border-bottom: 1px solid #eee; cursor: pointer;
+    transition: background 0.15s;
+}
+.memo-item:hover { background: #f0f0f0; }
+.memo-item.active { background: #e3f2fd; border-left: 3px solid #1976d2; }
+.memo-item-title {
+    font-weight: 600; font-size: 0.9rem; margin-bottom: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.memo-item-meta { margin-bottom: 2px; }
+.memo-item-date { font-size: 0.75rem; color: #999; }
+.memo-badge {
+    display: inline-block; font-size: 0.7rem; padding: 2px 6px;
+    border-radius: 4px; font-weight: 500;
+}
+.badge-linked { background: #e8f5e9; color: #2e7d32; }
+.badge-pending { background: #fff3e0; color: #e65100; }
+.badge-unlinked { background: #f5f5f5; color: #999; }
+.badge-synced { background: #e3f2fd; color: #1565c0; }
+.memo-empty { padding: 40px 20px; text-align: center; color: #999; font-size: 0.9rem; }
+
+/* 右エディタ */
+.memo-editor { flex: 1; display: flex; flex-direction: column; background: #fff; }
+.memo-editor-placeholder {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    color: #bbb; text-align: center; font-size: 1rem;
+}
+.memo-editor-content { flex: 1; display: flex; flex-direction: column; }
+.memo-editor-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 16px; border-bottom: 1px solid #eee; flex-wrap: wrap; gap: 8px;
+}
+.memo-editor-project { font-size: 0.85rem; }
+.memo-editor-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+
+#memoTextarea {
+    flex: 1; border: none; outline: none; padding: 20px 24px;
+    font-size: 0.95rem; line-height: 1.7; resize: none;
+    font-family: 'Noto Sans JP', -apple-system, sans-serif;
+}
+.memo-editor-status {
+    padding: 4px 16px; font-size: 0.75rem; color: #999;
+    border-top: 1px solid #f0f0f0;
+}
+
+/* ボタン */
+.btn { padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; background: #fff; font-size: 0.8rem; }
+.btn:hover { background: #f5f5f5; }
+.btn-primary { background: #1976d2; color: #fff; border-color: #1976d2; }
+.btn-primary:hover { background: #1565c0; }
+.btn-sm { padding: 4px 8px; font-size: 0.75rem; }
+.btn-danger { color: #d32f2f; }
+.btn-danger:hover { background: #ffebee; }
+
+/* モーダル */
+.modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+    display: flex; align-items: center; justify-content: center; z-index: 1000;
+}
+.modal-content {
+    background: #fff; border-radius: 12px; padding: 24px;
+    width: 500px; max-width: 90vw; max-height: 70vh;
+}
+.modal-content h3 { margin: 0 0 12px; }
+.modal-content input {
+    width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;
+    margin-bottom: 12px; box-sizing: border-box;
+}
+.project-list { max-height: 400px; overflow-y: auto; }
+.project-option {
+    padding: 10px 12px; border-bottom: 1px solid #f0f0f0;
+    cursor: pointer; border-radius: 4px;
+}
+.project-option:hover { background: #f0f8ff; }
+.project-option-name { font-weight: 600; font-size: 0.9rem; }
+.project-option-client { font-size: 0.8rem; color: #666; }
+
+/* レスポンシブ */
+@media (max-width: 768px) {
+    .memo-layout { flex-direction: column; height: auto; }
+    .memo-sidebar { width: 100%; min-width: 0; max-height: 40vh; }
+    .memo-editor { min-height: 50vh; }
+    #memoTextarea { min-height: 200px; }
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentMemoId = null;
+let saveTimer = null;
+let allProjects = [];
+
+// メモ選択
+async function selectMemo(id) {
+    currentMemoId = id;
+
+    document.querySelectorAll('.memo-item').forEach(el => el.classList.remove('active'));
+    const item = document.querySelector(`.memo-item[data-id="${id}"]`);
+    if (item) item.classList.add('active');
+
+    document.getElementById('editorPlaceholder').style.display = 'none';
+    document.getElementById('editorContent').style.display = 'flex';
+
+    const resp = await fetch('/api/memos');
+    const data = await resp.json();
+    const memo = data.memos.find(m => m.id === id);
+
+    if (memo) {
+        document.getElementById('memoTextarea').value = memo.content;
+        updateProjectBadge(memo);
+        updateStatus(memo);
+    }
+}
+
+// プロジェクトバッジ更新
+function updateProjectBadge(memo) {
+    const badge = document.getElementById('projectBadge');
+    if (memo.notion_project_name) {
+        badge.innerHTML = `<span class="memo-badge badge-linked">📁 ${memo.notion_project_name}</span>` +
+            (memo.synced_to_notion ? ' <span class="memo-badge badge-synced">同期済み</span>' : '');
+    } else {
+        badge.innerHTML = '<span class="memo-badge badge-unlinked">未分類</span>';
+    }
+}
+
+function updateStatus(memo) {
+    const status = document.getElementById('editorStatus');
+    const date = memo.updated_at ? new Date(memo.updated_at).toLocaleString('ja-JP') : '';
+    status.textContent = `最終更新: ${date}`;
+}
+
+// 新規メモ作成
+async function createMemo() {
+    const resp = await fetch('/api/memos', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({content: '', title: ''}),
+    });
+    const data = await resp.json();
+    if (data.success) {
+        location.reload();
+    }
+}
+
+// メモ入力（自動保存）
+function onMemoInput() {
+    clearTimeout(saveTimer);
+    document.getElementById('editorStatus').textContent = '保存中...';
+    saveTimer = setTimeout(saveMemo, 800);
+}
+
+async function saveMemo() {
+    if (!currentMemoId) return;
+    const content = document.getElementById('memoTextarea').value;
+
+    await fetch(`/api/memos/${currentMemoId}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({content}),
+    });
+
+    // サイドバーのタイトル更新
+    const title = content.split('\n')[0].substring(0, 50) || '無題';
+    const item = document.querySelector(`.memo-item[data-id="${currentMemoId}"] .memo-item-title`);
+    if (item) item.textContent = title;
+
+    document.getElementById('editorStatus').textContent = '保存済み';
+}
+
+// AI再分類
+async function reclassifyMemo() {
+    if (!currentMemoId) return;
+
+    // まず最新の内容を保存
+    await saveMemo();
+
+    document.getElementById('editorStatus').textContent = 'AIで分類中...';
+
+    const resp = await fetch(`/api/memos/${currentMemoId}/classify`, {method: 'POST'});
+    const data = await resp.json();
+
+    if (data.success) {
+        const cl = data.classification;
+        if (cl.matched) {
+            alert(`案件「${cl.project_name}」にマッチしました\n理由: ${cl.reason}\n確信度: ${cl.confidence}`);
+        } else {
+            alert(`該当する案件が見つかりませんでした\n理由: ${cl.reason}`);
+        }
+        location.reload();
+    }
+}
+
+// 手動リンク
+async function linkManually() {
+    document.getElementById('linkModal').style.display = 'flex';
+
+    if (allProjects.length === 0) {
+        const resp = await fetch('/api/projects');
+        const data = await resp.json();
+        allProjects = data.projects || [];
+    }
+
+    renderProjects(allProjects);
+}
+
+function renderProjects(projects) {
+    const list = document.getElementById('projectList');
+    if (projects.length === 0) {
+        list.innerHTML = '<div class="memo-empty">案件がありません</div>';
+        return;
+    }
+    list.innerHTML = projects.map(p => `
+        <div class="project-option" onclick="selectProject('${p.id}', '${(p.name||'').replace(/'/g,"\\'")}')">
+            <div class="project-option-name">${p.name || '無題'}</div>
+            <div class="project-option-client">${p.client || ''} | ${p.status || ''}</div>
+        </div>
+    `).join('');
+}
+
+function filterProjects(query) {
+    const q = query.toLowerCase();
+    const filtered = allProjects.filter(p =>
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.client || '').toLowerCase().includes(q)
+    );
+    renderProjects(filtered);
+}
+
+async function selectProject(projectId, projectName) {
+    if (!currentMemoId) return;
+
+    await fetch(`/api/memos/${currentMemoId}/link`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_id: projectId, project_name: projectName}),
+    });
+
+    closeLinkModal();
+    location.reload();
+}
+
+async function unlinkMemo() {
+    if (!currentMemoId) return;
+    await fetch(`/api/memos/${currentMemoId}/unlink`, {method: 'POST'});
+    closeLinkModal();
+    location.reload();
+}
+
+function closeLinkModal() {
+    document.getElementById('linkModal').style.display = 'none';
+}
+
+// Notion同期
+async function syncToNotion() {
+    if (!currentMemoId) return;
+
+    // まず保存
+    await saveMemo();
+
+    document.getElementById('editorStatus').textContent = 'Notionに同期中...';
+    try {
+        const resp = await fetch(`/api/memos/${currentMemoId}/sync`, {method: 'POST'});
+        const data = await resp.json();
+        if (data.success) {
+            alert('Notionに同期しました');
+            location.reload();
+        } else {
+            alert('同期に失敗: ' + (data.detail || '不明なエラー'));
+        }
+    } catch (e) {
+        alert('同期に失敗しました');
+    }
+}
+
+// メモ削除
+async function deleteMemo() {
+    if (!currentMemoId) return;
+    if (!confirm('このメモを削除しますか？')) return;
+
+    await fetch(`/api/memos/${currentMemoId}`, {method: 'DELETE'});
+    location.reload();
+}
+
+// 検索フィルター
+function searchMemos(query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('.memo-item').forEach(el => {
+        const title = el.querySelector('.memo-item-title').textContent.toLowerCase();
+        const badge = el.querySelector('.memo-badge');
+        const badgeText = badge ? badge.textContent.toLowerCase() : '';
+        el.style.display = (title.includes(q) || badgeText.includes(q)) ? '' : 'none';
+    });
+}
+
+async function filterMemos(value) {
+    const resp = await fetch(`/api/memos?filter=${value}`);
+    const data = await resp.json();
+
+    const list = document.getElementById('memoList');
+    if (data.memos.length === 0) {
+        list.innerHTML = '<div class="memo-empty">メモがありません</div>';
+        return;
+    }
+
+    list.innerHTML = data.memos.map(m => {
+        let badge = '';
+        if (m.notion_project_name) {
+            badge = `<span class="memo-badge badge-linked">${m.notion_project_name}</span>`;
+        } else if (m.classification_status === 'pending') {
+            badge = '<span class="memo-badge badge-pending">分類中...</span>';
+        } else {
+            badge = '<span class="memo-badge badge-unlinked">未分類</span>';
+        }
+        const date = m.updated_at ? new Date(m.updated_at).toLocaleString('ja-JP', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+        return `
+            <div class="memo-item" data-id="${m.id}" onclick="selectMemo(${m.id})">
+                <div class="memo-item-title">${m.title || '無題'}</div>
+                <div class="memo-item-meta">${badge}</div>
+                <div class="memo-item-date">${date}</div>
+            </div>
+        `;
+    }).join('');
+}
+</script>
+{% endblock %}
