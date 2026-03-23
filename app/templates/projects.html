@@ -357,14 +357,18 @@ function filterProjects(type) {
 
 function searchProjects(query) {
     const q = query.toLowerCase().trim();
+    const activeFilter = document.querySelector('.filter-toggle.active')?.dataset.filter || 'all';
+
     document.querySelectorAll('.kanban-card').forEach(card => {
+        const ct = card.dataset.contract || '単発';
+        const filterOk = activeFilter === 'all' || ct === activeFilter;
+
         if (!q) {
-            card.style.display = '';
+            card.style.display = filterOk ? '' : 'none';
             return;
         }
-        const title = (card.querySelector('.kanban-card-title')?.textContent || '').toLowerCase();
-        const client = (card.querySelector('.kanban-card-client')?.textContent || '').toLowerCase();
-        card.style.display = (title.includes(q) || client.includes(q)) ? '' : 'none';
+        const text = card.textContent.toLowerCase();
+        card.style.display = (filterOk && text.includes(q)) ? '' : 'none';
     });
     updateColumnCounts();
 }
