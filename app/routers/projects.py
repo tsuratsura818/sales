@@ -343,6 +343,70 @@ async def api_lead_to_project(lead_id: int, data: LeadToProjectRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ========== メモからタスク抽出 ==========
+
+class ExtractTasksRequest(BaseModel):
+    memo: str
+
+
+@router.post("/api/projects/extract-tasks")
+async def api_extract_tasks(data: ExtractTasksRequest):
+    """メモ内容からAIでタスクを抽出"""
+    if not data.memo.strip():
+        return {"tasks": []}
+
+    import httpx
+    from app.config import get_settings
+    import json
+
+    settings = get_settings()
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": settings.ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 512,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": f"""以下の案件メモからタスク（やるべきこと）を抽出してJSON配列で返してください。
+
+【メモ】
+{data.memo[:3000]}
+
+JSON配列で返してください（コードブロック不要）。各要素:
+- name: string (タスク名、簡潔に)
+- priority: string (高/中/低)
+
+タスクがない場合は空配列 [] を返してください。"""
+                        }
+                    ],
+                },
+            )
+            resp.raise_for_status()
+            result = resp.json()
+
+        text = result["content"][0]["text"].strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+
+        tasks = json.loads(text)
+        if not isinstance(tasks, list):
+            tasks = []
+
+        return {"tasks": tasks}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ========== 接続確認 ==========
 
 @router.get("/api/notion/status")

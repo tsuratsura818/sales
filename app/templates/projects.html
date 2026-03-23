@@ -189,7 +189,7 @@
 
 <!-- 案件詳細/編集モーダル -->
 <div id="detailModal" class="modal-overlay" style="display:none;" onclick="closeDetailModal(event)">
-    <div class="modal-content" style="max-width:720px;" onclick="event.stopPropagation()">
+    <div class="modal-content" style="max-width:900px;" onclick="event.stopPropagation()">
         <div class="modal-header">
             <h3 id="detailTitle">案件詳細</h3>
             <button class="modal-close" onclick="closeDetailModal()">&times;</button>
@@ -197,61 +197,82 @@
         <div class="modal-body">
             <div id="detailLoading" class="modal-loading">読み込み中...</div>
             <div id="detailContent" style="display:none;">
-                <div class="form-grid">
-                    <div class="form-group full-width">
-                        <label>案件名</label>
-                        <input type="text" id="editName" class="form-control">
+                <!-- 2カラムレイアウト: 左=案件情報 / 右=メモ -->
+                <div style="display:flex; gap:20px; flex-wrap:wrap;">
+                    <!-- 左カラム: 案件基本情報 -->
+                    <div style="flex:1; min-width:280px;">
+                        <div class="form-grid">
+                            <div class="form-group full-width">
+                                <label>案件名</label>
+                                <input type="text" id="editName" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label>クライアント</label>
+                                <input type="text" id="editClient" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label>ステータス</label>
+                                <select id="editStatus" class="form-control">
+                                    {% for s in statuses %}
+                                    <option value="{{ s }}">{{ s }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>契約タイプ</label>
+                                <select id="editContractType" class="form-control" onchange="toggleBillingCycle('edit')">
+                                    <option value="単発">単発</option>
+                                    <option value="継続">継続</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="editBillingCycleGroup" style="display:none;">
+                                <label>請求サイクル</label>
+                                <select id="editBillingCycle" class="form-control">
+                                    <option value="月次">月次</option>
+                                    <option value="四半期">四半期</option>
+                                    <option value="年次">年次</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>金額（円）</label>
+                                <input type="number" id="editAmount" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label>URL</label>
+                                <input type="url" id="editUrl" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label>開始日</label>
+                                <input type="date" id="editStartDate" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label>期日</label>
+                                <input type="date" id="editEndDate" class="form-control">
+                            </div>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>クライアント</label>
-                        <input type="text" id="editClient" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label>ステータス</label>
-                        <select id="editStatus" class="form-control">
-                            {% for s in statuses %}
-                            <option value="{{ s }}">{{ s }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>契約タイプ</label>
-                        <select id="editContractType" class="form-control" onchange="toggleBillingCycle('edit')">
-                            <option value="単発">単発</option>
-                            <option value="継続">継続</option>
-                        </select>
-                    </div>
-                    <div class="form-group" id="editBillingCycleGroup" style="display:none;">
-                        <label>請求サイクル</label>
-                        <select id="editBillingCycle" class="form-control">
-                            <option value="月次">月次</option>
-                            <option value="四半期">四半期</option>
-                            <option value="年次">年次</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>金額（円）</label>
-                        <input type="number" id="editAmount" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label>URL</label>
-                        <input type="url" id="editUrl" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label>開始日</label>
-                        <input type="date" id="editStartDate" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label>期日</label>
-                        <input type="date" id="editEndDate" class="form-control">
-                    </div>
-                    <div class="form-group full-width">
-                        <label>メモ</label>
-                        <textarea id="editMemo" class="form-control" rows="3"></textarea>
+
+                    <!-- 右カラム: メモ -->
+                    <div style="flex:1; min-width:300px;">
+                        <div class="detail-memo-panel">
+                            <div class="detail-memo-header">
+                                <span>📝 メモ</span>
+                                <button class="btn btn-sm" onclick="extractTasksFromMemo()" title="AIでメモからタスクを抽出">🤖 タスク抽出</button>
+                            </div>
+                            <textarea id="editMemo" class="detail-memo-textarea" placeholder="案件に関するメモ、議事録、TODO等を記入..."></textarea>
+                            <!-- AI抽出結果 -->
+                            <div id="extractedTasks" style="display:none;">
+                                <div class="detail-memo-header" style="margin-top:0; border-radius:0;">
+                                    <span>🤖 抽出されたタスク</span>
+                                    <button class="btn btn-sm" onclick="addAllExtractedTasks()" style="background:#1976d2;color:#fff;">全て追加</button>
+                                </div>
+                                <div id="extractedTasksList" class="extracted-tasks-list"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- タスク一覧 -->
+                <!-- タスク一覧（フル幅） -->
                 <div style="margin-top:20px; border-top:1px solid #eee; padding-top:16px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
                         <h4 style="margin:0;">タスク</h4>
@@ -286,6 +307,34 @@
         </div>
     </div>
 </div>
+
+<style>
+.detail-memo-panel {
+    border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;
+    display: flex; flex-direction: column; height: 100%; min-height: 320px;
+}
+.detail-memo-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; background: #f8f9fa; border-bottom: 1px solid #e0e0e0;
+    font-weight: 600; font-size: 0.85rem;
+}
+.detail-memo-textarea {
+    flex: 1; border: none; outline: none; padding: 12px; font-size: 0.9rem;
+    line-height: 1.7; resize: none; font-family: 'Noto Sans JP', -apple-system, sans-serif;
+    min-height: 200px;
+}
+.extracted-tasks-list { padding: 8px; }
+.extracted-task-item {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+    border-bottom: 1px solid #f0f0f0; font-size: 0.85rem;
+}
+.extracted-task-item:last-child { border-bottom: none; }
+.extracted-task-item input[type="checkbox"] { margin: 0; }
+.extracted-task-item .task-name { flex: 1; }
+.extracted-task-item .task-priority {
+    font-size: 0.7rem; padding: 1px 6px; border-radius: 3px;
+}
+</style>
 
 <!-- 一括登録モーダル -->
 <div id="bulkModal" class="modal-overlay" style="display:none;" onclick="closeBulkModal(event)">
@@ -517,6 +566,10 @@ async function showDetailModal(projectId) {
         loading.style.display = 'none';
         content.style.display = 'block';
         actions.style.display = 'flex';
+
+        // AI抽出結果をリセット
+        document.getElementById('extractedTasks').style.display = 'none';
+        extractedTaskData = [];
 
         loadTasks(projectId);
     } catch (err) {
@@ -874,6 +927,83 @@ async function executeBulk() {
         btn.disabled = false;
         btn.textContent = '一括登録';
     }
+}
+
+// ========== メモからタスク抽出 ==========
+
+let extractedTaskData = [];
+
+async function extractTasksFromMemo() {
+    const memo = document.getElementById('editMemo').value.trim();
+    if (!memo) { alert('メモが空です'); return; }
+
+    const panel = document.getElementById('extractedTasks');
+    const list = document.getElementById('extractedTasksList');
+    panel.style.display = 'block';
+    list.innerHTML = '<div style="padding:12px; text-align:center; color:#888;">🤖 AIでタスクを抽出中...</div>';
+
+    try {
+        const resp = await fetch('/api/projects/extract-tasks', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({memo}),
+        });
+        const data = await resp.json();
+        extractedTaskData = data.tasks || [];
+
+        if (extractedTaskData.length === 0) {
+            list.innerHTML = '<div style="padding:12px; text-align:center; color:#888;">タスクが見つかりませんでした</div>';
+            return;
+        }
+
+        list.innerHTML = extractedTaskData.map((t, i) => {
+            const prioColor = t.priority === '高' ? '#e74c3c' : t.priority === '中' ? '#f39c12' : '#95a5a6';
+            return `
+                <div class="extracted-task-item">
+                    <input type="checkbox" checked data-index="${i}">
+                    <span class="task-name">${t.name}</span>
+                    <span class="task-priority" style="background:${prioColor}; color:#fff;">${t.priority}</span>
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        list.innerHTML = `<div style="padding:12px; color:#e74c3c;">抽出に失敗しました: ${err.message}</div>`;
+    }
+}
+
+async function addAllExtractedTasks() {
+    if (!currentProjectId || extractedTaskData.length === 0) return;
+
+    const checkboxes = document.querySelectorAll('#extractedTasksList input[type="checkbox"]');
+    const selected = [];
+    checkboxes.forEach(cb => {
+        if (cb.checked) {
+            selected.push(extractedTaskData[parseInt(cb.dataset.index)]);
+        }
+    });
+
+    if (selected.length === 0) { alert('タスクを選択してください'); return; }
+
+    let added = 0;
+    for (const t of selected) {
+        try {
+            await fetch('/api/tasks', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    name: t.name,
+                    project_id: currentProjectId,
+                    priority: t.priority || '中',
+                }),
+            });
+            added++;
+        } catch (err) {}
+    }
+
+    document.getElementById('extractedTasks').style.display = 'none';
+    extractedTaskData = [];
+    alert(`${added}件のタスクを追加しました`);
+    loadTasks(currentProjectId);
 }
 
 // ========== キーボード ==========
