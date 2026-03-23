@@ -230,6 +230,56 @@ async def archive_project(project_id: str) -> bool:
     return True
 
 
+async def unarchive_project(project_id: str) -> dict:
+    """案件アーカイブ解除（復活）"""
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.patch(
+            f"{NOTION_API_BASE}/pages/{project_id}",
+            headers=_headers(),
+            json={"archived": False},
+        )
+        resp.raise_for_status()
+    return _parse_project(resp.json())
+
+
+async def list_archived_projects() -> list[dict]:
+    """アーカイブ済み案件一覧"""
+    project_db_id, _ = _db_ids()
+    payload: dict = {
+        "filter": {
+            "property": "案件名",
+            "title": {"is_not_empty": True},
+        },
+        "page_size": 100,
+    }
+
+    # Notion APIではarchivedページはfilter_propertiesで取れないため
+    # 全ページ取得後にフィルタ（archivedはページ自体のプロパティ）
+    # → 実際にはNotion APIの POST /databases/{id}/query に
+    #   "filter_properties" ではなく "in_trash" パラメータを使う
+    # ただし2024年以降のAPIでは archived ページは通常クエリに含まれない
+    # → 個別ページ取得で archived: true を確認する方法もあるが、
+    #   ここでは Notion の search API を使用
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            f"{NOTION_API_BASE}/search",
+            headers=_headers(),
+            json={
+                "filter": {"property": "object", "value": "page"},
+                "page_size": 100,
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    archived = []
+    for page in data.get("results", []):
+        if page.get("archived") and page.get("parent", {}).get("database_id", "").replace("-", "") == project_db_id.replace("-", ""):
+            archived.append(_parse_project(page))
+
+    return archived
+
+
 # ========== タスク CRUD ==========
 
 async def list_tasks(

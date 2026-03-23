@@ -343,6 +343,41 @@ async def api_lead_to_project(lead_id: int, data: LeadToProjectRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ========== アーカイブ ==========
+
+@router.get("/archive", response_class=HTMLResponse)
+async def archive_page(request: Request):
+    """アーカイブ済み案件一覧ページ"""
+    try:
+        archived = await notion_service.list_archived_projects()
+    except Exception:
+        archived = []
+    return _get_templates().TemplateResponse(request, "archive.html", {
+        "projects": archived,
+        "statuses": notion_service.PROJECT_STATUSES,
+    })
+
+
+@router.get("/api/projects/archived")
+async def api_list_archived():
+    """アーカイブ済み案件一覧API"""
+    try:
+        projects = await notion_service.list_archived_projects()
+        return {"projects": projects}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/projects/{project_id}/unarchive")
+async def api_unarchive_project(project_id: str):
+    """案件をアーカイブから復活"""
+    try:
+        project = await notion_service.unarchive_project(project_id)
+        return {"success": True, "project": project}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ========== メモからタスク抽出 ==========
 
 class ExtractTasksRequest(BaseModel):

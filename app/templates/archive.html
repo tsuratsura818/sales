@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}アーカイブ - 営業自動化ツール{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
+    <div>
+        <h1>📦 アーカイブ</h1>
+        <p>アーカイブ済みの案件一覧。復活ボタンで案件管理ボードに戻せます。</p>
+    </div>
+    <a href="/projects" class="btn btn-secondary">← 案件管理に戻る</a>
+</div>
+
+{% if projects %}
+<div class="card" style="padding:0; overflow:hidden;">
+    <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+        <thead>
+            <tr style="background:#f8f9fa; border-bottom:2px solid #e0e0e0;">
+                <th style="padding:12px 16px; text-align:left;">案件名</th>
+                <th style="padding:12px 16px; text-align:left;">クライアント</th>
+                <th style="padding:12px 16px; text-align:left;">ステータス</th>
+                <th style="padding:12px 16px; text-align:right;">金額</th>
+                <th style="padding:12px 16px; text-align:center;">操作</th>
+            </tr>
+        </thead>
+        <tbody id="archiveTable">
+            {% for p in projects %}
+            <tr id="row-{{ p.id }}" style="border-bottom:1px solid #f0f0f0;">
+                <td style="padding:10px 16px; font-weight:500;">{{ p.name or '（無題）' }}</td>
+                <td style="padding:10px 16px; color:#666;">{{ p.client or '-' }}</td>
+                <td style="padding:10px 16px;">
+                    <span style="padding:2px 8px; border-radius:4px; font-size:0.8rem;
+                        {% if p.status == '完了' %}background:#e8f5e9; color:#2e7d32;
+                        {% elif p.status == '失注' %}background:#ffebee; color:#c62828;
+                        {% else %}background:#f5f5f5; color:#666;{% endif %}">
+                        {{ p.status or '-' }}
+                    </span>
+                </td>
+                <td style="padding:10px 16px; text-align:right;">
+                    {% if p.amount %}{{ "{:,}".format(p.amount) }}円{% else %}-{% endif %}
+                </td>
+                <td style="padding:10px 16px; text-align:center;">
+                    <select class="form-control" style="display:inline; width:auto; font-size:0.8rem; padding:4px 8px;"
+                            id="restore-status-{{ p.id }}">
+                        {% for s in statuses %}
+                        <option value="{{ s }}" {% if s == '見込み' %}selected{% endif %}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-sm btn-primary" onclick="restoreProject('{{ p.id }}')" style="margin-left:4px;">
+                        復活
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<p style="color:#888; font-size:0.85rem; margin-top:8px;">{{ projects|length }}件のアーカイブ済み案件</p>
+{% else %}
+<div class="card" style="text-align:center; padding:40px; color:#999;">
+    アーカイブ済みの案件はありません
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function restoreProject(projectId) {
+    const statusSelect = document.getElementById(`restore-status-${projectId}`);
+    const newStatus = statusSelect.value;
+
+    if (!confirm(`この案件を「${newStatus}」で復活させますか？`)) return;
+
+    try {
+        // アーカイブ解除
+        const resp1 = await fetch(`/api/projects/${projectId}/unarchive`, {method: 'POST'});
+        if (!resp1.ok) throw new Error('復活に失敗');
+
+        // ステータス更新
+        await fetch(`/api/projects/${projectId}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({status: newStatus}),
+        });
+
+        // 行を消す
+        const row = document.getElementById(`row-${projectId}`);
+        if (row) {
+            row.style.transition = 'opacity 0.3s';
+            row.style.opacity = '0';
+            setTimeout(() => row.remove(), 300);
+        }
+
+        alert('案件を復活しました');
+    } catch (err) {
+        alert('エラー: ' + err.message);
+    }
+}
+</script>
+{% endblock %}

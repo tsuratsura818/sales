@@ -354,7 +354,7 @@
             </div>
         </div>
         <div class="modal-footer" id="detailActions" style="display:none;">
-            <button class="btn btn-secondary" style="margin-right:auto;" onclick="deleteProject()">🗑 削除</button>
+            <button class="btn btn-secondary" style="margin-right:auto;" onclick="archiveProject()">📦 アーカイブ</button>
             <button class="btn btn-secondary" onclick="closeDetailModal()">キャンセル</button>
             <button class="btn btn-primary" onclick="saveProject()">保存</button>
         </div>
@@ -713,9 +713,9 @@ async function saveProject() {
     }
 }
 
-async function deleteProject() {
+async function archiveProject() {
     if (!currentProjectId) return;
-    if (!confirm('この案件を削除しますか？')) return;
+    if (!confirm('この案件をアーカイブしますか？（後から復活できます）')) return;
 
     try {
         const resp = await fetch(`/api/projects/${currentProjectId}`, {method: 'DELETE'});
@@ -723,7 +723,7 @@ async function deleteProject() {
             location.reload();
         } else {
             const data = await resp.json();
-            alert(data.detail || '削除に失敗しました');
+            alert(data.detail || 'アーカイブに失敗しました');
         }
     } catch (err) {
         alert('通信エラー: ' + err.message);
