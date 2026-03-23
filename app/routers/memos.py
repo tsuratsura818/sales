@@ -24,16 +24,8 @@ def _get_templates():
 
 @router.get("/memos", response_class=HTMLResponse)
 async def memos_page(request: Request, db: Session = Depends(get_db)):
-    """メモ一覧ページ"""
-    try:
-        memos = db.query(Memo).order_by(desc(Memo.updated_at)).all()
-        return _get_templates().TemplateResponse("memos.html", {
-            "request": request,
-            "memos": memos,
-        })
-    except Exception as e:
-        import traceback
-        return HTMLResponse(f"<pre>{traceback.format_exc()}</pre>", status_code=500)
+    memos = db.query(Memo).order_by(desc(Memo.updated_at)).all()
+    return _get_templates().TemplateResponse(request, "memos.html", {"memos": memos})
 
 
 # ========== API ==========

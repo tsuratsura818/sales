@@ -49,8 +49,7 @@ async def today_page(request: Request):
     finally:
         db.close()
 
-    return _get_templates().TemplateResponse("today.html", {
-        "request": request,
+    return _get_templates().TemplateResponse(request, "today.html", {
         "today_str": today_str,
         "cal_connected": cal_status.get("ok", False),
         "cal_error": cal_status.get("error"),

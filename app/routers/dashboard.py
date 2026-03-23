@@ -37,15 +37,14 @@ def _calc_cost(job: SearchJob) -> dict:
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
-    return _get_templates().TemplateResponse("dashboard.html", {"request": request})
+    return _get_templates().TemplateResponse(request, "dashboard.html", {})
 
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request, db: Session = Depends(get_db)):
     jobs = db.query(SearchJob).order_by(desc(SearchJob.created_at)).limit(5).all()
     jobs_with_cost = [{"job": j, "cost": _calc_cost(j)} for j in jobs]
-    return _get_templates().TemplateResponse("index.html", {
-        "request": request,
+    return _get_templates().TemplateResponse(request, "index.html", {
         "recent_jobs": jobs,
         "jobs_with_cost": jobs_with_cost,
     })
@@ -80,8 +79,7 @@ async def leads_page(request: Request, job_id: int | None = None, db: Session = 
         else:
             lead._breakdown = {}
 
-    return _get_templates().TemplateResponse("leads.html", {
-        "request": request,
+    return _get_templates().TemplateResponse(request, "leads.html", {
         "leads": leads,
         "job": job,
         "job_id": job_id,
@@ -129,8 +127,7 @@ async def lead_detail_page(lead_id: int, request: Request, db: Session = Depends
     # Phase 7: ポートフォリオ
     matched_portfolios = get_portfolios_for_lead(db, lead)
 
-    return _get_templates().TemplateResponse("lead_detail.html", {
-        "request": request,
+    return _get_templates().TemplateResponse(request, "lead_detail.html", {
         "lead": lead,
         "breakdown": breakdown,
         "screenshots": screenshots,
@@ -164,12 +161,12 @@ async def delete_job(job_id: int, db: Session = Depends(get_db)):
 @router.get("/sent", response_class=HTMLResponse)
 async def sent_page(request: Request, db: Session = Depends(get_db)):
     logs = db.query(EmailLog).order_by(desc(EmailLog.created_at)).all()
-    return _get_templates().TemplateResponse("sent.html", {"request": request, "logs": logs})
+    return _get_templates().TemplateResponse(request, "sent.html", {"logs": logs})
 
 
 @router.get("/links", response_class=HTMLResponse)
 async def links_page(request: Request):
-    return _get_templates().TemplateResponse("links.html", {"request": request})
+    return _get_templates().TemplateResponse(request, "links.html", {})
 
 
 @router.get("/followups", response_class=HTMLResponse)
@@ -209,8 +206,7 @@ async def followups_page(request: Request, db: Session = Depends(get_db)):
         "stopped": sum(1 for d in followup_data if d["lead"].followup_status == "stopped"),
     }
 
-    return _get_templates().TemplateResponse("followups.html", {
-        "request": request,
+    return _get_templates().TemplateResponse(request, "followups.html", {
         "followup_data": followup_data,
         "counts": counts,
     })
@@ -218,9 +214,9 @@ async def followups_page(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/roadmap", response_class=HTMLResponse)
 async def roadmap_page(request: Request):
-    return _get_templates().TemplateResponse("roadmap.html", {"request": request})
+    return _get_templates().TemplateResponse(request, "roadmap.html", {})
 
 
 @router.get("/manual", response_class=HTMLResponse)
 async def manual_page(request: Request):
-    return _get_templates().TemplateResponse("manual.html", {"request": request})
+    return _get_templates().TemplateResponse(request, "manual.html", {})

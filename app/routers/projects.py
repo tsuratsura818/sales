@@ -24,8 +24,7 @@ async def projects_page(request: Request):
     projects = []
     if conn["ok"]:
         projects = await notion_service.list_projects()
-    return _get_templates().TemplateResponse("projects.html", {
-        "request": request,
+    return _get_templates().TemplateResponse(request, "projects.html", {
         "projects": projects,
         "statuses": notion_service.PROJECT_STATUSES,
         "contract_types": notion_service.CONTRACT_TYPES,
@@ -44,8 +43,7 @@ async def gantt_page(request: Request):
     if conn["ok"]:
         projects = await notion_service.list_projects()
         tasks = await notion_service.list_tasks()
-    return _get_templates().TemplateResponse("gantt.html", {
-        "request": request,
+    return _get_templates().TemplateResponse(request, "gantt.html", {
         "projects": projects,
         "tasks": tasks,
         "connected": conn["ok"],

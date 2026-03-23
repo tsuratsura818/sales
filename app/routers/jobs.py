@@ -53,8 +53,7 @@ async def jobs_page(
         "skipped": db.query(JobListing).filter(JobListing.status == "skipped").count(),
     }
 
-    return _get_templates().TemplateResponse("jobs.html", {
-        "request": request,
+    return _get_templates().TemplateResponse(request, "jobs.html", {
         "listings": listings,
         "counts": counts,
         "current_status": status,

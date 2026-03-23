@@ -44,8 +44,7 @@ class PortfolioUpdate(BaseModel):
 @router.get("/portfolios", response_class=HTMLResponse)
 async def portfolios_page(request: Request, db: Session = Depends(get_db)):
     portfolios = db.query(Portfolio).order_by(desc(Portfolio.created_at)).all()
-    return _get_templates().TemplateResponse("portfolios.html", {
-        "request": request,
+    return _get_templates().TemplateResponse(request, "portfolios.html", {
         "portfolios": portfolios,
         "industry_categories": INDUSTRY_CATEGORIES,
         "service_types": SERVICE_TYPES,
