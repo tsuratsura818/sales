@@ -94,6 +94,7 @@
             {% for p in projects if p.status == status %}
             <div class="kanban-card {% if p.contract_type == '継続' %}kanban-card-retainer{% endif %}"
                  draggable="true" data-id="{{ p.id }}" data-contract="{{ p.contract_type or '単発' }}"
+                 data-memo="{{ (p.memo or '') | e }}"
                  ondragstart="handleDragStart(event, '{{ p.id }}')"
                  onclick="showDetailModal('{{ p.id }}')">
                 {% if p.contract_type == '継続' %}
@@ -368,7 +369,8 @@ function searchProjects(query) {
             return;
         }
         const text = card.textContent.toLowerCase();
-        card.style.display = (filterOk && text.includes(q)) ? '' : 'none';
+        const memo = (card.dataset.memo || '').toLowerCase();
+        card.style.display = (filterOk && (text.includes(q) || memo.includes(q))) ? '' : 'none';
     });
     updateColumnCounts();
 }
