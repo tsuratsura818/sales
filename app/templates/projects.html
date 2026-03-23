@@ -37,6 +37,59 @@
     </div>
 </div>
 
+<!-- クライアント一覧 -->
+{% set client_names = projects | map(attribute='client') | select('string') | unique | sort | list %}
+{% set clients_with_count = [] %}
+<div class="client-filter-bar" id="clientFilterBar">
+    <span class="client-filter-label">👤 クライアント</span>
+    <div class="client-chips" id="clientChips">
+        {% for c in client_names %}
+        {% if c and c|trim %}
+        {% set count = projects | selectattr('client', 'equalto', c) | list | length %}
+        <button class="client-chip" data-client="{{ c }}" onclick="filterByClient(this, '{{ c | e }}')">
+            {{ c }} <span class="client-chip-count">{{ count }}</span>
+        </button>
+        {% endif %}
+        {% endfor %}
+    </div>
+    <button class="client-chips-toggle" id="clientChipsToggle" onclick="toggleClientChips()" style="display:none;">
+        <span id="clientToggleText">もっと見る ▼</span>
+    </button>
+</div>
+
+<style>
+.client-filter-bar {
+    background: #fff; border: 1px solid #e8e8e8; border-radius: 8px;
+    padding: 10px 14px; margin-bottom: 16px; position: relative;
+}
+.client-filter-label {
+    font-size: 0.8rem; font-weight: 600; color: #666; margin-right: 8px; white-space: nowrap;
+}
+.client-chips {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    max-height: 38px; overflow: hidden; transition: max-height 0.3s;
+}
+.client-chips.expanded { max-height: 500px; }
+.client-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border: 1px solid #ddd; border-radius: 20px;
+    background: #fff; font-size: 0.78rem; cursor: pointer;
+    white-space: nowrap; transition: all 0.15s;
+}
+.client-chip:hover { background: #f0f7ff; border-color: #90caf9; }
+.client-chip.active { background: #1976d2; color: #fff; border-color: #1976d2; }
+.client-chip.active .client-chip-count { background: rgba(255,255,255,0.3); color: #fff; }
+.client-chip-count {
+    background: #f0f0f0; color: #888; font-size: 0.7rem; padding: 0 5px;
+    border-radius: 10px; min-width: 16px; text-align: center;
+}
+.client-chips-toggle {
+    display: block; margin-top: 6px; background: none; border: none;
+    color: #1976d2; font-size: 0.78rem; cursor: pointer; padding: 0;
+}
+.client-chips-toggle:hover { text-decoration: underline; }
+</style>
+
 <!-- 集計カード -->
 <div class="stats-row">
     {% set ns = namespace(prospect=0, proposal=0, meeting=0, won=0, active=0, done=0, lost=0, total_amount=0, retainer_amount=0, retainer_count=0) %}
@@ -94,7 +147,7 @@
             {% for p in projects if p.status == status %}
             <div class="kanban-card {% if p.contract_type == '継続' %}kanban-card-retainer{% endif %}"
                  draggable="true" data-id="{{ p.id }}" data-contract="{{ p.contract_type or '単発' }}"
-                 data-memo="{{ (p.memo or '') | e }}"
+                 data-client="{{ (p.client or '') | e }}" data-memo="{{ (p.memo or '') | e }}"
                  ondragstart="handleDragStart(event, '{{ p.id }}')"
                  onclick="showDetailModal('{{ p.id }}')">
                 {% if p.contract_type == '継続' %}
@@ -384,45 +437,81 @@
 let currentProjectId = null;
 let currentProjectData = null;
 let draggedId = null;
+let activeClientFilter = null;
 
-// ========== フィルター ==========
+// ========== 統合フィルタ ==========
+
+function applyAllFilters() {
+    const contractFilter = document.querySelector('.filter-toggle.active')?.dataset.filter || 'all';
+    const searchQuery = (document.getElementById('projectSearch')?.value || '').toLowerCase().trim();
+
+    document.querySelectorAll('.kanban-card').forEach(card => {
+        const ct = card.dataset.contract || '単発';
+        const client = (card.dataset.client || '').toLowerCase();
+
+        const contractOk = contractFilter === 'all' || ct === contractFilter;
+        const clientOk = !activeClientFilter || client === activeClientFilter.toLowerCase();
+
+        let searchOk = true;
+        if (searchQuery) {
+            const text = card.textContent.toLowerCase();
+            const memo = (card.dataset.memo || '').toLowerCase();
+            searchOk = text.includes(searchQuery) || memo.includes(searchQuery);
+        }
+
+        card.style.display = (contractOk && clientOk && searchOk) ? '' : 'none';
+    });
+    updateColumnCounts();
+}
+
+// ========== 契約タイプフィルター ==========
 
 function filterProjects(type) {
     document.querySelectorAll('.project-filter-bar .filter-toggle').forEach(b => b.classList.remove('active'));
     document.querySelector(`.filter-toggle[data-filter="${type}"]`).classList.add('active');
-
-    document.querySelectorAll('.kanban-card').forEach(card => {
-        const ct = card.dataset.contract || '単発';
-        if (type === 'all') {
-            card.style.display = '';
-        } else {
-            card.style.display = ct === type ? '' : 'none';
-        }
-    });
-
-    updateColumnCounts();
+    applyAllFilters();
 }
 
 // ========== 検索 ==========
 
 function searchProjects(query) {
-    const q = query.toLowerCase().trim();
-    const activeFilter = document.querySelector('.filter-toggle.active')?.dataset.filter || 'all';
-
-    document.querySelectorAll('.kanban-card').forEach(card => {
-        const ct = card.dataset.contract || '単発';
-        const filterOk = activeFilter === 'all' || ct === activeFilter;
-
-        if (!q) {
-            card.style.display = filterOk ? '' : 'none';
-            return;
-        }
-        const text = card.textContent.toLowerCase();
-        const memo = (card.dataset.memo || '').toLowerCase();
-        card.style.display = (filterOk && (text.includes(q) || memo.includes(q))) ? '' : 'none';
-    });
-    updateColumnCounts();
+    applyAllFilters();
 }
+
+// ========== クライアントフィルター ==========
+
+function filterByClient(btn, clientName) {
+    if (activeClientFilter === clientName) {
+        activeClientFilter = null;
+        btn.classList.remove('active');
+    } else {
+        document.querySelectorAll('.client-chip').forEach(c => c.classList.remove('active'));
+        activeClientFilter = clientName;
+        btn.classList.add('active');
+    }
+    document.getElementById('projectSearch').value = '';
+    applyAllFilters();
+}
+
+function toggleClientChips() {
+    const chips = document.getElementById('clientChips');
+    const text = document.getElementById('clientToggleText');
+    chips.classList.toggle('expanded');
+    text.textContent = chips.classList.contains('expanded') ? '閉じる ▲' : 'もっと見る ▼';
+}
+
+// クライアントチップの「もっと見る」表示制御
+(function() {
+    const chips = document.getElementById('clientChips');
+    const toggle = document.getElementById('clientChipsToggle');
+    if (chips && toggle) {
+        requestAnimationFrame(() => {
+            if (chips.scrollHeight > 44) {
+                toggle.style.display = 'block';
+            }
+        });
+    }
+})();
 
 function updateColumnCounts() {
     document.querySelectorAll('.kanban-column').forEach(col => {
