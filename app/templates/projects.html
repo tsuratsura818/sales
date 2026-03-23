@@ -23,11 +23,17 @@
 {% else %}
 
 <!-- フィルターバー -->
-<div class="project-filter-bar">
+<div class="project-filter-bar" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
     <div class="filter-toggle-group">
         <button class="filter-toggle active" data-filter="all" onclick="filterProjects('all')">全案件</button>
         <button class="filter-toggle" data-filter="継続" onclick="filterProjects('継続')">🔄 継続</button>
         <button class="filter-toggle" data-filter="単発" onclick="filterProjects('単発')">📌 単発</button>
+    </div>
+    <div style="position:relative;">
+        <input type="text" id="projectSearch" placeholder="案件名・クライアント名で検索..."
+               oninput="searchProjects(this.value)"
+               style="padding:8px 12px 8px 32px; border:1px solid #ddd; border-radius:6px; font-size:0.85rem; width:280px; box-sizing:border-box;">
+        <span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#aaa; font-size:0.85rem;">🔍</span>
     </div>
 </div>
 
@@ -344,7 +350,26 @@ function filterProjects(type) {
         }
     });
 
-    // カウント更新
+    updateColumnCounts();
+}
+
+// ========== 検索 ==========
+
+function searchProjects(query) {
+    const q = query.toLowerCase().trim();
+    document.querySelectorAll('.kanban-card').forEach(card => {
+        if (!q) {
+            card.style.display = '';
+            return;
+        }
+        const title = (card.querySelector('.kanban-card-title')?.textContent || '').toLowerCase();
+        const client = (card.querySelector('.kanban-card-client')?.textContent || '').toLowerCase();
+        card.style.display = (title.includes(q) || client.includes(q)) ? '' : 'none';
+    });
+    updateColumnCounts();
+}
+
+function updateColumnCounts() {
     document.querySelectorAll('.kanban-column').forEach(col => {
         const visible = col.querySelectorAll('.kanban-card:not([style*="display: none"])').length;
         col.querySelector('.kanban-column-count').textContent = visible;
