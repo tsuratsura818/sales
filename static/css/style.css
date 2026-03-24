@@ -2029,3 +2029,56 @@ textarea.form-control { resize: vertical; font-family: inherit; }
 .timeline-time { font-weight: bold; min-width: 110px; color: #333; white-space: nowrap; }
 .timeline-title { font-weight: 600; }
 .timeline-note { font-size: 13px; color: #888; margin-top: 2px; }
+
+/* ========================================
+   レスポンシブ強化（全ページ共通）
+   ======================================== */
+
+/* タブレット（768px以下） */
+@media (max-width: 768px) {
+    .container { padding: 16px 12px; }
+    .navbar { padding: 0 12px; }
+    .nav-brand { font-size: 15px; margin-right: 8px; }
+    .page-header h1 { font-size: 18px; }
+    .page-header p { font-size: 13px; }
+
+    .form-grid { grid-template-columns: 1fr; gap: 12px; }
+
+    .stats-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .stat-card { padding: 12px; }
+    .stat-number { font-size: 20px; }
+    .stat-label { font-size: 11px; }
+
+    .kanban-column { flex: 0 0 160px; }
+    .kanban-board { min-height: 300px; gap: 8px; }
+    .kanban-column-header { padding: 10px 10px; font-size: 12px; }
+    .kanban-card { padding: 10px; }
+    .kanban-card-title { font-size: 12px; }
+
+    .modal-content { width: 95% !important; max-width: none !important; margin: 8px auto; }
+
+    .detail-grid { grid-template-columns: 1fr; }
+    .dashboard-grid { grid-template-columns: 1fr; }
+}
+
+/* スマホ（480px以下） */
+@media (max-width: 480px) {
+    .container { padding: 12px 8px; }
+    .page-header h1 { font-size: 16px; }
+
+    .stats-row { grid-template-columns: 1fr 1fr; gap: 6px; }
+    .stat-number { font-size: 18px; }
+
+    .kanban-column { flex: 0 0 140px; }
+    .kanban-card { padding: 8px; }
+    .kanban-card-title { font-size: 11px; }
+    .kanban-card-client { font-size: 10px; }
+    .kanban-card-amount { font-size: 11px; }
+
+    .stats-row-6 { grid-template-columns: 1fr 1fr; }
+
+    .card { padding: 14px; margin-bottom: 12px; }
+
+    .task-item { flex-wrap: wrap; }
+    .task-item-right { width: 100%; justify-content: flex-end; margin-top: 4px; }
+}

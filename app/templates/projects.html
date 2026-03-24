@@ -2,12 +2,12 @@
 {% block title %}案件管理{% endblock %}
 
 {% block content %}
-<div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
     <div>
         <h1>📋 案件管理ボード</h1>
         <p>Notion連携の案件管理。ドラッグ&ドロップでステータスを変更できます。</p>
     </div>
-    <div style="display:flex; gap:8px;">
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <a href="/gantt" class="btn btn-secondary">📊 ガントチャート</a>
         <button class="btn btn-secondary" onclick="showBulkModal()">📥 一括登録</button>
         <button class="btn btn-primary" onclick="showAddModal()">＋ 案件追加</button>
@@ -29,10 +29,10 @@
         <button class="filter-toggle" data-filter="継続" onclick="filterProjects('継続')">🔄 継続</button>
         <button class="filter-toggle" data-filter="単発" onclick="filterProjects('単発')">📌 単発</button>
     </div>
-    <div style="position:relative;">
+    <div style="position:relative; flex:0 1 280px; min-width:160px;">
         <input type="text" id="projectSearch" placeholder="案件名・クライアント名で検索..."
                oninput="searchProjects(this.value)"
-               style="padding:8px 12px 8px 32px; border:1px solid #ddd; border-radius:6px; font-size:0.85rem; width:280px; box-sizing:border-box;">
+               style="padding:8px 12px 8px 32px; border:1px solid #ddd; border-radius:6px; font-size:0.85rem; width:100%; box-sizing:border-box;">
         <span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#aaa; font-size:0.85rem;">🔍</span>
     </div>
 </div>
@@ -253,7 +253,7 @@
                 <!-- 2カラムレイアウト: 左=案件情報 / 右=メモ -->
                 <div style="display:flex; gap:20px; flex-wrap:wrap;">
                     <!-- 左カラム: 案件基本情報 -->
-                    <div style="flex:1; min-width:280px;">
+                    <div style="flex:1; min-width:0;">
                         <div class="form-grid">
                             <div class="form-group full-width">
                                 <label>案件名</label>
@@ -306,7 +306,7 @@
                     </div>
 
                     <!-- 右カラム: メモ -->
-                    <div style="flex:1; min-width:300px;">
+                    <div style="flex:1; min-width:0;">
                         <div class="detail-memo-panel">
                             <div class="detail-memo-header">
                                 <span>📝 メモ</span>
@@ -336,13 +336,13 @@
                     </div>
                     <div id="addTaskForm" style="display:none; margin-bottom:12px;">
                         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                            <input type="text" id="newTaskName" class="form-control" style="flex:1; min-width:200px;" placeholder="タスク名">
-                            <select id="newTaskPriority" class="form-control" style="width:80px;">
+                            <input type="text" id="newTaskName" class="form-control" style="flex:1; min-width:120px;" placeholder="タスク名">
+                            <select id="newTaskPriority" class="form-control" style="width:70px; flex-shrink:0;">
                                 <option value="高">高</option>
                                 <option value="中" selected>中</option>
                                 <option value="低">低</option>
                             </select>
-                            <input type="date" id="newTaskDue" class="form-control" style="width:150px;">
+                            <input type="date" id="newTaskDue" class="form-control" style="width:140px; flex-shrink:0;">
                             <label class="checkbox-label" title="毎月繰り返すタスク">
                                 <input type="checkbox" id="newTaskRecurring"> 🔄 繰り返し
                             </label>
