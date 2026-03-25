@@ -1,8 +1,8 @@
-"""Google Calendar API クライアント - サービスアカウント方式"""
+"""Google Calendar API クライアント - サービスアカウント方式（キャッシュ付き）"""
 
 import json
 import logging
-import re
+import time
 from datetime import datetime, timedelta, timezone
 
 from app.config import get_settings
@@ -12,10 +12,15 @@ logger = logging.getLogger(__name__)
 JST = timezone(timedelta(hours=9))
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
+# キャッシュ（TTL: 5分）
+_cache: dict[str, tuple[float, list[dict]]] = {}
+_CACHE_TTL = 300
+
+# サービスオブジェクトを再利用
+_service_cache = None
+
 
 def _fix_newlines(s: str) -> str:
-    """JSON文字列の外側にある \\n だけ実際の改行に変換する。
-    文字列内（private_key等）の \\n はJSON escape として保持。"""
     parts = s.split('"')
     for i in range(0, len(parts), 2):
         parts[i] = parts[i].replace("\\n", "\n")
@@ -23,7 +28,6 @@ def _fix_newlines(s: str) -> str:
 
 
 def _try_parse(s: str) -> dict | None:
-    """JSONパースを試みる。失敗時はNone"""
     try:
         return json.loads(s)
     except (json.JSONDecodeError, ValueError):
@@ -31,16 +35,13 @@ def _try_parse(s: str) -> dict | None:
 
 
 def _parse_sa_json(raw_value: str) -> dict:
-    """環境変数から読んだサービスアカウントJSONを安全にパースする"""
     raw = raw_value.strip()
     candidates = [raw]
 
-    # 外側クォート除去版を候補に追加
     for q in ["'", '"']:
         if len(raw) > 2 and raw.startswith(q) and raw.endswith(q):
             candidates.append(raw[1:-1].strip())
 
-    # 各候補について: そのまま / {} で囲む の2パターンを試行
     for c in candidates:
         fixed = _fix_newlines(c)
         result = _try_parse(fixed)
@@ -57,7 +58,11 @@ def _parse_sa_json(raw_value: str) -> dict:
 
 
 def _get_service():
-    """認証済みの Calendar API サービスオブジェクトを返す"""
+    """認証済みの Calendar API サービスオブジェクト（再利用）"""
+    global _service_cache
+    if _service_cache is not None:
+        return _service_cache
+
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
 
@@ -69,11 +74,11 @@ def _get_service():
     credentials = service_account.Credentials.from_service_account_info(
         sa_info, scopes=SCOPES
     )
-    return build("calendar", "v3", credentials=credentials)
+    _service_cache = build("calendar", "v3", credentials=credentials)
+    return _service_cache
 
 
 def get_today_events() -> list[dict]:
-    """当日の予定を取得（JST基準）"""
     now_jst = datetime.now(JST)
     start_of_day = now_jst.replace(hour=0, minute=0, second=0, microsecond=0)
     end_of_day = start_of_day + timedelta(days=1)
@@ -81,7 +86,6 @@ def get_today_events() -> list[dict]:
 
 
 def get_week_events() -> list[dict]:
-    """今週（月曜〜日曜）の予定を取得"""
     now_jst = datetime.now(JST)
     monday = now_jst - timedelta(days=now_jst.weekday())
     start = monday.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -90,17 +94,12 @@ def get_week_events() -> list[dict]:
 
 
 def get_month_events(year: int, month: int) -> list[dict]:
-    """指定月の予定を取得（カレンダー表示用に前後の週も含む）"""
     import calendar
-    # 月の1日
     first_day = datetime(year, month, 1, tzinfo=JST)
-    # カレンダー表示の開始日（月曜始まり）
-    start_weekday = first_day.weekday()  # 0=月曜
+    start_weekday = first_day.weekday()
     cal_start = first_day - timedelta(days=start_weekday)
-    # 月の最終日
     _, last_date = calendar.monthrange(year, month)
     last_day = datetime(year, month, last_date, 23, 59, 59, tzinfo=JST)
-    # カレンダー表示の終了日（日曜まで）
     end_weekday = last_day.weekday()
     cal_end = last_day + timedelta(days=(6 - end_weekday))
     cal_end = cal_end.replace(hour=23, minute=59, second=59)
@@ -109,7 +108,15 @@ def get_month_events(year: int, month: int) -> list[dict]:
 
 
 def _fetch_events(time_min: str, time_max: str) -> list[dict]:
-    """Calendar API からイベントを取得し整形して返す"""
+    cache_key = f"{time_min}|{time_max}"
+    now = time.time()
+
+    # キャッシュチェック
+    if cache_key in _cache:
+        cached_at, cached_events = _cache[cache_key]
+        if now - cached_at < _CACHE_TTL:
+            return cached_events
+
     settings = get_settings()
     service = _get_service()
 
@@ -141,20 +148,24 @@ def _fetch_events(time_min: str, time_max: str) -> list[dict]:
             "status": item.get("status", "confirmed"),
         })
 
+    _cache[cache_key] = (now, events)
     return events
 
 
 def check_connection() -> dict:
-    """Googleカレンダー接続確認"""
+    """接続確認（軽量版: 設定チェック + キャッシュ済みデータ優先）"""
     settings = get_settings()
     if not settings.GOOGLE_SERVICE_ACCOUNT_JSON:
         return {"ok": False, "error": "GOOGLE_SERVICE_ACCOUNT_JSON が未設定"}
     if not settings.GOOGLE_CALENDAR_ID:
         return {"ok": False, "error": "GOOGLE_CALENDAR_ID が未設定"}
+
+    # キャッシュにデータがあれば接続済みとみなす
+    if _cache:
+        return {"ok": True, "event_count": -1}
+
     try:
         events = get_today_events()
         return {"ok": True, "event_count": len(events)}
     except Exception as e:
         return {"ok": False, "error": str(e)[:300]}
-
-

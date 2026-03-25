@@ -437,8 +437,17 @@ async def generate_monthly_tasks(project_id: str, year_month: str) -> list[dict]
 
 # ========== Notion DB初期化ヘルパー ==========
 
+_conn_cache: dict | None = None
+_conn_cache_at: float = 0
+
 async def check_connection() -> dict:
-    """Notion API接続確認"""
+    """Notion API接続確認（5分キャッシュ）"""
+    import time
+    global _conn_cache, _conn_cache_at
+
+    if _conn_cache and time.time() - _conn_cache_at < 300:
+        return _conn_cache
+
     try:
         project_db_id, task_db_id = _db_ids()
         if not get_settings().NOTION_API_KEY:
@@ -459,6 +468,8 @@ async def check_connection() -> dict:
             if resp2.status_code != 200:
                 return {"ok": False, "error": f"タスクDB接続失敗: {resp2.status_code}"}
 
-        return {"ok": True}
+        _conn_cache = {"ok": True}
+        _conn_cache_at = time.time()
+        return _conn_cache
     except Exception as e:
         return {"ok": False, "error": str(e)}
