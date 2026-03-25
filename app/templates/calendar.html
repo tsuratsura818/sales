@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}カレンダー - {{ year }}年{{ month }}月{% endblock %}
+
+{% block content %}
+<style>
+.cal-container { background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow: hidden; }
+.cal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid #e0e0e0;
+}
+.cal-header h2 { margin: 0; font-size: 1.3rem; }
+.cal-nav { display: flex; align-items: center; gap: 8px; }
+.cal-nav-btn {
+    background: none; border: 1px solid #ddd; border-radius: 6px;
+    padding: 6px 14px; cursor: pointer; font-size: 0.85rem; color: #333;
+}
+.cal-nav-btn:hover { background: #f5f5f5; }
+.cal-today-btn { background: #fff; font-weight: 600; }
+
+.cal-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    border-top: 1px solid #e8e8e8;
+}
+.cal-weekday {
+    padding: 10px 4px; text-align: center; font-size: 0.8rem;
+    font-weight: 600; color: #555; border-bottom: 1px solid #e8e8e8;
+    background: #fafafa;
+}
+.cal-weekday-sat { color: #1976d2; }
+.cal-weekday-sun { color: #d32f2f; }
+
+.cal-cell {
+    min-height: 110px; border-bottom: 1px solid #f0f0f0;
+    border-right: 1px solid #f0f0f0; padding: 4px; position: relative;
+    cursor: default;
+}
+.cal-cell:nth-child(7n) { border-right: none; }
+.cal-cell-other { background: #fafafa; }
+.cal-cell-today { background: #e8f0fe; }
+.cal-cell-sat { }
+.cal-cell-sun { }
+
+.cal-day-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; font-size: 0.85rem; font-weight: 500;
+    margin: 2px 2px 4px; border-radius: 50%; color: #333;
+}
+.cal-cell-today .cal-day-num {
+    background: #1976d2; color: #fff; font-weight: 700;
+}
+.cal-cell-other .cal-day-num { color: #bbb; }
+.cal-cell-sun .cal-day-num { color: #d32f2f; }
+.cal-cell-sat .cal-day-num { color: #1976d2; }
+.cal-cell-other.cal-cell-sun .cal-day-num,
+.cal-cell-other.cal-cell-sat .cal-day-num { opacity: 0.5; }
+
+.cal-events { display: flex; flex-direction: column; gap: 2px; }
+.cal-event {
+    font-size: 0.72rem; padding: 2px 6px; border-radius: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    cursor: pointer; line-height: 1.4;
+}
+.cal-event:hover { opacity: 0.85; }
+.cal-event-allday {
+    background: #039be5; color: #fff; font-weight: 500;
+}
+.cal-event-timed {
+    background: transparent; color: #333; border-left: 3px solid #039be5;
+    padding-left: 4px;
+}
+.cal-event-timed .cal-event-time { color: #039be5; font-weight: 600; }
+.cal-event-more {
+    font-size: 0.72rem; color: #1976d2; padding: 2px 6px;
+    cursor: pointer; font-weight: 500;
+}
+.cal-event-more:hover { text-decoration: underline; }
+
+/* モーダル */
+.cal-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.3);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+}
+.cal-modal {
+    background: #fff; border-radius: 12px; padding: 20px; width: 360px;
+    max-width: 90vw; max-height: 80vh; overflow-y: auto;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+}
+.cal-modal h3 { margin: 0 0 12px; font-size: 1rem; }
+.cal-modal-event {
+    padding: 10px 12px; border-radius: 8px; margin-bottom: 8px;
+}
+.cal-modal-event-allday { background: #e3f2fd; border-left: 3px solid #039be5; }
+.cal-modal-event-timed { background: #f5f5f5; border-left: 3px solid #039be5; }
+.cal-modal-event-title { font-weight: 600; font-size: 0.9rem; }
+.cal-modal-event-time { font-size: 0.8rem; color: #666; margin-top: 2px; }
+.cal-modal-event-loc { font-size: 0.8rem; color: #888; margin-top: 2px; }
+.cal-modal-close {
+    display: block; width: 100%; margin-top: 8px; padding: 8px;
+    background: #f5f5f5; border: none; border-radius: 6px; cursor: pointer;
+    font-size: 0.85rem;
+}
+
+/* レスポンシブ */
+@media (max-width: 768px) {
+    .cal-cell { min-height: 80px; padding: 2px; }
+    .cal-day-num { width: 24px; height: 24px; font-size: 0.75rem; }
+    .cal-event { font-size: 0.65rem; padding: 1px 4px; }
+    .cal-header { padding: 12px 14px; flex-wrap: wrap; gap: 8px; }
+    .cal-header h2 { font-size: 1.1rem; }
+}
+@media (max-width: 480px) {
+    .cal-cell { min-height: 60px; }
+    .cal-event { display: none; }
+    .cal-event:first-child { display: block; }
+    .cal-event-more { display: block !important; }
+    .cal-weekday { font-size: 0.7rem; padding: 6px 2px; }
+}
+</style>
+
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h1>📅 カレンダー</h1>
+        <p>Googleカレンダーの予定を月間表示</p>
+    </div>
+    <a href="/today" class="btn btn-secondary">📋 今日のスケジュール</a>
+</div>
+
+{% if not cal_connected %}
+<div class="card">
+    <div style="text-align:center; padding:40px; color:#999;">
+        ❌ Googleカレンダー未接続<br>
+        <small>GOOGLE_SERVICE_ACCOUNT_JSON と GOOGLE_CALENDAR_ID を設定してください</small>
+    </div>
+</div>
+{% else %}
+<div class="cal-container">
+    <div class="cal-header">
+        <div class="cal-nav">
+            <a href="/calendar?year={{ prev_year }}&month={{ prev_month }}" class="cal-nav-btn">‹</a>
+            <a href="/calendar" class="cal-nav-btn cal-today-btn">今日</a>
+            <a href="/calendar?year={{ next_year }}&month={{ next_month }}" class="cal-nav-btn">›</a>
+        </div>
+        <h2>{{ year }}年{{ month }}月</h2>
+        <div style="min-width:60px;"></div>
+    </div>
+
+    <div class="cal-grid">
+        {% for wd in ['月', '火', '水', '木', '金', '土', '日'] %}
+        <div class="cal-weekday {% if loop.index == 6 %}cal-weekday-sat{% elif loop.index == 7 %}cal-weekday-sun{% endif %}">
+            {{ wd }}
+        </div>
+        {% endfor %}
+
+        {% for week in weeks %}
+        {% for day in week %}
+        <div class="cal-cell
+            {% if not day.is_current_month %}cal-cell-other{% endif %}
+            {% if day.is_today %}cal-cell-today{% endif %}
+            {% if day.weekday == 5 %}cal-cell-sat{% elif day.weekday == 6 %}cal-cell-sun{% endif %}"
+            {% if day.events|length > 0 %}onclick="showDayEvents('{{ day.date.strftime('%Y-%m-%d') }}', '{{ day.month }}月{{ day.day }}日')"{% endif %}>
+
+            <div class="cal-day-num">{{ day.day }}</div>
+
+            <div class="cal-events">
+                {% for ev in day.events[:3] %}
+                <div class="cal-event {% if ev.all_day %}cal-event-allday{% else %}cal-event-timed{% endif %}"
+                     title="{{ ev.summary }}{% if ev.location %} @ {{ ev.location }}{% endif %}">
+                    {% if ev.all_day %}
+                        {{ ev.summary }}
+                    {% else %}
+                        <span class="cal-event-time">{{ ev.start[11:16] }}</span> {{ ev.summary }}
+                    {% endif %}
+                </div>
+                {% endfor %}
+                {% if day.events|length > 3 %}
+                <div class="cal-event-more" onclick="event.stopPropagation(); showDayEvents('{{ day.date.strftime('%Y-%m-%d') }}', '{{ day.month }}月{{ day.day }}日')">
+                    他 {{ day.events|length - 3 }}件
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- イベント詳細モーダル -->
+<div id="dayModal" class="cal-modal-overlay" style="display:none;" onclick="closeDayModal(event)">
+    <div class="cal-modal" onclick="event.stopPropagation()">
+        <h3 id="dayModalTitle"></h3>
+        <div id="dayModalContent"></div>
+        <button class="cal-modal-close" onclick="document.getElementById('dayModal').style.display='none'">閉じる</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 全イベントをJSに渡す
+const allEvents = {
+    {% for week in weeks %}
+    {% for day in week %}
+    {% if day.events|length > 0 %}
+    "{{ day.date.strftime('%Y-%m-%d') }}": [
+        {% for ev in day.events %}
+        {
+            summary: {{ ev.summary | tojson }},
+            start: {{ ev.start | tojson }},
+            end: {{ ev.end | tojson }},
+            allDay: {{ 'true' if ev.all_day else 'false' }},
+            location: {{ ev.location | tojson }},
+            description: {{ ev.description | tojson }},
+        },
+        {% endfor %}
+    ],
+    {% endif %}
+    {% endfor %}
+    {% endfor %}
+};
+
+function showDayEvents(dateStr, label) {
+    const events = allEvents[dateStr] || [];
+    if (!events.length) return;
+
+    document.getElementById('dayModalTitle').textContent = '📅 ' + label;
+    let html = '';
+    events.forEach(ev => {
+        const cls = ev.allDay ? 'cal-modal-event-allday' : 'cal-modal-event-timed';
+        let timeStr = '';
+        if (ev.allDay) {
+            timeStr = '終日';
+        } else {
+            timeStr = ev.start.slice(11, 16) + ' - ' + ev.end.slice(11, 16);
+        }
+        html += `<div class="cal-modal-event ${cls}">
+            <div class="cal-modal-event-title">${ev.summary}</div>
+            <div class="cal-modal-event-time">${timeStr}</div>
+            ${ev.location ? `<div class="cal-modal-event-loc">📍 ${ev.location}</div>` : ''}
+            ${ev.description ? `<div style="font-size:0.8rem; color:#888; margin-top:4px; white-space:pre-line;">${ev.description.slice(0, 200)}</div>` : ''}
+        </div>`;
+    });
+    document.getElementById('dayModalContent').innerHTML = html;
+    document.getElementById('dayModal').style.display = 'flex';
+}
+
+function closeDayModal(e) {
+    if (e.target === document.getElementById('dayModal')) {
+        document.getElementById('dayModal').style.display = 'none';
+    }
+}
+</script>
+{% endblock %}

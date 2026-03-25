@@ -89,6 +89,25 @@ def get_week_events() -> list[dict]:
     return _fetch_events(start.isoformat(), end.isoformat())
 
 
+def get_month_events(year: int, month: int) -> list[dict]:
+    """指定月の予定を取得（カレンダー表示用に前後の週も含む）"""
+    import calendar
+    # 月の1日
+    first_day = datetime(year, month, 1, tzinfo=JST)
+    # カレンダー表示の開始日（月曜始まり）
+    start_weekday = first_day.weekday()  # 0=月曜
+    cal_start = first_day - timedelta(days=start_weekday)
+    # 月の最終日
+    _, last_date = calendar.monthrange(year, month)
+    last_day = datetime(year, month, last_date, 23, 59, 59, tzinfo=JST)
+    # カレンダー表示の終了日（日曜まで）
+    end_weekday = last_day.weekday()
+    cal_end = last_day + timedelta(days=(6 - end_weekday))
+    cal_end = cal_end.replace(hour=23, minute=59, second=59)
+
+    return _fetch_events(cal_start.isoformat(), cal_end.isoformat())
+
+
 def _fetch_events(time_min: str, time_max: str) -> list[dict]:
     """Calendar API からイベントを取得し整形して返す"""
     settings = get_settings()
@@ -102,7 +121,7 @@ def _fetch_events(time_min: str, time_max: str) -> list[dict]:
             timeMax=time_max,
             singleEvents=True,
             orderBy="startTime",
-            maxResults=50,
+            maxResults=200,
         )
         .execute()
     )

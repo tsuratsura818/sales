@@ -125,6 +125,78 @@ async def api_get_calendar():
     }
 
 
+@router.get("/calendar", response_class=HTMLResponse)
+async def calendar_page(request: Request):
+    """月間カレンダーページ"""
+    import calendar as cal_mod
+
+    now_jst = datetime.now(JST)
+    year = int(request.query_params.get("year", now_jst.year))
+    month = int(request.query_params.get("month", now_jst.month))
+
+    cal_status = calendar_service.check_connection()
+    events = []
+    if cal_status.get("ok"):
+        try:
+            events = calendar_service.get_month_events(year, month)
+        except Exception:
+            pass
+
+    # カレンダーグリッド生成（月曜始まり）
+    first_day = datetime(year, month, 1, tzinfo=JST)
+    _, last_date = cal_mod.monthrange(year, month)
+    start_weekday = first_day.weekday()
+
+    weeks: list[list[dict]] = []
+    current_date = first_day - timedelta(days=start_weekday)
+
+    while True:
+        week = []
+        for _ in range(7):
+            day_str = current_date.strftime("%Y-%m-%d")
+            day_events = []
+            for ev in events:
+                ev_date = ev["start"][:10] if ev["start"] else ""
+                if ev_date == day_str:
+                    day_events.append(ev)
+            # 終日イベントを先に
+            day_events.sort(key=lambda e: (not e["all_day"], e["start"]))
+
+            week.append({
+                "date": current_date,
+                "day": current_date.day,
+                "is_today": current_date.date() == now_jst.date(),
+                "is_current_month": current_date.month == month,
+                "events": day_events,
+                "weekday": current_date.weekday(),
+            })
+            current_date += timedelta(days=1)
+        weeks.append(week)
+        if current_date.month != month and current_date.weekday() == 0:
+            break
+
+    # 前月・翌月
+    if month == 1:
+        prev_year, prev_month = year - 1, 12
+    else:
+        prev_year, prev_month = year, month - 1
+    if month == 12:
+        next_year, next_month = year + 1, 1
+    else:
+        next_year, next_month = year, month + 1
+
+    return _get_templates().TemplateResponse(request, "calendar.html", {
+        "year": year,
+        "month": month,
+        "weeks": weeks,
+        "cal_connected": cal_status.get("ok", False),
+        "prev_year": prev_year,
+        "prev_month": prev_month,
+        "next_year": next_year,
+        "next_month": next_month,
+    })
+
+
 @router.post("/api/today/send-line")
 async def api_send_line():
     """最新のプランをLINEに送信"""
