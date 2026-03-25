@@ -41,6 +41,14 @@ async def today_page(request: Request):
     cal_status = calendar_service.check_connection()
     notion_status = await notion_service.check_connection()
 
+    # カレンダー予定取得
+    cal_events = []
+    if cal_status.get("ok"):
+        try:
+            cal_events = calendar_service.get_today_events()
+        except Exception:
+            pass
+
     db = SessionLocal()
     try:
         existing_plan = (
@@ -76,6 +84,7 @@ async def today_page(request: Request):
         "generated_at": generated_at,
         "daily_plan_enabled": daily_plan_enabled,
         "daily_plan_hour": daily_plan_hour,
+        "cal_events": cal_events,
     })
 
 

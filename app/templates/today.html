@@ -81,6 +81,44 @@
     </div>
 </div>
 
+<!-- Googleカレンダー予定 -->
+{% if cal_connected %}
+<div class="card" style="margin-bottom:16px;">
+    <h3 style="margin-top:0; display:flex; align-items:center; gap:8px;">
+        📅 今日のカレンダー
+        <span style="font-size:0.75rem; font-weight:400; color:#888;">Google Calendar</span>
+    </h3>
+    {% if cal_events %}
+    <div style="display:flex; flex-direction:column; gap:6px;">
+        {% for ev in cal_events %}
+        <div style="display:flex; align-items:flex-start; gap:12px; padding:10px 14px; border-radius:8px;
+            {% if ev.all_day %}background:#f3e5f5; border-left:3px solid #9c27b0;
+            {% else %}background:#e3f2fd; border-left:3px solid #1976d2;{% endif %}">
+            <div style="min-width:90px; font-weight:600; font-size:0.85rem; color:#333; white-space:nowrap;">
+                {% if ev.all_day %}
+                    終日
+                {% else %}
+                    {{ ev.start[11:16] }} - {{ ev.end[11:16] }}
+                {% endif %}
+            </div>
+            <div style="flex:1; min-width:0;">
+                <div style="font-weight:600; font-size:0.9rem;">{{ ev.summary }}</div>
+                {% if ev.location %}
+                <div style="font-size:0.8rem; color:#666; margin-top:2px;">📍 {{ ev.location }}</div>
+                {% endif %}
+                {% if ev.description %}
+                <div style="font-size:0.8rem; color:#888; margin-top:2px; white-space:pre-line; max-height:40px; overflow:hidden;">{{ ev.description[:100] }}</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="color:#999; margin:0; text-align:center; padding:12px;">今日の予定はありません</p>
+    {% endif %}
+</div>
+{% endif %}
+
 <!-- プラン表示エリア -->
 <div id="planArea">
     {% if plan %}
