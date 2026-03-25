@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models.daily_plan import DailyPlan
+from app.models.app_settings import AppSettings
 from app.services import daily_planner, line_service
 
 logger = logging.getLogger(__name__)
@@ -15,24 +16,35 @@ settings = get_settings()
 JST = timezone(timedelta(hours=9))
 
 
+def _get_settings_from_db() -> AppSettings | None:
+    """DBから設定を取得"""
+    db = SessionLocal()
+    try:
+        return db.query(AppSettings).first()
+    finally:
+        db.close()
+
+
 async def daily_plan_scheduler() -> None:
     """毎朝指定時刻にスケジュールを生成しLINEに送信する"""
     await asyncio.sleep(20)
-
-    if not settings.DAILY_PLAN_ENABLED:
-        logger.info("日次プラン自動生成が無効のため、スケジューラをスキップ")
-        return
 
     if not settings.LINE_CHANNEL_ACCESS_TOKEN or not settings.LINE_USER_ID:
         logger.warning("LINE未設定のため、日次プランスケジューラをスキップ")
         return
 
-    logger.info(f"日次プランスケジューラ開始（毎朝 {settings.DAILY_PLAN_HOUR_JST}:00 JST）")
+    logger.info("日次プランスケジューラ開始（DB設定で有効/無効を制御）")
 
     while True:
         try:
+            app_cfg = _get_settings_from_db()
+            if not app_cfg or not app_cfg.daily_plan_enabled:
+                logger.info("日次プラン自動送信: OFF — 60秒後に再チェック")
+                await asyncio.sleep(60)
+                continue
+
+            target_hour = app_cfg.daily_plan_hour_jst
             now_jst = datetime.now(JST)
-            target_hour = settings.DAILY_PLAN_HOUR_JST
 
             target_time = now_jst.replace(
                 hour=target_hour, minute=0, second=0, microsecond=0
@@ -45,9 +57,16 @@ async def daily_plan_scheduler() -> None:
                 f"次回プラン生成: {target_time.strftime('%Y-%m-%d %H:%M')} JST "
                 f"({wait_seconds / 3600:.1f}時間後)"
             )
-            await asyncio.sleep(wait_seconds)
+            await asyncio.sleep(min(wait_seconds, 3600))
 
-            await _generate_and_send()
+            # 再チェック（待機中にOFFにされた場合）
+            app_cfg = _get_settings_from_db()
+            if not app_cfg or not app_cfg.daily_plan_enabled:
+                continue
+
+            now_jst = datetime.now(JST)
+            if now_jst.hour == app_cfg.daily_plan_hour_jst:
+                await _generate_and_send()
 
         except asyncio.CancelledError:
             raise

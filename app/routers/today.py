@@ -10,6 +10,7 @@ from sqlalchemy import desc
 from app.services import daily_planner, calendar_service, notion_service
 from app.database import SessionLocal
 from app.models.daily_plan import DailyPlan
+from app.models.app_settings import AppSettings
 
 router = APIRouter(tags=["today"])
 
@@ -19,6 +20,17 @@ JST = timezone(timedelta(hours=9))
 def _get_templates():
     from main import templates
     return templates
+
+
+def _get_app_settings(db) -> AppSettings:
+    """AppSettings を取得（なければ作成）"""
+    row = db.query(AppSettings).first()
+    if not row:
+        row = AppSettings(daily_plan_enabled=False, daily_plan_hour_jst=8)
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return row
 
 
 @router.get("/today", response_class=HTMLResponse)
@@ -46,6 +58,10 @@ async def today_page(request: Request):
                 jst_time = utc_time.astimezone(JST)
                 generated_at = jst_time.isoformat()
 
+        app_cfg = _get_app_settings(db)
+        daily_plan_enabled = app_cfg.daily_plan_enabled
+        daily_plan_hour = app_cfg.daily_plan_hour_jst
+
     finally:
         db.close()
 
@@ -58,6 +74,8 @@ async def today_page(request: Request):
         "plan": plan_data,
         "plan_exists": existing_plan is not None,
         "generated_at": generated_at,
+        "daily_plan_enabled": daily_plan_enabled,
+        "daily_plan_hour": daily_plan_hour,
     })
 
 
@@ -122,5 +140,42 @@ async def api_send_line():
         plan_record.line_sent = 1
         db.commit()
         return {"success": True}
+    finally:
+        db.close()
+
+
+@router.get("/api/today/settings")
+async def api_get_settings():
+    """日次プラン設定を取得"""
+    db = SessionLocal()
+    try:
+        cfg = _get_app_settings(db)
+        return {
+            "daily_plan_enabled": cfg.daily_plan_enabled,
+            "daily_plan_hour": cfg.daily_plan_hour_jst,
+        }
+    finally:
+        db.close()
+
+
+@router.patch("/api/today/settings")
+async def api_update_settings(request: Request):
+    """日次プラン設定を更新"""
+    body = await request.json()
+    db = SessionLocal()
+    try:
+        cfg = _get_app_settings(db)
+        if "daily_plan_enabled" in body:
+            cfg.daily_plan_enabled = bool(body["daily_plan_enabled"])
+        if "daily_plan_hour" in body:
+            hour = int(body["daily_plan_hour"])
+            if 0 <= hour <= 23:
+                cfg.daily_plan_hour_jst = hour
+        db.commit()
+        return {
+            "success": True,
+            "daily_plan_enabled": cfg.daily_plan_enabled,
+            "daily_plan_hour": cfg.daily_plan_hour_jst,
+        }
     finally:
         db.close()

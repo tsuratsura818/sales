@@ -35,7 +35,7 @@ def get_db():
 
 
 def init_db():
-    from app.models import lead, search_job, email_log, follow_up, competitor, portfolio, job_listing, job_application, monitor_log, monitor_settings, daily_plan, memo  # noqa: F401
+    from app.models import lead, search_job, email_log, follow_up, competitor, portfolio, job_listing, job_application, monitor_log, monitor_settings, daily_plan, memo, app_settings  # noqa: F401
     Base.metadata.create_all(bind=engine)
     if _is_sqlite:
         _migrate_sqlite()
@@ -101,3 +101,14 @@ def _migrate_postgres():
                 conn.commit()
             except Exception:
                 pass
+
+        # app_settings 初期行（daily_plan_enabled=FALSE で停止状態）
+        try:
+            result = conn.execute(text("SELECT COUNT(*) FROM app_settings"))
+            if result.scalar() == 0:
+                conn.execute(text(
+                    "INSERT INTO app_settings (daily_plan_enabled, daily_plan_hour_jst) VALUES (FALSE, 8)"
+                ))
+                conn.commit()
+        except Exception:
+            pass

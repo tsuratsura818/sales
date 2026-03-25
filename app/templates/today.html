@@ -2,12 +2,12 @@
 {% block title %}今日のスケジュール{% endblock %}
 
 {% block content %}
-<div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
     <div>
         <h1>📋 今日のスケジュール</h1>
         <p>{{ today_str }} - AIが最適な1日を提案します</p>
     </div>
-    <div style="display:flex; gap:8px;">
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn btn-primary" onclick="generatePlan()" id="generateBtn">
             🤖 AIでスケジュール生成
         </button>
@@ -17,6 +17,48 @@
         </button>
     </div>
 </div>
+
+<!-- 自動送信設定 -->
+<div class="card" style="margin-bottom:16px; padding:14px 20px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+            <span style="font-weight:600; font-size:0.9rem;">📱 毎朝LINE自動送信</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="dailyPlanToggle"
+                       {% if daily_plan_enabled %}checked{% endif %}
+                       onchange="toggleDailyPlan(this.checked)">
+                <span class="toggle-slider"></span>
+            </label>
+            <span id="toggleStatus" style="font-size:0.85rem; color:{% if daily_plan_enabled %}#2e7d32{% else %}#999{% endif %};">
+                {{ 'ON' if daily_plan_enabled else 'OFF' }}
+            </span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <label style="font-size:0.85rem; color:#666;">送信時刻:</label>
+            <select id="dailyPlanHour" onchange="updateDailyPlanHour(this.value)"
+                    style="padding:4px 8px; border:1px solid #ddd; border-radius:6px; font-size:0.85rem;">
+                {% for h in range(5, 13) %}
+                <option value="{{ h }}" {% if daily_plan_hour == h %}selected{% endif %}>{{ h }}:00</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<style>
+.toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+    position: absolute; cursor: pointer; inset: 0;
+    background: #ccc; border-radius: 24px; transition: 0.3s;
+}
+.toggle-slider::before {
+    content: ""; position: absolute; height: 18px; width: 18px;
+    left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: 0.3s;
+}
+.toggle-switch input:checked + .toggle-slider { background: #1976d2; }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+</style>
 
 <!-- 接続ステータス -->
 <div class="stats-row">
@@ -151,6 +193,37 @@ async function sendToLine() {
     } finally {
         btn.disabled = false;
         btn.textContent = '📱 LINEに送信';
+    }
+}
+
+async function toggleDailyPlan(enabled) {
+    const status = document.getElementById('toggleStatus');
+    try {
+        const resp = await fetch('/api/today/settings', {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({daily_plan_enabled: enabled}),
+        });
+        const data = await resp.json();
+        if (data.success) {
+            status.textContent = data.daily_plan_enabled ? 'ON' : 'OFF';
+            status.style.color = data.daily_plan_enabled ? '#2e7d32' : '#999';
+        }
+    } catch (e) {
+        document.getElementById('dailyPlanToggle').checked = !enabled;
+        alert('設定の更新に失敗しました');
+    }
+}
+
+async function updateDailyPlanHour(hour) {
+    try {
+        await fetch('/api/today/settings', {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({daily_plan_hour: parseInt(hour)}),
+        });
+    } catch (e) {
+        alert('設定の更新に失敗しました');
     }
 }
 </script>
