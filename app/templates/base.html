@@ -10,12 +10,19 @@
     <nav class="navbar">
         <a href="/dashboard" class="nav-brand">🎯 営業自動化ツール</a>
         <div class="nav-links">
-            <a href="/today" class="nav-item">📋 今日</a>
-            <a href="/calendar" class="nav-item">📅 カレンダー</a>
             <a href="/dashboard" class="nav-item">📊 ダッシュボード</a>
 
             <div class="nav-dropdown">
-                <button class="nav-dropdown-btn">📋 営業 ▾</button>
+                <button class="nav-dropdown-btn">📅 スケジュール ▾</button>
+                <div class="nav-dropdown-menu">
+                    <a href="/today">📋 今日</a>
+                    <a href="/calendar">📅 カレンダー</a>
+                    <a href="/memos">📝 メモ</a>
+                </div>
+            </div>
+
+            <div class="nav-dropdown">
+                <button class="nav-dropdown-btn">🔍 営業 ▾</button>
                 <div class="nav-dropdown-menu">
                     <a href="/">🔍 企業検索</a>
                     <a href="/leads">📋 リード一覧</a>
@@ -24,8 +31,6 @@
                     <a href="/jobs">📡 案件モニター</a>
                 </div>
             </div>
-
-            <a href="/memos" class="nav-item">📝 メモ</a>
 
             <div class="nav-dropdown">
                 <button class="nav-dropdown-btn">📁 案件 ▾</button>
