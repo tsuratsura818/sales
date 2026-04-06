@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}メール設定 - メール配信{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+  <a href="/mail" style="color:#64748b;text-decoration:none;">&larr;</a>
+  <h2 style="margin:0;">⚙️ メール設定</h2>
+</div>
+
+{% if message %}
+<div style="padding:10px 16px;border-radius:6px;margin-bottom:16px;font-size:13px;{% if message_type == 'success' %}background:#d1fae5;color:#047857;{% else %}background:#fee2e2;color:#dc2626;{% endif %}">{{ message }}</div>
+{% endif %}
+
+<form method="post" action="/mail/settings">
+  <!-- SMTP設定 -->
+  <div class="card" style="padding:20px;margin-bottom:16px;">
+    <h3 style="margin:0 0 12px;font-size:15px;">SMTP設定</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">ホスト</label>
+        <input name="smtp_host" value="{{ user.get('smtp_host', '') }}" placeholder="smtp.gmail.com" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">ポート</label>
+        <input name="smtp_port" type="number" value="{{ user.get('smtp_port', 465) }}" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">ユーザー名</label>
+        <input name="smtp_user" value="{{ user.get('smtp_user', '') }}" placeholder="user@example.com" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">パスワード</label>
+        <input name="smtp_pass" type="password" placeholder="{{ '(設定済み)' if user.get('smtp_pass') else '' }}" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;">
+      </div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;color:#475569;cursor:pointer;">
+      <input name="smtp_secure" type="checkbox" {{ 'checked' if user.get('smtp_secure') }} style="border-radius:4px;">
+      SSL/TLS (ポート465の場合)
+    </label>
+  </div>
+
+  <!-- 送信者情報 -->
+  <div class="card" style="padding:20px;margin-bottom:16px;">
+    <h3 style="margin:0 0 4px;font-size:15px;">送信者情報</h3>
+    <p style="font-size:11px;color:#94a3b8;margin:0 0 12px;">メール署名に使用されます</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">送信者名</label>
+        <input name="sender_name" value="{{ user.get('sender_name', '') }}" placeholder="西川" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">会社名</label>
+        <input name="sender_company" value="{{ user.get('sender_company', '') }}" placeholder="TSURATSURA" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">住所</label>
+        <input name="sender_address" value="{{ user.get('sender_address', '') }}" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">電話番号</label>
+        <input name="sender_phone" value="{{ user.get('sender_phone', '') }}" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">連絡先メール</label>
+        <input name="sender_email" value="{{ user.get('sender_email', '') }}" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;">
+      </div>
+    </div>
+  </div>
+
+  <!-- ウォームアップ -->
+  <div class="card" style="padding:20px;margin-bottom:16px;">
+    <h3 style="margin:0 0 12px;font-size:15px;">送信設定</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+      <div style="text-align:center;padding:12px;background:#f8fafc;border-radius:6px;">
+        <div style="font-size:11px;color:#94a3b8;">日次上限</div>
+        <div style="font-size:20px;font-weight:bold;">{{ user.get('daily_send_limit', 5) }}通</div>
+      </div>
+      <div style="text-align:center;padding:12px;background:#f8fafc;border-radius:6px;">
+        <div style="font-size:11px;color:#94a3b8;">ウォームアップ</div>
+        <div style="font-size:20px;font-weight:bold;">{{ user.get('warmup_week', 1) }}週目</div>
+      </div>
+      <div style="text-align:center;padding:12px;background:#f8fafc;border-radius:6px;">
+        <div style="font-size:11px;color:#94a3b8;">今週の送信</div>
+        <div style="font-size:20px;font-weight:bold;">{{ user.get('weekly_sends', 0) }}通</div>
+      </div>
+    </div>
+  </div>
+
+  <button type="submit" style="padding:10px 24px;background:#4f46e5;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer;">保存する</button>
+</form>
+{% endblock %}

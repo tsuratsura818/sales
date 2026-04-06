@@ -116,6 +116,37 @@ async def mail_contacts(request: Request, page: int = 1, search: str = "", list_
     )
 
 
+@router.get("/mail/settings", response_class=HTMLResponse)
+async def mail_settings(request: Request):
+    user = mf.get_user_profile()
+    return _render("mail/settings.html", request=request, user=user, message="", message_type="")
+
+
+@router.post("/mail/settings", response_class=HTMLResponse)
+async def mail_settings_post(request: Request):
+    form = await request.form()
+    data = {
+        "smtp_host": form.get("smtp_host", ""),
+        "smtp_port": int(form.get("smtp_port", 465)),
+        "smtp_user": form.get("smtp_user", ""),
+        "smtp_secure": "smtp_secure" in form,
+        "sender_name": form.get("sender_name", ""),
+        "sender_company": form.get("sender_company", ""),
+        "sender_address": form.get("sender_address", ""),
+        "sender_phone": form.get("sender_phone", ""),
+        "sender_email": form.get("sender_email", ""),
+    }
+    # パスワードは入力があった場合のみ更新
+    if form.get("smtp_pass"):
+        data["smtp_pass"] = form.get("smtp_pass")
+
+    success = mf.update_user_profile(data)
+    user = mf.get_user_profile()
+    msg = "保存しました" if success else "保存に失敗しました"
+    msg_type = "success" if success else "error"
+    return _render("mail/settings.html", request=request, user=user, message=msg, message_type=msg_type)
+
+
 @router.get("/mail/logs", response_class=HTMLResponse)
 async def mail_logs(request: Request):
     logs = mf.get_send_logs(limit=200)

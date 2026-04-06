@@ -65,6 +65,22 @@ def _upsert(table: str, data: dict, on_conflict: str = "") -> dict:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ユーザープロフィール
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def get_user_profile() -> dict:
+    return _get_one("users", {"id": f"eq.{USER_ID}"}) or {}
+
+
+def update_user_profile(data: dict) -> bool:
+    try:
+        _patch("users", data, {"id": f"eq.{USER_ID}"})
+        return True
+    except Exception as e:
+        log.error(f"Profile update error: {e}")
+        return False
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # コンタクト
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def get_contacts(page: int = 1, search: str = "", list_id: str = "") -> dict:
