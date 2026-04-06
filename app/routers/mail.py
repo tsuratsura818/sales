@@ -1,9 +1,11 @@
 """メール配信管理ルーター（MailForge Supabase連携）"""
-from fastapi import APIRouter, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+import logging
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from app.services import mailforge_client as mf
 
+log = logging.getLogger("mail_router")
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
@@ -25,12 +27,16 @@ CC_STATUS_JA = {
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @router.get("/mail", response_class=HTMLResponse)
 async def mail_dashboard(request: Request):
-    stats = mf.get_stats()
-    return templates.TemplateResponse("mail/dashboard.html", {
-        "request": request,
-        "stats": stats,
-        "STATUS_JA": STATUS_JA,
-    })
+    try:
+        stats = mf.get_stats()
+        return templates.TemplateResponse("mail/dashboard.html", {
+            "request": request,
+            "stats": stats,
+            "STATUS_JA": STATUS_JA,
+        })
+    except Exception as e:
+        log.error(f"/mail error: {e}")
+        return HTMLResponse(f"<h3>メール配信エラー</h3><pre>{e}</pre>", status_code=500)
 
 
 @router.get("/mail/campaigns", response_class=HTMLResponse)
