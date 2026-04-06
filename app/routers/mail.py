@@ -29,8 +29,10 @@ CC_STATUS_JA = {
 async def mail_dashboard(request: Request):
     try:
         stats = mf.get_stats()
-        # campaignsのdictをそのまま渡す
         campaigns = stats.get("campaigns", [])
+        # ステータスをPython側で日本語変換
+        for c in campaigns:
+            c["status_label"] = STATUS_JA.get(str(c.get("status", "")), str(c.get("status", "")))
         return templates.TemplateResponse("mail/dashboard.html", {
             "request": request,
             "total_contacts": stats.get("total_contacts", 0),
@@ -38,7 +40,6 @@ async def mail_dashboard(request: Request):
             "active_campaigns": stats.get("active_campaigns", 0),
             "total_sent": stats.get("total_sent", 0),
             "campaigns": campaigns,
-            "STATUS_JA": STATUS_JA,
         })
     except Exception as e:
         log.error(f"/mail error: {e}", exc_info=True)

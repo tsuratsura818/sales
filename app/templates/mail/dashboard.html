@@ -36,7 +36,7 @@
           <div style="font-size:14px;font-weight:500;">{{ c['name'] }}</div>
           <div style="font-size:12px;color:#94a3b8;">{{ c['sent_count'] }}/{{ c['total_contacts'] }} 送信済み</div>
         </div>
-        <span style="font-size:11px;padding:2px 8px;border-radius:99px;background:#e0e7ff;color:#4338ca;">{{ STATUS_JA.get(c['status'], c['status']) }}</span>
+        <span style="font-size:11px;padding:2px 8px;border-radius:99px;background:#e0e7ff;color:#4338ca;">{{ c['status_label'] }}</span>
       </a>
       {% endfor %}
     {% else %}
