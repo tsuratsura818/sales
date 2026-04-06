@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     DAILY_PLAN_ENABLED: bool = True
 
     # Render
-    RENDER_BASE_URL: str = "https://sales-6g78.onrender.com"
+    RENDER_BASE_URL: str = "https://sellbuddy.tsuratsura.com"
 
     # 返信検知
     REPLY_CHECK_INTERVAL_SEC: int = 300
