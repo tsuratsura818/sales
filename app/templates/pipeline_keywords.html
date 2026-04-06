@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block title %}キーワード管理 - SellBuddy{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>検索キーワード管理</h1>
+    <p>リスト収集パイプラインで使用するキーワードの追加・編集・無効化</p>
+</div>
+
+<!-- 統計 + 操作 -->
+<div class="dashboard-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div>
+            <span id="stat-total" style="font-weight:700;">-</span> 件登録
+            <span style="color:#888;margin: 0 8px;">|</span>
+            <span id="stat-enabled" style="font-weight:700;color:var(--color-green);">-</span> 件有効
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <button class="btn btn-primary" onclick="openAddModal()">キーワード追加</button>
+            <button class="btn btn-secondary" onclick="openBulkModal()">一括追加</button>
+            <a href="/pipeline" class="btn btn-secondary">パイプラインに戻る</a>
+        </div>
+    </div>
+</div>
+
+<!-- 業種フィルタ -->
+<div style="margin-bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+    <span style="font-size:0.85rem;color:#888;font-weight:600;">業種:</span>
+    <button class="filter-toggle active" data-industry="" onclick="filterIndustry(this, '')">全て</button>
+    <div id="industry-filters"></div>
+</div>
+
+<!-- キーワード一覧 -->
+<div class="dashboard-card">
+    <div class="table-scroll">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th style="width:40px;"></th>
+                    <th>キーワード</th>
+                    <th>業種</th>
+                    <th>ソース</th>
+                    <th>メモ</th>
+                    <th style="width:100px;">操作</th>
+                </tr>
+            </thead>
+            <tbody id="kw-tbody">
+                <tr><td colspan="6"><div class="loading-spinner">読み込み中...</div></td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 追加モーダル -->
+<div id="add-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+        <h3>キーワード追加</h3>
+        <form id="add-form">
+            <div class="goal-form-grid" style="grid-template-columns: 1fr 1fr;">
+                <div class="goal-form-item">
+                    <label>キーワード *</label>
+                    <input type="text" id="add-keyword" placeholder="和菓子 大阪 老舗" required />
+                </div>
+                <div class="goal-form-item">
+                    <label>業種 *</label>
+                    <input type="text" id="add-industry" placeholder="食品メーカー（和菓子）" required list="industry-list" />
+                    <datalist id="industry-list"></datalist>
+                </div>
+                <div class="goal-form-item">
+                    <label>対象ソース</label>
+                    <select id="add-source">
+                        <option value="all">全て</option>
+                        <option value="yahoo">Yahoo!のみ</option>
+                        <option value="rakuten">楽天のみ</option>
+                        <option value="google">Googleのみ</option>
+                    </select>
+                </div>
+                <div class="goal-form-item">
+                    <label>メモ</label>
+                    <input type="text" id="add-note" placeholder="任意のメモ" />
+                </div>
+            </div>
+            <div class="goal-form-actions" style="margin-top:16px;">
+                <button type="submit" class="btn btn-primary">追加</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModals()">キャンセル</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 一括追加モーダル -->
+<div id="bulk-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+        <h3>一括追加</h3>
+        <p style="font-size:0.85rem;color:#888;margin-bottom:12px;">
+            1行1キーワード。形式: <code>キーワード | 業種</code>
+        </p>
+        <textarea id="bulk-text" rows="10" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:0.9rem;font-family:monospace;" placeholder="神戸牛 通販 | 畜産（牛肉）
+明石 海産物 干物 通販 | 海産物
+スペシャルティコーヒー 関西 通販 | コーヒー"></textarea>
+        <div class="goal-form-actions" style="margin-top:12px;">
+            <button class="btn btn-primary" onclick="bulkAdd()">一括追加</button>
+            <button class="btn btn-secondary" onclick="closeModals()">キャンセル</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4); z-index: 1000;
+    display: flex; align-items: center; justify-content: center;
+}
+.modal-content {
+    background: white; border-radius: 12px; padding: 28px;
+    max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.modal-content h3 { margin-bottom: 16px; }
+.toggle-switch {
+    width: 36px; height: 20px; background: #ccc; border-radius: 10px;
+    position: relative; cursor: pointer; transition: background 0.2s;
+    display: inline-block;
+}
+.toggle-switch.on { background: var(--color-green); }
+.toggle-switch::after {
+    content: ''; position: absolute; width: 16px; height: 16px;
+    background: white; border-radius: 50%; top: 2px; left: 2px;
+    transition: left 0.2s;
+}
+.toggle-switch.on::after { left: 18px; }
+.kw-edit-input {
+    padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;
+    font-size: 0.85rem; width: 100%;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allKeywords = [];
+let currentFilter = '';
+
+function esc(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+async function loadKeywords() {
+    try {
+        const resp = await fetch('/api/pipeline/keywords');
+        const data = await resp.json();
+        allKeywords = data.keywords;
+        document.getElementById('stat-total').textContent = data.total;
+        document.getElementById('stat-enabled').textContent = data.enabled_count;
+        renderIndustryFilters(data.industries);
+        renderKeywords();
+        updateDatalist(data.industries);
+    } catch(e) {
+        console.error(e);
+    }
+}
+
+function renderIndustryFilters(industries) {
+    const area = document.getElementById('industry-filters');
+    area.innerHTML = Object.entries(industries)
+        .sort((a, b) => b[1] - a[1])
+        .map(([ind, count]) =>
+            `<button class="filter-toggle" data-industry="${esc(ind)}" onclick="filterIndustry(this, '${esc(ind)}')">${esc(ind)} (${count})</button>`
+        ).join('');
+}
+
+function filterIndustry(btn, industry) {
+    document.querySelectorAll('.filter-toggle').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = industry;
+    renderKeywords();
+}
+
+function renderKeywords() {
+    const tbody = document.getElementById('kw-tbody');
+    let filtered = allKeywords;
+    if (currentFilter) {
+        filtered = allKeywords.filter(kw => kw.industry === currentFilter);
+    }
+
+    if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888;">キーワードなし</td></tr>';
+        return;
+    }
+
+    const sourceLabels = {all: '全て', yahoo: 'Yahoo!', rakuten: '楽天', google: 'Google'};
+    tbody.innerHTML = filtered.map(kw => `
+        <tr style="${kw.enabled ? '' : 'opacity:0.4;'}">
+            <td>
+                <div class="toggle-switch ${kw.enabled ? 'on' : ''}" onclick="toggleEnabled(${kw.id}, ${kw.enabled ? 0 : 1})"></div>
+            </td>
+            <td><strong>${esc(kw.keyword)}</strong></td>
+            <td style="font-size:0.85rem;color:#555;">${esc(kw.industry)}</td>
+            <td style="font-size:0.82rem;">${sourceLabels[kw.source] || kw.source}</td>
+            <td style="font-size:0.82rem;color:#888;">${esc(kw.note) || ''}</td>
+            <td>
+                <button class="btn btn-sm btn-secondary" onclick="deleteKeyword(${kw.id})" style="color:var(--color-danger);">削除</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function updateDatalist(industries) {
+    const list = document.getElementById('industry-list');
+    list.innerHTML = Object.keys(industries).map(ind => `<option value="${esc(ind)}">`).join('');
+}
+
+async function toggleEnabled(id, enabled) {
+    await fetch(`/api/pipeline/keywords/${id}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled}),
+    });
+    await loadKeywords();
+}
+
+async function deleteKeyword(id) {
+    if (!confirm('このキーワードを削除しますか？')) return;
+    await fetch(`/api/pipeline/keywords/${id}`, {method: 'DELETE'});
+    await loadKeywords();
+}
+
+function openAddModal() {
+    document.getElementById('add-modal').style.display = 'flex';
+    document.getElementById('add-keyword').focus();
+}
+
+function openBulkModal() {
+    document.getElementById('bulk-modal').style.display = 'flex';
+    document.getElementById('bulk-text').focus();
+}
+
+function closeModals() {
+    document.getElementById('add-modal').style.display = 'none';
+    document.getElementById('bulk-modal').style.display = 'none';
+}
+
+document.getElementById('add-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = {
+        keyword: document.getElementById('add-keyword').value,
+        industry: document.getElementById('add-industry').value,
+        source: document.getElementById('add-source').value,
+        note: document.getElementById('add-note').value || null,
+    };
+    const resp = await fetch('/api/pipeline/keywords', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+    });
+    if (resp.ok) {
+        closeModals();
+        document.getElementById('add-form').reset();
+        await loadKeywords();
+    }
+});
+
+async function bulkAdd() {
+    const text = document.getElementById('bulk-text').value.trim();
+    if (!text) return;
+
+    const keywords = text.split('\n')
+        .map(line => line.trim())
+        .filter(line => line && line.includes('|'))
+        .map(line => {
+            const [keyword, industry] = line.split('|').map(s => s.trim());
+            return {keyword, industry, source: 'all'};
+        });
+
+    if (!keywords.length) {
+        alert('有効な行がありません。形式: キーワード | 業種');
+        return;
+    }
+
+    const resp = await fetch('/api/pipeline/keywords/bulk', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(keywords),
+    });
+    const data = await resp.json();
+    if (data.success) {
+        closeModals();
+        document.getElementById('bulk-text').value = '';
+        await loadKeywords();
+        alert(`${data.added}件追加しました`);
+    }
+}
+
+// Escキーでモーダル閉じる
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeModals();
+});
+
+document.addEventListener('DOMContentLoaded', loadKeywords);
+</script>
+{% endblock %}

@@ -4,12 +4,17 @@ POST /api/pipeline/start - パイプライン実行開始
 GET  /api/pipeline/status/{run_id} - 実行状況
 GET  /api/pipeline/runs - 実行履歴
 GET  /api/pipeline/results/{run_id} - 収集結果
+GET  /api/pipeline/keywords - キーワード一覧
+POST /api/pipeline/keywords - キーワード追加
+PATCH /api/pipeline/keywords/{id} - キーワード更新
+DELETE /api/pipeline/keywords/{id} - キーワード削除
 GET  /pipeline - パイプラインUI
+GET  /pipeline/keywords - キーワード管理UI
 """
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import desc
@@ -17,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.pipeline import PipelineRun, PipelineResult
+from app.models.pipeline_keyword import PipelineKeyword
 from app.services.pipeline.runner import run_pipeline
 from app.services.pipeline.config import SEARCH_KEYWORDS
 
@@ -190,3 +196,140 @@ async def export_csv(run_id: int, db: Session = Depends(get_db)):
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f"attachment; filename=pipeline_results_{run_id}.csv"},
     )
+
+
+# ========================================
+# キーワード管理
+# ========================================
+
+class KeywordCreate(BaseModel):
+    keyword: str
+    industry: str
+    source: str = "all"
+    note: str | None = None
+
+
+class KeywordUpdate(BaseModel):
+    keyword: str | None = None
+    industry: str | None = None
+    source: str | None = None
+    enabled: int | None = None
+    note: str | None = None
+
+
+@router.get("/pipeline/keywords", response_class=HTMLResponse)
+async def keywords_page(request: Request):
+    return _get_templates().TemplateResponse(request, "pipeline_keywords.html", {})
+
+
+@router.get("/api/pipeline/keywords")
+async def list_keywords(
+    enabled_only: bool = False,
+    db: Session = Depends(get_db),
+):
+    """キーワード一覧"""
+    query = db.query(PipelineKeyword).order_by(PipelineKeyword.industry, PipelineKeyword.id)
+    if enabled_only:
+        query = query.filter(PipelineKeyword.enabled == 1)
+    keywords = query.all()
+
+    # 業種別グルーピング
+    industries: dict[str, int] = {}
+    for kw in keywords:
+        industries[kw.industry] = industries.get(kw.industry, 0) + 1
+
+    return {
+        "keywords": [
+            {
+                "id": kw.id,
+                "keyword": kw.keyword,
+                "industry": kw.industry,
+                "source": kw.source,
+                "enabled": kw.enabled,
+                "note": kw.note,
+            }
+            for kw in keywords
+        ],
+        "total": len(keywords),
+        "enabled_count": sum(1 for kw in keywords if kw.enabled),
+        "industries": industries,
+    }
+
+
+@router.post("/api/pipeline/keywords")
+async def create_keyword(data: KeywordCreate, db: Session = Depends(get_db)):
+    """キーワード追加"""
+    if not data.keyword.strip() or not data.industry.strip():
+        raise HTTPException(status_code=400, detail="キーワードと業種は必須です")
+
+    kw = PipelineKeyword(
+        keyword=data.keyword.strip(),
+        industry=data.industry.strip(),
+        source=data.source,
+        note=data.note,
+        enabled=1,
+    )
+    db.add(kw)
+    db.commit()
+    db.refresh(kw)
+    return {"success": True, "id": kw.id}
+
+
+@router.post("/api/pipeline/keywords/bulk")
+async def bulk_create_keywords(keywords: list[KeywordCreate], db: Session = Depends(get_db)):
+    """キーワード一括追加"""
+    added = 0
+    for data in keywords:
+        if not data.keyword.strip() or not data.industry.strip():
+            continue
+        kw = PipelineKeyword(
+            keyword=data.keyword.strip(),
+            industry=data.industry.strip(),
+            source=data.source,
+            note=data.note,
+            enabled=1,
+        )
+        db.add(kw)
+        added += 1
+    db.commit()
+    return {"success": True, "added": added}
+
+
+@router.patch("/api/pipeline/keywords/{keyword_id}")
+async def update_keyword(keyword_id: int, data: KeywordUpdate, db: Session = Depends(get_db)):
+    """キーワード更新"""
+    kw = db.query(PipelineKeyword).filter(PipelineKeyword.id == keyword_id).first()
+    if not kw:
+        raise HTTPException(status_code=404, detail="キーワードが見つかりません")
+
+    if data.keyword is not None:
+        kw.keyword = data.keyword.strip()
+    if data.industry is not None:
+        kw.industry = data.industry.strip()
+    if data.source is not None:
+        kw.source = data.source
+    if data.enabled is not None:
+        kw.enabled = data.enabled
+    if data.note is not None:
+        kw.note = data.note
+    db.commit()
+    return {"success": True}
+
+
+@router.delete("/api/pipeline/keywords/{keyword_id}")
+async def delete_keyword(keyword_id: int, db: Session = Depends(get_db)):
+    """キーワード削除"""
+    kw = db.query(PipelineKeyword).filter(PipelineKeyword.id == keyword_id).first()
+    if not kw:
+        raise HTTPException(status_code=404, detail="キーワードが見つかりません")
+    db.delete(kw)
+    db.commit()
+    return {"success": True}
+
+
+@router.patch("/api/pipeline/keywords/toggle-all")
+async def toggle_all_keywords(enabled: int = Query(...), db: Session = Depends(get_db)):
+    """全キーワードの有効/無効を一括切り替え"""
+    db.query(PipelineKeyword).update({"enabled": enabled})
+    db.commit()
+    return {"success": True}

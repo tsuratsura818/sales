@@ -168,6 +168,12 @@ async def run_pipeline(run_id: int):
         sources = json.loads(run.sources)
         seen_emails: set[str] = set()
 
+        # DBからキーワードを取得（有効なもののみ）
+        from app.models.pipeline_keyword import PipelineKeyword
+        db_keywords = db.query(PipelineKeyword).filter(PipelineKeyword.enabled == 1).all()
+        keyword_list = [(kw.keyword, kw.industry) for kw in db_keywords]
+        log.info(f"キーワード: {len(keyword_list)}件（DB）")
+
         # 既存の結果からメール重複除外（直近5回分に制限してメモリ節約）
         recent_run_ids = [
             r.id for r in db.query(PipelineRun.id)
@@ -185,15 +191,17 @@ async def run_pipeline(run_id: int):
 
         source_breakdown: dict[str, int] = {}
 
-        # コレクターを並列実行
+        # コレクターを並列実行（DBキーワードを渡す）
         tasks = []
         if "yahoo" in sources:
             run.progress_pct = 5
             run.progress_message = "Yahoo!ショッピング収集中..."
             db.commit()
-            tasks.append(("yahoo", yahoo_collector.collect(seen_emails)))
+            yahoo_kw = [(k, i) for k, i in keyword_list]
+            tasks.append(("yahoo", yahoo_collector.collect(seen_emails, keywords=yahoo_kw)))
         if "rakuten" in sources:
-            tasks.append(("rakuten", rakuten_collector.collect(seen_emails)))
+            rakuten_kw = [(k, i) for k, i in keyword_list]
+            tasks.append(("rakuten", rakuten_collector.collect(seen_emails, keywords=rakuten_kw)))
         if "google" in sources:
             tasks.append(("google", google_collector.collect(seen_emails)))
 

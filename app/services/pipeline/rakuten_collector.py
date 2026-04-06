@@ -30,18 +30,23 @@ class CollectedLead:
     shop_code: str = ""
 
 
-async def collect(seen_emails: set[str], on_progress=None) -> list[CollectedLead]:
+async def collect(
+    seen_emails: set[str],
+    on_progress=None,
+    keywords: list[tuple[str, str]] | None = None,
+) -> list[CollectedLead]:
     """楽天市場からリード収集（httpxのみ）"""
     log.info("楽天市場収集開始")
     leads: list[CollectedLead] = []
     shop_codes: dict[str, str] = {}  # shop_code → industry
+    kw_list = keywords or SEARCH_KEYWORDS
     consecutive_errors = 0
     skip_codes = {"search", "event", "category", "ranking", "coupon", "help", "mypage", "basket", "purchase", "card", "goldlicense"}
 
     async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
         # Step 1: 楽天検索ページからshopCodeを収集（SSR）
-        total_kw = len(SEARCH_KEYWORDS)
-        for i, (keyword, industry) in enumerate(SEARCH_KEYWORDS):
+        total_kw = len(kw_list)
+        for i, (keyword, industry) in enumerate(kw_list):
             if on_progress:
                 on_progress(f"楽天 検索中 ({i+1}/{total_kw})")
 

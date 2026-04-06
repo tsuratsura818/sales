@@ -26,17 +26,22 @@ class CollectedLead:
     shop_code: str = ""
 
 
-async def collect(seen_emails: set[str], on_progress=None) -> list[CollectedLead]:
+async def collect(
+    seen_emails: set[str],
+    on_progress=None,
+    keywords: list[tuple[str, str]] | None = None,
+) -> list[CollectedLead]:
     """Yahoo!ショッピングからリード収集"""
     log.info("Yahoo!ショッピング収集開始")
     leads: list[CollectedLead] = []
     shop_ids: dict[str, str] = {}  # shop_id → industry
     consecutive_errors = 0
+    kw_list = keywords or SEARCH_KEYWORDS
 
     async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
         # Step 1: 検索してshop_idを収集
-        total_kw = len(SEARCH_KEYWORDS)
-        for i, (keyword, industry) in enumerate(SEARCH_KEYWORDS):
+        total_kw = len(kw_list)
+        for i, (keyword, industry) in enumerate(kw_list):
             if on_progress:
                 on_progress(f"Yahoo! 検索中 ({i+1}/{total_kw})")
 

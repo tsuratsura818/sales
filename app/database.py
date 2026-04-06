@@ -49,13 +49,14 @@ def get_db():
 
 
 def init_db():
-    from app.models import lead, search_job, email_log, follow_up, competitor, portfolio, job_listing, job_application, monitor_log, monitor_settings, daily_plan, memo, app_settings, goal, pipeline, inbound  # noqa: F401
+    from app.models import lead, search_job, email_log, follow_up, competitor, portfolio, job_listing, job_application, monitor_log, monitor_settings, daily_plan, memo, app_settings, goal, pipeline, inbound, pipeline_keyword  # noqa: F401
     try:
         Base.metadata.create_all(bind=engine)
         if _is_sqlite:
             _migrate_sqlite()
         else:
             _migrate_postgres()
+        _seed_pipeline_keywords()
     except Exception as e:
         log.error(f"DB初期化エラー（アプリは継続起動）: {e}")
 
@@ -137,3 +138,23 @@ def _migrate_postgres():
                 conn.commit()
         except Exception:
             pass
+
+
+def _seed_pipeline_keywords():
+    """pipeline_keywordsテーブルが空なら、デフォルトキーワードをシード"""
+    from app.models.pipeline_keyword import PipelineKeyword
+    from app.services.pipeline.config import SEARCH_KEYWORDS
+    db = SessionLocal()
+    try:
+        count = db.query(PipelineKeyword).count()
+        if count > 0:
+            return
+        for keyword, industry in SEARCH_KEYWORDS:
+            db.add(PipelineKeyword(keyword=keyword, industry=industry, source="all", enabled=1))
+        db.commit()
+        log.info(f"パイプラインキーワード {len(SEARCH_KEYWORDS)}件をシード")
+    except Exception as e:
+        log.warning(f"キーワードシードエラー: {e}")
+        db.rollback()
+    finally:
+        db.close()
