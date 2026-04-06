@@ -6,7 +6,7 @@
   <div style="display:flex;align-items:center;gap:12px;">
     <a href="/mail/campaigns" style="color:#64748b;text-decoration:none;">&larr;</a>
     <h2 style="margin:0;">{{ campaign.name }}</h2>
-    <span class="badge badge-{{ campaign.status }}">{{ STATUS_JA.get(campaign.status, campaign.status) }}</span>
+    <span class="badge badge-{{ campaign.status }}">{{ campaign.status_label }}</span>
   </div>
   <div style="display:flex;gap:8px;">
     {% if campaign.status in ('review', 'draft') %}
@@ -34,7 +34,7 @@
   </div>
   <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
     {% for s, c in status_counts.items() %}
-    <span class="badge badge-cc-{{ s }}">{{ CC_STATUS_JA.get(s, s) }}: {{ c }}</span>
+    <span class="badge badge-cc-{{ s }}">{{ s }}: {{ c }}</span>
     {% endfor %}
   </div>
 </div>
@@ -81,7 +81,7 @@
         <td style="padding:10px 12px;">{{ contact.get('email', '-') }}</td>
         <td style="padding:10px 12px;color:#64748b;">{{ contact.get('company_name', '-') }}</td>
         <td style="padding:10px 12px;color:#64748b;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ cc.personalized_subject or '-' }}</td>
-        <td style="padding:10px 12px;"><span class="badge badge-cc-{{ cc.status }}">{{ CC_STATUS_JA.get(cc.status, cc.status) }}</span></td>
+        <td style="padding:10px 12px;"><span class="badge badge-cc-{{ cc.status }}">{{ cc.status_label }}</span></td>
       </tr>
       {% endfor %}
     </tbody>
@@ -98,7 +98,7 @@
   <div style="border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:12px;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
       <span style="font-size:12px;color:#94a3b8;">{{ contact.get('email', '') }} ({{ contact.get('company_name', '') }})</span>
-      <span class="badge badge-cc-{{ cc.status }}">{{ CC_STATUS_JA.get(cc.status, cc.status) }}</span>
+      <span class="badge badge-cc-{{ cc.status }}">{{ cc.status_label }}</span>
     </div>
     <div style="font-weight:500;margin-bottom:8px;">件名: {{ cc.personalized_subject }}</div>
     <pre style="background:#f8fafc;padding:12px;border-radius:6px;font-size:13px;white-space:pre-wrap;font-family:inherit;margin:0;">{{ cc.personalized_body or '(未生成)' }}</pre>

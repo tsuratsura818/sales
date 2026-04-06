@@ -1,5 +1,6 @@
 """メール配信管理ルーター（MailForge Supabase連携）"""
 import logging
+import traceback
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -22,6 +23,18 @@ CC_STATUS_JA = {
 }
 
 
+def _render(name: str, **ctx) -> HTMLResponse:
+    """Jinja2キャッシュバグ回避のためtemplate.renderを直接使用"""
+    try:
+        tmpl = templates.env.get_template(name)
+        html = tmpl.render(**ctx)
+        return HTMLResponse(html)
+    except Exception as e:
+        tb = traceback.format_exc()
+        log.error(f"Template render error {name}: {tb}")
+        return HTMLResponse(f"<h3>テンプレートエラー: {name}</h3><pre>{tb}</pre>", status_code=500)
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 画面系（HTML）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -32,41 +45,31 @@ async def mail_dashboard(request: Request):
         campaigns = stats.get("campaigns", [])
         for c in campaigns:
             c["status_label"] = STATUS_JA.get(str(c.get("status", "")), str(c.get("status", "")))
-        context = {
-            "request": request,
-            "total_contacts": stats.get("total_contacts", 0),
-            "total_campaigns": stats.get("total_campaigns", 0),
-            "active_campaigns": stats.get("active_campaigns", 0),
-            "total_sent": stats.get("total_sent", 0),
-            "campaigns": campaigns,
-        }
-        template = templates.env.get_template("mail/dashboard.html")
-        html = template.render(**context)
-        return HTMLResponse(html)
+        return _render("mail/dashboard.html",
+            request=request,
+            total_contacts=stats.get("total_contacts", 0),
+            total_campaigns=stats.get("total_campaigns", 0),
+            active_campaigns=stats.get("active_campaigns", 0),
+            total_sent=stats.get("total_sent", 0),
+            campaigns=campaigns,
+        )
     except Exception as e:
-        import traceback
         tb = traceback.format_exc()
-        log.error(f"/mail error: {tb}")
         return HTMLResponse(f"<h3>メール配信エラー</h3><pre>{tb}</pre>", status_code=500)
 
 
 @router.get("/mail/campaigns", response_class=HTMLResponse)
 async def mail_campaigns(request: Request):
     campaigns = mf.get_campaigns()
-    return templates.TemplateResponse("mail/campaigns.html", {
-        "request": request,
-        "campaigns": campaigns,
-        "STATUS_JA": STATUS_JA,
-    })
+    for c in campaigns:
+        c["status_label"] = STATUS_JA.get(str(c.get("status", "")), str(c.get("status", "")))
+    return _render("mail/campaigns.html", request=request, campaigns=campaigns)
 
 
 @router.get("/mail/campaigns/new", response_class=HTMLResponse)
 async def mail_campaign_new(request: Request):
     lists = mf.get_contact_lists()
-    return templates.TemplateResponse("mail/campaign_new.html", {
-        "request": request,
-        "lists": lists,
-    })
+    return _render("mail/campaign_new.html", request=request, lists=lists)
 
 
 @router.get("/mail/campaigns/{campaign_id}", response_class=HTMLResponse)
@@ -75,49 +78,56 @@ async def mail_campaign_detail(request: Request, campaign_id: str, tab: str = "o
     if not campaign:
         return HTMLResponse("キャンペーンが見つかりません", status_code=404)
 
+    campaign["status_label"] = STATUS_JA.get(str(campaign.get("status", "")), str(campaign.get("status", "")))
     contacts = mf.get_campaign_contacts(campaign_id)
     logs = mf.get_send_logs(campaign_id=campaign_id)
 
-    # ステータス集計
     status_counts = {}
     for cc in contacts:
-        s = cc["status"]
-        status_counts[s] = status_counts.get(s, 0) + 1
+        s = str(cc.get("status", ""))
+        label = CC_STATUS_JA.get(s, s)
+        status_counts[label] = status_counts.get(label, 0) + 1
+        cc["status_label"] = label
 
-    return templates.TemplateResponse("mail/campaign_detail.html", {
-        "request": request,
-        "campaign": campaign,
-        "contacts": contacts,
-        "logs": logs,
-        "status_counts": status_counts,
-        "tab": tab,
-        "STATUS_JA": STATUS_JA,
-        "CC_STATUS_JA": CC_STATUS_JA,
-    })
+    for lg in logs:
+        s = str(lg.get("status", ""))
+        if s == "sent":
+            lg["status_label"] = "送信済み"
+        elif s == "bounced":
+            lg["status_label"] = "バウンス"
+        else:
+            lg["status_label"] = "失敗"
+
+    return _render("mail/campaign_detail.html",
+        request=request, campaign=campaign, contacts=contacts, logs=logs,
+        status_counts=status_counts, tab=tab,
+    )
 
 
 @router.get("/mail/contacts", response_class=HTMLResponse)
 async def mail_contacts(request: Request, page: int = 1, search: str = "", list_id: str = ""):
     result = mf.get_contacts(page=page, search=search, list_id=list_id)
     lists = mf.get_contact_lists()
-    return templates.TemplateResponse("mail/contacts.html", {
-        "request": request,
-        "contacts": result["contacts"],
-        "total": result["total"],
-        "page": page,
-        "search": search,
-        "list_id": list_id,
-        "lists": lists,
-    })
+    return _render("mail/contacts.html",
+        request=request,
+        contacts=result.get("contacts", []),
+        total=result.get("total", 0),
+        page=page, search=search, list_id=list_id, lists=lists,
+    )
 
 
 @router.get("/mail/logs", response_class=HTMLResponse)
 async def mail_logs(request: Request):
     logs = mf.get_send_logs(limit=200)
-    return templates.TemplateResponse("mail/logs.html", {
-        "request": request,
-        "logs": logs,
-    })
+    for lg in logs:
+        s = str(lg.get("status", ""))
+        if s == "sent":
+            lg["status_label"] = "送信済み"
+        elif s == "bounced":
+            lg["status_label"] = "バウンス"
+        else:
+            lg["status_label"] = "失敗"
+    return _render("mail/logs.html", request=request, logs=logs)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -157,15 +167,10 @@ async def api_get_contacts(page: int = 1, search: str = "", list_id: str = ""):
 
 @router.post("/api/mail/leads-to-contacts")
 async def api_leads_to_contacts(request: Request):
-    """Salesのリード → MailForgeのコンタクトに一括変換"""
     body = await request.json()
     leads = body.get("leads", [])
     list_name = body.get("list_name", "Sales自動収集")
-
-    # リスト作成
     contact_list = mf.create_contact_list(list_name, f"Salesから{len(leads)}件インポート")
-
-    # コンタクト変換
     contacts = []
     for lead in leads:
         contacts.append({
@@ -180,13 +185,8 @@ async def api_leads_to_contacts(request: Request):
                 "location": lead.get("location", ""),
             },
         })
-
     result = mf.upsert_contacts(contacts, list_id=contact_list["id"])
-    return JSONResponse({
-        "list_id": contact_list["id"],
-        "list_name": list_name,
-        **result,
-    })
+    return JSONResponse({"list_id": contact_list["id"], "list_name": list_name, **result})
 
 
 @router.get("/api/mail/stats")

@@ -17,17 +17,15 @@
       </tr>
     </thead>
     <tbody>
-      {% for log in logs %}
+      {% for lg in logs %}
       <tr style="border-bottom:1px solid #f1f5f9;">
-        <td style="padding:10px 12px;">{{ log.to_email }}</td>
-        <td style="padding:10px 12px;color:#64748b;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ log.subject }}</td>
+        <td style="padding:10px 12px;">{{ lg['to_email'] }}</td>
+        <td style="padding:10px 12px;color:#64748b;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ lg['subject'] }}</td>
         <td style="padding:10px 12px;">
-          {% if log.status == 'sent' %}<span style="background:#d1fae5;color:#047857;padding:2px 8px;border-radius:99px;font-size:11px;">送信済み</span>
-          {% elif log.status == 'bounced' %}<span style="background:#fed7aa;color:#c2410c;padding:2px 8px;border-radius:99px;font-size:11px;">バウンス</span>
-          {% else %}<span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:99px;font-size:11px;">失敗</span>{% endif %}
+          <span style="padding:2px 8px;border-radius:99px;font-size:11px;{% if lg['status_label'] == '送信済み' %}background:#d1fae5;color:#047857;{% elif lg['status_label'] == 'バウンス' %}background:#fed7aa;color:#c2410c;{% else %}background:#fee2e2;color:#dc2626;{% endif %}">{{ lg['status_label'] }}</span>
         </td>
-        <td style="padding:10px 12px;font-size:12px;color:#94a3b8;">{{ log.sent_at[:16] if log.sent_at else '-' }}</td>
-        <td style="padding:10px 12px;font-size:12px;color:#dc2626;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ log.error_message or '-' }}</td>
+        <td style="padding:10px 12px;font-size:12px;color:#94a3b8;">{{ lg['sent_at'][:16] if lg['sent_at'] else '-' }}</td>
+        <td style="padding:10px 12px;font-size:12px;color:#dc2626;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ lg['error_message'] or '-' }}</td>
       </tr>
       {% endfor %}
     </tbody>
