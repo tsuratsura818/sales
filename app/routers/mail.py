@@ -30,17 +30,19 @@ async def mail_dashboard(request: Request):
     try:
         stats = mf.get_stats()
         campaigns = stats.get("campaigns", [])
-        # ステータスをPython側で日本語変換
         for c in campaigns:
             c["status_label"] = STATUS_JA.get(str(c.get("status", "")), str(c.get("status", "")))
-        return templates.TemplateResponse("mail/dashboard.html", {
+        context = {
             "request": request,
             "total_contacts": stats.get("total_contacts", 0),
             "total_campaigns": stats.get("total_campaigns", 0),
             "active_campaigns": stats.get("active_campaigns", 0),
             "total_sent": stats.get("total_sent", 0),
             "campaigns": campaigns,
-        })
+        }
+        template = templates.env.get_template("mail/dashboard.html")
+        html = template.render(**context)
+        return HTMLResponse(html)
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
