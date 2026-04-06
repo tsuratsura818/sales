@@ -228,12 +228,17 @@ async def list_keywords(
     db: Session = Depends(get_db),
 ):
     """キーワード一覧"""
-    query = db.query(PipelineKeyword).order_by(PipelineKeyword.industry, PipelineKeyword.id)
-    if enabled_only:
-        query = query.filter(PipelineKeyword.enabled == 1)
-    keywords = query.all()
+    try:
+        query = db.query(PipelineKeyword).order_by(PipelineKeyword.industry, PipelineKeyword.id)
+        if enabled_only:
+            query = query.filter(PipelineKeyword.enabled == 1)
+        keywords = query.all()
+    except Exception as e:
+        # テーブルが存在しない場合の初回対応
+        import logging
+        logging.getLogger(__name__).error(f"keywords query error: {e}")
+        return {"keywords": [], "total": 0, "enabled_count": 0, "industries": {}, "error": str(e)[:200]}
 
-    # 業種別グルーピング
     industries: dict[str, int] = {}
     for kw in keywords:
         industries[kw.industry] = industries.get(kw.industry, 0) + 1
