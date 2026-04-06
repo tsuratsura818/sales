@@ -32,12 +32,13 @@
     </div>
     {% if stats.campaigns %}
       {% for c in stats.campaigns[:5] %}
-      <a href="/mail/campaigns/{{ c.id }}" style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:6px;text-decoration:none;color:inherit;margin-bottom:4px;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+      <a href="/mail/campaigns/{{ c['id'] }}" style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:6px;text-decoration:none;color:inherit;margin-bottom:4px;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
         <div>
-          <div style="font-size:14px;font-weight:500;">{{ c.name }}</div>
-          <div style="font-size:12px;color:#94a3b8;">{{ c.sent_count }}/{{ c.total_contacts }} 送信済み</div>
+          <div style="font-size:14px;font-weight:500;">{{ c['name'] }}</div>
+          <div style="font-size:12px;color:#94a3b8;">{{ c['sent_count'] }}/{{ c['total_contacts'] }} 送信済み</div>
         </div>
-        <span class="badge badge-{{ c.status }}">{{ STATUS_JA.get(c.status, c.status) }}</span>
+        {% set st = c['status'] %}
+        <span class="badge badge-{{ st }}">{{ STATUS_JA.get(st, st) }}</span>
       </a>
       {% endfor %}
     {% else %}
