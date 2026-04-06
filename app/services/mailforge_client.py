@@ -4,7 +4,6 @@ Sales → MailForge Supabase (xpukjjmstticsubrxuit) にService Role Keyで接続
 """
 import os
 import logging
-from supabase import create_client, Client
 
 log = logging.getLogger("mailforge_client")
 
@@ -12,11 +11,21 @@ SUPABASE_URL = os.getenv("MAILFORGE_SUPABASE_URL", "https://xpukjjmstticsubrxuit
 SUPABASE_KEY = os.getenv("MAILFORGE_SERVICE_KEY", "")
 USER_ID = os.getenv("TSURATSURA_USER_ID", "999aedf8-f621-4a11-b23a-2ba0d51b7d21")
 
+_client = None
 
-def get_client() -> Client:
+def get_client():
+    global _client
+    if _client:
+        return _client
     if not SUPABASE_KEY:
         raise RuntimeError("MAILFORGE_SERVICE_KEY が設定されていません")
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+    try:
+        from supabase import create_client
+        _client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        return _client
+    except ImportError:
+        log.error("supabase パッケージが見つかりません。pip install supabase を実行してください。")
+        raise
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
