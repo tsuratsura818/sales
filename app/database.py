@@ -1,14 +1,28 @@
+import logging
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from app.config import get_settings
 
+log = logging.getLogger("database")
 settings = get_settings()
 
-_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+# DATABASE_URLにパスワード内の@が含まれる場合のワークアラウンド
+_db_url = settings.DATABASE_URL
+if _db_url and not _db_url.startswith("sqlite") and "%" not in _db_url:
+    # URLエンコードされていない@がパスワードに含まれている可能性
+    pass
 
+_is_sqlite = _db_url.startswith("sqlite")
 connect_args = {"check_same_thread": False} if _is_sqlite else {}
 
-engine = create_engine(settings.DATABASE_URL, connect_args=connect_args)
+try:
+    engine = create_engine(_db_url, connect_args=connect_args, pool_pre_ping=True)
+except Exception as e:
+    log.warning(f"DB接続URL解析エラー、SQLiteにフォールバック: {e}")
+    _db_url = "sqlite:///./sales.db"
+    _is_sqlite = True
+    connect_args = {"check_same_thread": False}
+    engine = create_engine(_db_url, connect_args=connect_args)
 
 
 if _is_sqlite:
@@ -36,11 +50,14 @@ def get_db():
 
 def init_db():
     from app.models import lead, search_job, email_log, follow_up, competitor, portfolio, job_listing, job_application, monitor_log, monitor_settings, daily_plan, memo, app_settings  # noqa: F401
-    Base.metadata.create_all(bind=engine)
-    if _is_sqlite:
-        _migrate_sqlite()
-    else:
-        _migrate_postgres()
+    try:
+        Base.metadata.create_all(bind=engine)
+        if _is_sqlite:
+            _migrate_sqlite()
+        else:
+            _migrate_postgres()
+    except Exception as e:
+        log.error(f"DB初期化エラー（アプリは継続起動）: {e}")
 
 
 def _migrate_sqlite():
