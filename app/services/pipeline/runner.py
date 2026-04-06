@@ -1,6 +1,7 @@
 """パイプライン実行オーケストレーター
 
-コレクターの実行、スコアリング、結果保存、MailForgeインポートを一貫管理。
+コレクターの並列実行、ドメイン重複排除、スコアリング、
+Shopify除外、MailForge非同期インポートを一貫管理。
 """
 import asyncio
 import json
@@ -17,6 +18,9 @@ from . import yahoo_collector, rakuten_collector, google_collector
 
 log = logging.getLogger("pipeline.runner")
 
+# Shopify構築済みの場合は営業不要
+SHOPIFY_INDICATORS = {"Shopify構築済み", "Shopify"}
+
 
 def _generate_proposal(platform: str, ec_status: str, industry: str) -> str:
     """ローカルで提案切り口を生成"""
@@ -29,7 +33,7 @@ def _generate_proposal(platform: str, ec_status: str, industry: str) -> str:
     return DEFAULT_PROPOSAL
 
 
-def _score_lead(ec_status: str, email: str, company: str, location: str) -> tuple[int, str]:
+def _score_lead(ec_status: str, email: str, company: str, location: str, industry: str) -> tuple[int, str]:
     """リードスコアリング → (score, rank)
 
     S: 80+ (モール出店中 + 情報充実)
@@ -42,11 +46,11 @@ def _score_lead(ec_status: str, email: str, company: str, location: str) -> tupl
     # EC状態
     priority = EC_PRIORITY.get(ec_status, 3)
     if priority == 0:
-        score += 40  # モール出店のみ = 最優先
+        score += 40
     elif priority == 1:
-        score += 30  # BASE/STORES/カラーミー
+        score += 30
     elif priority == 2:
-        score += 15  # 自社ECあり
+        score += 15
 
     # 情報充実度
     if email:
@@ -56,9 +60,14 @@ def _score_lead(ec_status: str, email: str, company: str, location: str) -> tupl
     if location and len(location) > 5:
         score += 15
     if "@" in email and not email.startswith("info@"):
-        score += 5  # 個人メールアドレスの方が返信率高い
+        score += 5
 
-    # ランク判定
+    # 業種ボーナス（ギフト需要/EC親和性が高い業種）
+    ind_lower = (industry or "").lower()
+    high_value_keywords = ["和菓子", "洋菓子", "酒", "茶", "アパレル", "化粧品", "コスメ"]
+    if any(kw in ind_lower for kw in high_value_keywords):
+        score += 5
+
     if score >= 80:
         rank = "S"
     elif score >= 60:
@@ -71,10 +80,41 @@ def _score_lead(ec_status: str, email: str, company: str, location: str) -> tupl
     return score, rank
 
 
+def _deduplicate(leads: list) -> list:
+    """メールアドレス + ドメインレベルの重複排除"""
+    seen_emails: set[str] = set()
+    seen_domains: dict[str, int] = {}  # domain → best score index
+    result: list = []
+
+    for lead in leads:
+        email_lower = lead.email.lower()
+        if email_lower in seen_emails:
+            continue
+        seen_emails.add(email_lower)
+
+        # ドメインレベル重複チェック（同一ドメインの複数アドレスを排除）
+        domain = email_lower.split("@")[1] if "@" in email_lower else ""
+        if domain in seen_domains:
+            # 既存のリードとスコア比較（会社名の長さで暫定判定）
+            existing_idx = seen_domains[domain]
+            existing = result[existing_idx]
+            if len(lead.company or "") > len(existing.company or ""):
+                result[existing_idx] = lead  # より情報が多い方で上書き
+            continue
+
+        seen_domains[domain] = len(result)
+        result.append(lead)
+
+    removed = len(leads) - len(result)
+    if removed > 0:
+        log.info(f"重複排除: {removed}件削除 ({len(leads)} → {len(result)})")
+    return result
+
+
 async def _import_to_mailforge(leads: list[PipelineResult], db: Session) -> int:
-    """ランクA以上のリードをMailForgeにインポート"""
+    """ランクA以上のリードをMailForgeに非同期インポート"""
     try:
-        from app.services.mailforge_client import upsert_contacts, get_contacts
+        from app.services.mailforge_client import upsert_contacts
     except ImportError:
         log.warning("mailforge_client インポート不可、スキップ")
         return 0
@@ -87,16 +127,16 @@ async def _import_to_mailforge(leads: list[PipelineResult], db: Session) -> int:
     for lead in a_plus_leads:
         contacts.append({
             "email": lead.email,
-            "company": lead.company or "",
-            "name": lead.company or "",
+            "company_name": lead.company or "",
             "industry": lead.industry or "",
-            "source": f"pipeline:{lead.source}",
+            "website_url": lead.website or "",
             "notes": f"{lead.ec_status} | {lead.platform} | {lead.proposal or ''}",
         })
 
     try:
-        result = await upsert_contacts(contacts)
-        imported = len(contacts)
+        # 同期関数なのでスレッドプールで実行してイベントループをブロックしない
+        result = await asyncio.to_thread(upsert_contacts, contacts)
+        imported = result.get("inserted", 0)
         log.info(f"MailForgeインポート: {imported}件 (S/Aランク)")
 
         for lead in a_plus_leads:
@@ -128,62 +168,71 @@ async def run_pipeline(run_id: int):
         sources = json.loads(run.sources)
         seen_emails: set[str] = set()
 
-        # 既存のパイプライン結果からメール重複除外
-        existing = db.query(PipelineResult.email).all()
-        for (email,) in existing:
-            seen_emails.add(email.lower())
+        # 既存の結果からメール重複除外（直近5回分に制限してメモリ節約）
+        recent_run_ids = [
+            r.id for r in db.query(PipelineRun.id)
+            .filter(PipelineRun.status == "completed")
+            .order_by(PipelineRun.created_at.desc())
+            .limit(5).all()
+        ]
+        if recent_run_ids:
+            existing = db.query(PipelineResult.email).filter(
+                PipelineResult.run_id.in_(recent_run_ids)
+            ).all()
+            for (email,) in existing:
+                seen_emails.add(email.lower())
         log.info(f"既存メール: {len(seen_emails)}件をスキップ")
 
-        all_leads = []
         source_breakdown: dict[str, int] = {}
 
-        def on_progress(msg: str):
-            run.progress_message = msg
-            try:
-                db.commit()
-            except Exception:
-                pass
-
-        # Yahoo!
+        # コレクターを並列実行
+        tasks = []
         if "yahoo" in sources:
             run.progress_pct = 5
-            on_progress("Yahoo!ショッピング収集中...")
-            yahoo_leads = await yahoo_collector.collect(seen_emails, on_progress)
-            all_leads.extend(yahoo_leads)
-            source_breakdown["yahoo"] = len(yahoo_leads)
-
-        # 楽天
+            run.progress_message = "Yahoo!ショッピング収集中..."
+            db.commit()
+            tasks.append(("yahoo", yahoo_collector.collect(seen_emails)))
         if "rakuten" in sources:
-            run.progress_pct = 35
-            on_progress("楽天市場収集中...")
-            rakuten_leads = await rakuten_collector.collect(seen_emails, on_progress)
-            all_leads.extend(rakuten_leads)
-            source_breakdown["rakuten"] = len(rakuten_leads)
-
-        # Google
+            tasks.append(("rakuten", rakuten_collector.collect(seen_emails)))
         if "google" in sources:
-            run.progress_pct = 65
-            on_progress("Google検索収集中...")
-            google_leads = await google_collector.collect(seen_emails, on_progress)
-            all_leads.extend(google_leads)
-            source_breakdown["google"] = len(google_leads)
+            tasks.append(("google", google_collector.collect(seen_emails)))
 
-        # 重複排除（メールアドレスベース）
+        all_leads = []
+        if tasks:
+            run.progress_message = "収集中（並列実行）..."
+            db.commit()
+
+            results = await asyncio.gather(
+                *[coro for _, coro in tasks],
+                return_exceptions=True,
+            )
+
+            for (source_name, _), result in zip(tasks, results):
+                if isinstance(result, Exception):
+                    log.error(f"{source_name} コレクターエラー: {result}")
+                    source_breakdown[source_name] = 0
+                else:
+                    all_leads.extend(result)
+                    source_breakdown[source_name] = len(result)
+
+        # Shopify構築済みを除外
+        before_shopify = len(all_leads)
+        all_leads = [l for l in all_leads if l.ec_status not in SHOPIFY_INDICATORS]
+        shopify_excluded = before_shopify - len(all_leads)
+        if shopify_excluded > 0:
+            log.info(f"Shopify構築済み除外: {shopify_excluded}件")
+
+        # ドメインレベル重複排除
         run.progress_pct = 85
-        on_progress("スコアリング中...")
-        unique_emails: set[str] = set()
-        deduped = []
-        for lead in all_leads:
-            if lead.email.lower() not in unique_emails:
-                unique_emails.add(lead.email.lower())
-                deduped.append(lead)
-        all_leads = deduped
+        run.progress_message = "スコアリング中..."
+        db.commit()
+        all_leads = _deduplicate(all_leads)
 
         # スコアリング + 提案生成 + DB保存
         pipeline_results: list[PipelineResult] = []
         for lead in all_leads:
             proposal = _generate_proposal(lead.platform, lead.ec_status, lead.industry)
-            score, rank = _score_lead(lead.ec_status, lead.email, lead.company, lead.location)
+            score, rank = _score_lead(lead.ec_status, lead.email, lead.company, lead.location, lead.industry)
 
             result = PipelineResult(
                 run_id=run_id,
@@ -205,13 +254,11 @@ async def run_pipeline(run_id: int):
 
         db.commit()
 
-        # MailForgeインポート（ランクA以上）
+        # MailForge非同期インポート（ランクA以上）
         run.progress_pct = 90
-        on_progress("MailForgeインポート中...")
+        run.progress_message = "MailForgeインポート中..."
+        db.commit()
         imported_count = await _import_to_mailforge(pipeline_results, db)
-
-        # EC優先度でソート
-        pipeline_results.sort(key=lambda r: EC_PRIORITY.get(r.ec_status or "", 3))
 
         # 実行結果を記録
         duration = int(time.time() - start_time)
@@ -240,6 +287,6 @@ async def run_pipeline(run_id: int):
                 run.completed_at = datetime.now()
                 db.commit()
         except Exception:
-            pass
+            db.rollback()
     finally:
         db.close()

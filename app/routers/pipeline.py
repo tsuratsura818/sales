@@ -59,9 +59,10 @@ async def start_pipeline(data: PipelineStartRequest, db: Session = Depends(get_d
     db.commit()
     db.refresh(run)
 
-    # バックグラウンドタスクとして実行
+    # バックグラウンドタスクとして実行（完了後に自動クリーンアップ）
     task = asyncio.create_task(run_pipeline(run.id))
     _running_tasks[run.id] = task
+    task.add_done_callback(lambda t: _running_tasks.pop(run.id, None))
 
     return {"success": True, "run_id": run.id}
 

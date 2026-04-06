@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import httpx
 from bs4 import BeautifulSoup
 
-from .config import SEARCH_KEYWORDS, RATE_LIMIT_SEC, random_ua
+from .config import SEARCH_KEYWORDS, RATE_LIMIT_RAKUTEN, random_ua
 from .extractors import extract_emails, extract_company, extract_address, is_kansai, is_excluded
 
 log = logging.getLogger("pipeline.rakuten")
@@ -34,7 +34,9 @@ async def collect(seen_emails: set[str], on_progress=None) -> list[CollectedLead
     """楽天市場からリード収集（httpxのみ）"""
     log.info("楽天市場収集開始")
     leads: list[CollectedLead] = []
-    shop_codes: set[str] = set()
+    shop_codes: dict[str, str] = {}  # shop_code → industry
+    consecutive_errors = 0
+    skip_codes = {"search", "event", "category", "ranking", "coupon", "help", "mypage", "basket", "purchase", "card", "goldlicense"}
 
     async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
         # Step 1: 楽天検索ページからshopCodeを収集（SSR）
@@ -47,26 +49,36 @@ async def collect(seen_emails: set[str], on_progress=None) -> list[CollectedLead
                 try:
                     url = f"https://search.rakuten.co.jp/search/mall/{keyword.replace(' ', '+')}/?p={page}"
                     resp = await client.get(url, headers=random_ua())
+                    if resp.status_code == 403 or resp.status_code == 429:
+                        consecutive_errors += 1
+                        log.warning(f"楽天 {resp.status_code} - BAN/レート制限の可能性 ({consecutive_errors}回連続)")
+                        if consecutive_errors >= 5:
+                            log.error("楽天 連続エラー5回、収集中断")
+                            return leads
+                        await asyncio.sleep(RATE_LIMIT_RAKUTEN * 3)
+                        break
                     if resp.status_code != 200:
                         break
+                    consecutive_errors = 0
                     soup = BeautifulSoup(resp.text, "html.parser")
-                    skip_codes = {"search", "event", "category", "ranking", "coupon", "help", "mypage", "basket", "purchase", "card", "goldlicense"}
                     for a in soup.find_all("a", href=re.compile(r"(?:www|item)\.rakuten\.co\.jp/([a-z0-9_-]+)/", re.I)):
                         m = re.search(r"(?:www|item)\.rakuten\.co\.jp/([a-z0-9_-]+)/", a["href"])
                         if m:
                             code = m.group(1)
-                            if code not in skip_codes:
-                                shop_codes.add(code)
-                except Exception:
-                    pass
-                await asyncio.sleep(RATE_LIMIT_SEC)
+                            if code not in skip_codes and code not in shop_codes:
+                                shop_codes[code] = industry
+                except httpx.TimeoutException:
+                    log.debug(f"楽天 検索タイムアウト: {keyword}")
+                except Exception as e:
+                    log.debug(f"楽天 検索エラー: {e}")
+                await asyncio.sleep(RATE_LIMIT_RAKUTEN)
 
         log.info(f"楽天 店舗ID: {len(shop_codes)}件")
 
         # Step 2: 特商法ページをhttpxで取得
         checked = 0
         total = len(shop_codes)
-        for shop_code in shop_codes:
+        for shop_code, industry in shop_codes.items():
             checked += 1
             if checked % 20 == 0:
                 log.info(f"楽天 進捗: {checked}/{total} (取得: {len(leads)}件)")
@@ -79,11 +91,20 @@ async def collect(seen_emails: set[str], on_progress=None) -> list[CollectedLead
                 f"https://www.rakuten.ne.jp/gold/{shop_code}/company.html",
             ]
 
+            found = False
             for url in urls:
                 try:
                     resp = await client.get(url, headers=random_ua())
+                    if resp.status_code == 403 or resp.status_code == 429:
+                        consecutive_errors += 1
+                        if consecutive_errors >= 5:
+                            log.error("楽天 連続エラー5回、収集中断")
+                            return leads
+                        await asyncio.sleep(RATE_LIMIT_RAKUTEN * 3)
+                        break
                     if resp.status_code != 200:
                         continue
+                    consecutive_errors = 0
                     html = resp.text
                     text = BeautifulSoup(html, "html.parser").get_text()
 
@@ -91,16 +112,18 @@ async def collect(seen_emails: set[str], on_progress=None) -> list[CollectedLead
                     if not emails:
                         continue
                     if emails[0].lower() in seen_emails:
+                        found = True
                         break
 
                     if not is_kansai(text):
+                        found = True
                         break
 
                     company = extract_company(text)
                     if is_excluded(company):
+                        found = True
                         break
 
-                    # タイトルタグからショップ名取得（フォールバック）
                     if not company:
                         soup = BeautifulSoup(html, "html.parser")
                         title = soup.find("title")
@@ -114,7 +137,7 @@ async def collect(seen_emails: set[str], on_progress=None) -> list[CollectedLead
                     leads.append(CollectedLead(
                         email=emails[0],
                         company=company or shop_code,
-                        industry="",
+                        industry=industry,
                         location=address,
                         website=f"https://www.rakuten.co.jp/{shop_code}/",
                         platform="楽天市場",
@@ -123,11 +146,14 @@ async def collect(seen_emails: set[str], on_progress=None) -> list[CollectedLead
                         shop_code=shop_code,
                     ))
                     seen_emails.add(emails[0].lower())
+                    found = True
                     break
-                except Exception:
-                    pass
+                except httpx.TimeoutException:
+                    log.debug(f"楽天 特商法タイムアウト: {shop_code}")
+                except Exception as e:
+                    log.debug(f"楽天 特商法エラー: {e}")
 
-            await asyncio.sleep(RATE_LIMIT_SEC)
+            await asyncio.sleep(RATE_LIMIT_RAKUTEN)
 
     log.info(f"楽天 結果: {len(leads)}件")
     return leads

@@ -28,8 +28,8 @@ def extract_emails(text: str) -> list[str]:
 def extract_company(text: str) -> str:
     """特商法ページから販売業者名を抽出"""
     patterns = [
-        r"(?:販売業者|事業者の名称|事業者名|会社名|運営会社)[：:\s]*([^\n\r]{2,60})",
-        r"(?:ショップ名|店舗名)[：:\s]*([^\n\r]{2,60})",
+        r"(?:販売業者|事業者の名称|事業者名|会社名|運営会社|法人名)[：:\s]*([^\n\r]{2,60})",
+        r"(?:ショップ名|店舗名|屋号)[：:\s]*([^\n\r]{2,60})",
     ]
     for p in patterns:
         m = re.search(p, text)
@@ -44,8 +44,8 @@ def extract_company(text: str) -> str:
 def extract_address(text: str) -> str:
     """住所を抽出"""
     patterns = [
-        r"(?:所在地|事業者の所在地|住所)[：:\s]*(〒?\d{3}-?\d{4}[^\n\r]{5,80})",
-        r"(?:所在地|住所)[：:\s]*([^\n\r]{5,80})",
+        r"(?:所在地|事業者の所在地|事業者の住所|住所)[：:\s]*(〒?\d{3}-?\d{4}[^\n\r]{5,80})",
+        r"(?:所在地|事業者の住所|住所)[：:\s]*([^\n\r]{5,80})",
     ]
     for p in patterns:
         m = re.search(p, text)
@@ -81,6 +81,9 @@ def detect_ec_platform(html: str) -> str:
         return "MakeShop利用中"
     if "futureshop" in html_lower:
         return "FutureShop利用中"
-    if "cart" in html_lower or "カート" in html_lower:
+    # カート判定は複合条件で偽陽性を抑制（カートボタン+商品ページの両方が存在）
+    has_cart = "cart" in html_lower or "カートに入れる" in html_lower or "add to cart" in html_lower
+    has_product = "商品" in html_lower or "product" in html_lower or "price" in html_lower
+    if has_cart and has_product:
         return "自社ECあり"
     return ""

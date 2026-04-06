@@ -5,14 +5,19 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# レート制限
-RATE_LIMIT_SEC = 1.5
+# レート制限（サイト別）
+RATE_LIMIT_SEC = 2.0  # デフォルト
+RATE_LIMIT_YAHOO = 2.5
+RATE_LIMIT_RAKUTEN = 3.0  # 楽天は制限が厳しい
+RATE_LIMIT_GOOGLE = 2.0
 
-# User-Agent ローテーション
+# User-Agent ローテーション（2026年版）
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
 ]
 
 
@@ -20,10 +25,12 @@ def random_ua() -> dict[str, str]:
     return {"User-Agent": random.choice(USER_AGENTS)}
 
 
-# 対象エリア（関西）
+# 対象エリア（関西+滋賀+和歌山）
 TARGET_AREAS = [
-    "大阪", "京都", "兵庫", "奈良", "神戸", "堺", "姫路",
-    "西宮", "尼崎", "宇治", "伏見", "東大阪", "枚方", "豊中", "吹田", "高槻",
+    "大阪", "京都", "兵庫", "奈良", "滋賀", "和歌山",
+    "神戸", "堺", "姫路", "西宮", "尼崎", "宇治", "伏見",
+    "東大阪", "枚方", "豊中", "吹田", "高槻", "茨木",
+    "近江", "大津", "彦根", "田辺", "白浜",
 ]
 
 # 大手除外
