@@ -10,7 +10,9 @@ from app.tasks.followup_scheduler import followup_scheduler
 from app.tasks.job_monitor import job_monitor
 from app.tasks.keep_alive import keep_alive
 from app.tasks.daily_plan_scheduler import daily_plan_scheduler
-from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects, today, memos, mail
+from app.tasks.reply_checker import reply_checker
+from app.tasks.weekly_report_scheduler import weekly_report_scheduler
+from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects, today, memos, mail, goals, pipeline, webhook
 
 STATUS_JA = {
     # リードステータス
@@ -58,18 +60,20 @@ async def lifespan(app: FastAPI):
     monitor_task = asyncio.create_task(job_monitor())
     keepalive_task = asyncio.create_task(keep_alive())
     daily_plan_task = asyncio.create_task(daily_plan_scheduler())
+    reply_task = asyncio.create_task(reply_checker())
+    report_task = asyncio.create_task(weekly_report_scheduler())
     yield
     # 終了時
-    for task in [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task]:
+    for task in [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task, reply_task, report_task]:
         task.cancel()
-    for task in [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task]:
+    for task in [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task, reply_task, report_task]:
         try:
             await task
         except asyncio.CancelledError:
             pass
 
 
-app = FastAPI(title="営業自動化ツール", lifespan=lifespan)
+app = FastAPI(title="SellBuddy", lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -92,6 +96,9 @@ app.include_router(projects.router)
 app.include_router(today.router)
 app.include_router(memos.router)
 app.include_router(mail.router)
+app.include_router(goals.router)
+app.include_router(pipeline.router)
+app.include_router(webhook.router)
 
 
 @app.get("/health")

@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% block title %}目標管理 - SellBuddy{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>目標管理</h1>
+    <p>営業目標の設定と進捗トラッキング</p>
+</div>
+
+<!-- 期間タブ -->
+<div class="goal-tabs">
+    <button class="goal-tab active" data-type="weekly">今週</button>
+    <button class="goal-tab" data-type="monthly">今月</button>
+    <button class="goal-tab" data-type="quarterly">今四半期</button>
+</div>
+
+<!-- 目標プログレス -->
+<div id="goal-progress-area">
+    <div class="loading-spinner">読み込み中...</div>
+</div>
+
+<!-- 目標設定フォーム -->
+<div class="dashboard-card" id="goal-form-card" style="display: none;">
+    <h2 id="goal-form-title">目標設定</h2>
+    <form id="goal-form" class="goal-form">
+        <input type="hidden" id="form-period-type" />
+        <input type="hidden" id="form-period-key" />
+        <div class="goal-form-grid">
+            <div class="goal-form-item">
+                <label>リード目標</label>
+                <input type="number" id="form-target-leads" min="0" value="0" />
+            </div>
+            <div class="goal-form-item">
+                <label>送信目標</label>
+                <input type="number" id="form-target-sent" min="0" value="0" />
+            </div>
+            <div class="goal-form-item">
+                <label>返信目標</label>
+                <input type="number" id="form-target-replies" min="0" value="0" />
+            </div>
+            <div class="goal-form-item">
+                <label>商談目標</label>
+                <input type="number" id="form-target-meetings" min="0" value="0" />
+            </div>
+            <div class="goal-form-item">
+                <label>成約目標</label>
+                <input type="number" id="form-target-closed" min="0" value="0" />
+            </div>
+            <div class="goal-form-item">
+                <label>売上目標 (円)</label>
+                <input type="number" id="form-target-revenue" min="0" value="0" />
+            </div>
+        </div>
+        <div class="goal-form-item" style="margin-top: 12px;">
+            <label>メモ</label>
+            <textarea id="form-note" rows="2" placeholder="目標に関するメモ"></textarea>
+        </div>
+        <div class="goal-form-actions">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <button type="button" class="btn btn-secondary" onclick="closeForm()">キャンセル</button>
+        </div>
+    </form>
+</div>
+
+<!-- 日次推移チャート -->
+<div class="dashboard-card">
+    <h2>日次推移（過去30日）</h2>
+    <div class="chart-container chart-wide">
+        <canvas id="snapshotChart"></canvas>
+    </div>
+</div>
+
+<!-- スタイルはstyle.cssに統合済み -->
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+let goalsData = [];
+let activeType = 'weekly';
+let snapshotChart = null;
+
+// タブ切り替え
+document.querySelectorAll('.goal-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.goal-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        activeType = tab.dataset.type;
+        renderProgress();
+    });
+});
+
+function getPctClass(pct) {
+    if (pct >= 100) return 'over';
+    if (pct >= 70) return 'high';
+    if (pct >= 40) return 'mid';
+    return 'low';
+}
+
+function formatValue(val, unit) {
+    if (unit === '円') {
+        return val >= 10000 ? (val / 10000).toFixed(1) + '万円' : val.toLocaleString() + '円';
+    }
+    return val.toLocaleString() + unit;
+}
+
+function renderProgress() {
+    const area = document.getElementById('goal-progress-area');
+    const data = goalsData.find(g => g.period_type === activeType);
+    if (!data) {
+        area.innerHTML = '<div class="loading-text">データなし</div>';
+        return;
+    }
+
+    const hasTargets = data.metrics.some(m => m.target > 0);
+
+    let html = `
+    <div class="goal-progress-card">
+        <div class="goal-progress-header">
+            <h2>${data.period_label}の目標 (${data.period_key})</h2>
+            <button class="btn btn-sm btn-primary" onclick="openForm('${data.period_type}', '${data.period_key}')">
+                ${hasTargets ? '目標を編集' : '目標を設定'}
+            </button>
+        </div>
+        <div class="goal-metrics">
+    `;
+
+    for (const m of data.metrics) {
+        const cls = getPctClass(m.pct);
+        const barWidth = Math.min(m.pct, 100);
+        html += `
+        <div class="goal-metric">
+            <div class="goal-metric-header">
+                <span class="goal-metric-label">${m.label}</span>
+                <span class="goal-metric-pct pct-${cls}">${m.target > 0 ? m.pct + '%' : '-'}</span>
+            </div>
+            <div class="goal-metric-bar">
+                <div class="goal-metric-fill fill-${cls}" style="width: ${barWidth}%"></div>
+            </div>
+            <div class="goal-metric-values">
+                ${formatValue(m.actual, m.unit)} / ${m.target > 0 ? formatValue(m.target, m.unit) : '未設定'}
+            </div>
+        </div>
+        `;
+    }
+
+    html += '</div></div>';
+    area.innerHTML = html;
+}
+
+function openForm(periodType, periodKey) {
+    const card = document.getElementById('goal-form-card');
+    card.style.display = 'block';
+    document.getElementById('form-period-type').value = periodType;
+    document.getElementById('form-period-key').value = periodKey;
+
+    const typeLabels = {weekly: '今週', monthly: '今月', quarterly: '今四半期'};
+    document.getElementById('goal-form-title').textContent = typeLabels[periodType] + 'の目標設定';
+
+    // 既存値をセット
+    const data = goalsData.find(g => g.period_type === periodType);
+    if (data && data.goal) {
+        document.getElementById('form-target-leads').value = data.goal.target_leads || 0;
+        document.getElementById('form-target-sent').value = data.goal.target_sent || 0;
+        document.getElementById('form-target-replies').value = data.goal.target_replies || 0;
+        document.getElementById('form-target-meetings').value = data.goal.target_meetings || 0;
+        document.getElementById('form-target-closed').value = data.goal.target_closed || 0;
+        document.getElementById('form-target-revenue').value = data.goal.target_revenue || 0;
+        document.getElementById('form-note').value = data.goal.note || '';
+    }
+
+    card.scrollIntoView({behavior: 'smooth'});
+}
+
+function closeForm() {
+    document.getElementById('goal-form-card').style.display = 'none';
+}
+
+document.getElementById('goal-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = {
+        period_type: document.getElementById('form-period-type').value,
+        period_key: document.getElementById('form-period-key').value,
+        target_leads: parseInt(document.getElementById('form-target-leads').value) || 0,
+        target_sent: parseInt(document.getElementById('form-target-sent').value) || 0,
+        target_replies: parseInt(document.getElementById('form-target-replies').value) || 0,
+        target_meetings: parseInt(document.getElementById('form-target-meetings').value) || 0,
+        target_closed: parseInt(document.getElementById('form-target-closed').value) || 0,
+        target_revenue: parseInt(document.getElementById('form-target-revenue').value) || 0,
+        note: document.getElementById('form-note').value || null,
+    };
+
+    try {
+        const resp = await fetch('/api/goals', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+        });
+        if (resp.ok) {
+            closeForm();
+            await loadGoals();
+        }
+    } catch(e) {
+        console.error('目標保存エラー:', e);
+    }
+});
+
+// スナップショットチャート
+function renderSnapshots(data) {
+    if (!data.snapshots.length) {
+        document.getElementById('snapshotChart').parentElement.innerHTML =
+            '<div class="loading-text">スナップショットデータなし</div>';
+        return;
+    }
+
+    const COLORS = {
+        blue: '#4a90d9',
+        green: '#27ae60',
+        orange: '#f39c12',
+    };
+
+    if (snapshotChart) snapshotChart.destroy();
+    snapshotChart = new Chart(document.getElementById('snapshotChart'), {
+        type: 'line',
+        data: {
+            labels: data.snapshots.map(s => s.date.slice(5)),
+            datasets: [
+                {
+                    label: 'リード累計',
+                    data: data.snapshots.map(s => s.total_leads),
+                    borderColor: COLORS.blue,
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointRadius: 2,
+                },
+                {
+                    label: '送信累計',
+                    data: data.snapshots.map(s => s.total_sent),
+                    borderColor: COLORS.orange,
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointRadius: 2,
+                },
+                {
+                    label: '返信累計',
+                    data: data.snapshots.map(s => s.total_replies),
+                    borderColor: COLORS.green,
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointRadius: 2,
+                },
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top' },
+            },
+            scales: {
+                y: { beginAtZero: true, grid: { display: false } },
+                x: { grid: { display: false } },
+            }
+        }
+    });
+}
+
+async function loadGoals() {
+    try {
+        const resp = await fetch('/api/goals/current');
+        const data = await resp.json();
+        goalsData = data.goals;
+        renderProgress();
+    } catch(e) {
+        console.error('目標データ取得エラー:', e);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadGoals();
+
+    // スナップショット
+    try {
+        const snapResp = await fetch('/api/goals/snapshots?days=30');
+        const snapData = await snapResp.json();
+        renderSnapshots(snapData);
+    } catch(e) {
+        console.error('スナップショット取得エラー:', e);
+    }
+});
+</script>
+{% endblock %}

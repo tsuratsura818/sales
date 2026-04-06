@@ -49,7 +49,7 @@ def get_db():
 
 
 def init_db():
-    from app.models import lead, search_job, email_log, follow_up, competitor, portfolio, job_listing, job_application, monitor_log, monitor_settings, daily_plan, memo, app_settings  # noqa: F401
+    from app.models import lead, search_job, email_log, follow_up, competitor, portfolio, job_listing, job_application, monitor_log, monitor_settings, daily_plan, memo, app_settings, goal, pipeline, inbound  # noqa: F401
     try:
         Base.metadata.create_all(bind=engine)
         if _is_sqlite:
@@ -92,6 +92,10 @@ def _migrate_sqlite():
         ("leads", "deal_closed_at",        "TIMESTAMP"),
         ("leads", "deal_amount",           "INTEGER"),
         ("search_jobs", "search_method",   "TEXT DEFAULT 'serpapi'"),
+        ("leads", "probability",            "INTEGER"),
+        ("leads", "deal_stage",             "TEXT"),
+        ("leads", "lost_reason",            "TEXT"),
+        ("leads", "expected_close_date",    "TIMESTAMP"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
@@ -108,6 +112,10 @@ def _migrate_postgres():
     """既存PostgreSQL DBに新規列を追加するマイグレーション"""
     new_columns = [
         ("search_jobs", "search_method", "TEXT DEFAULT 'serpapi'"),
+        ("leads", "probability", "INTEGER"),
+        ("leads", "deal_stage", "TEXT"),
+        ("leads", "lost_reason", "TEXT"),
+        ("leads", "expected_close_date", "TIMESTAMP"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:

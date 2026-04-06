@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}ダッシュボード - 営業自動化ツール{% endblock %}
+{% block title %}ダッシュボード - SellBuddy{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -32,6 +32,28 @@
     <div class="stat-card stat-revenue">
         <div class="stat-number" id="kpi-revenue">-</div>
         <div class="stat-label">売上合計</div>
+    </div>
+</div>
+
+<!-- 目標進捗（今週） -->
+<div class="dashboard-card" id="goal-summary-card">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+        <h2 style="margin-bottom: 0;">今週の目標</h2>
+        <a href="/goals" style="font-size: 0.85rem; color: #4a90d9; text-decoration: none;">詳細 →</a>
+    </div>
+    <div id="goal-mini-progress" class="goal-mini-grid">
+        <div class="loading-spinner">読み込み中...</div>
+    </div>
+</div>
+
+<!-- 着地予測 -->
+<div class="dashboard-card" id="forecast-card">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+        <h2 style="margin-bottom: 0;">今月の着地予測</h2>
+        <span id="forecast-progress" style="font-size: 0.85rem; color: #888;"></span>
+    </div>
+    <div id="forecast-area" class="forecast-grid">
+        <div class="loading-spinner">読み込み中...</div>
     </div>
 </div>
 
@@ -315,16 +337,95 @@ async function switchReport(period) {
     }
 }
 
+// 目標ミニプログレス描画
+function renderGoalMini(goals) {
+    const area = document.getElementById('goal-mini-progress');
+    const weekly = goals.find(g => g.period_type === 'weekly');
+    if (!weekly || !weekly.metrics.some(m => m.target > 0)) {
+        area.innerHTML = '<div style="padding: 12px; color: #888; font-size: 0.85rem;">' +
+            '<a href="/goals" style="color: #4a90d9;">目標を設定する →</a></div>';
+        return;
+    }
+
+    let html = '';
+    for (const m of weekly.metrics) {
+        if (m.target <= 0) continue;
+        const pct = Math.min(m.pct, 100);
+        const color = m.pct >= 100 ? '#27ae60' : m.pct >= 70 ? '#2ecc71' : m.pct >= 40 ? '#f39c12' : '#e74c3c';
+        const valText = m.unit === '円'
+            ? (m.actual >= 10000 ? (m.actual/10000).toFixed(1) + '万' : m.actual.toLocaleString()) + '/' +
+              (m.target >= 10000 ? (m.target/10000).toFixed(1) + '万円' : m.target.toLocaleString() + '円')
+            : m.actual + '/' + m.target + m.unit;
+        html += `
+        <div class="goal-mini-item">
+            <div class="goal-mini-top">
+                <span class="goal-mini-label">${m.label}</span>
+                <span class="goal-mini-val" style="color:${color}">${m.pct}%</span>
+            </div>
+            <div class="goal-mini-bar"><div class="goal-mini-fill" style="width:${pct}%;background:${color}"></div></div>
+            <div class="goal-mini-nums">${valText}</div>
+        </div>`;
+    }
+    area.innerHTML = html || '<div style="padding:12px;color:#888;font-size:0.85rem;">目標未設定</div>';
+}
+
+// 着地予測描画
+function renderForecast(data) {
+    const area = document.getElementById('forecast-area');
+    const pct = data.progress_rate;
+    document.getElementById('forecast-progress').innerHTML =
+        `<span style="font-weight:600">営業日 ${data.business_days_elapsed}/${data.business_days_total}</span>`;
+
+    const metrics = [
+        {label: 'リード', actual: data.actual.leads, forecast: data.forecast.leads, avg: data.daily_avg.leads},
+        {label: '送信', actual: data.actual.sent, forecast: data.forecast.sent, avg: data.daily_avg.sent},
+        {label: '返信', actual: data.actual.replies, forecast: data.forecast.replies, avg: data.daily_avg.replies},
+    ];
+
+    // 月間プログレスバー
+    let html = `
+    <div style="width:100%;margin-bottom:16px;">
+        <div style="height:6px;background:#e9ecef;border-radius:3px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--color-blue),var(--color-green));border-radius:3px;transition:width 0.6s;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#999;margin-top:3px;">
+            <span>月初</span><span>${pct}%経過</span><span>月末</span>
+        </div>
+    </div>`;
+
+    for (const m of metrics) {
+        const forecastPct = m.forecast > 0 ? Math.min(Math.round(m.actual / m.forecast * 100), 100) : 0;
+        html += `
+        <div class="forecast-item">
+            <div class="forecast-label">${m.label}</div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
+                <div style="display:flex;align-items:baseline;gap:6px;">
+                    <span class="forecast-actual">${m.actual}<span class="forecast-unit">件</span></span>
+                    <span class="forecast-arrow">→</span>
+                    <span class="forecast-predicted">${m.forecast}<span class="forecast-unit">件予測</span></span>
+                </div>
+                <div style="height:4px;background:#e9ecef;border-radius:2px;overflow:hidden;">
+                    <div style="height:100%;width:${forecastPct}%;background:var(--color-blue);border-radius:2px;"></div>
+                </div>
+            </div>
+            <div class="forecast-avg">日平均<br><strong>${m.avg}</strong></div>
+        </div>`;
+    }
+    area.innerHTML = html || '<div class="loading-spinner">データなし</div>';
+}
+
 // 初期化: 全データを並列取得
 document.addEventListener('DOMContentLoaded', async function() {
     try {
-        const [kpiResp, funnelResp, industryResp, scoreResp, effectResp, reportResp] = await Promise.all([
+        const [kpiResp, funnelResp, industryResp, scoreResp, effectResp, reportResp, goalsResp, forecastResp] = await Promise.all([
             fetch('/api/dashboard/kpi'),
             fetch('/api/dashboard/funnel'),
             fetch('/api/dashboard/reply-by-industry'),
             fetch('/api/dashboard/reply-by-score'),
             fetch('/api/dashboard/issue-effectiveness'),
             fetch('/api/dashboard/report?period=weekly'),
+            fetch('/api/goals/current'),
+            fetch('/api/dashboard/forecast'),
         ]);
 
         const kpi = await kpiResp.json();
@@ -333,6 +434,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         const score = await scoreResp.json();
         const effect = await effectResp.json();
         const report = await reportResp.json();
+        const goalsData = await goalsResp.json();
+        const forecastData = await forecastResp.json();
 
         // KPIカード更新
         document.getElementById('kpi-leads').textContent = kpi.total_leads.toLocaleString();
@@ -346,6 +449,12 @@ document.addEventListener('DOMContentLoaded', async function() {
                     ? (kpi.total_revenue / 10000).toFixed(1) + '万円'
                     : kpi.total_revenue.toLocaleString() + '円')
                 : '0円';
+
+        // 目標ミニプログレス
+        renderGoalMini(goalsData.goals);
+
+        // 着地予測
+        renderForecast(forecastData);
 
         // チャート描画
         renderFunnel(funnel);

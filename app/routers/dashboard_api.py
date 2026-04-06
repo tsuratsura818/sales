@@ -227,6 +227,13 @@ async def issue_effectiveness(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/forecast")
+async def forecast_data(db: Session = Depends(get_db)):
+    """今月の着地予測"""
+    from app.services.forecast_service import get_monthly_forecast
+    return get_monthly_forecast(db)
+
+
 @router.get("/report")
 async def report_data(
     period: str = Query("weekly"),

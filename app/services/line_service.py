@@ -265,6 +265,294 @@ async def push_text_message(text: str) -> None:
             logger.error(f"LINE text push失敗: {resp.status_code} {resp.text}")
 
 
+async def push_reply_notification(
+    lead_id: int,
+    lead_domain: str,
+    lead_title: str,
+    from_email: str,
+    subject: str,
+    body_preview: str,
+) -> None:
+    """返信検知時のFlex Message通知。返信内容サマリー + 次アクション提案"""
+    # 本文プレビュー（長すぎる場合は切り詰め）
+    preview = body_preview[:300] + "..." if len(body_preview) > 300 else body_preview
+    title_text = lead_title or lead_domain
+
+    flex_message = {
+        "type": "flex",
+        "altText": f"返信あり: {title_text}",
+        "contents": {
+            "type": "bubble",
+            "size": "giga",
+            "header": {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#27ae60",
+                "paddingAll": "15px",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "返信検知",
+                        "color": "#ffffff",
+                        "size": "xs",
+                        "weight": "bold",
+                    },
+                    {
+                        "type": "text",
+                        "text": title_text,
+                        "color": "#ffffff",
+                        "size": "md",
+                        "weight": "bold",
+                        "wrap": True,
+                        "maxLines": 2,
+                    },
+                ],
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "md",
+                "paddingAll": "15px",
+                "contents": [
+                    {
+                        "type": "box",
+                        "layout": "horizontal",
+                        "contents": [
+                            {"type": "text", "text": "送信元", "size": "sm",
+                             "color": "#888888", "flex": 2},
+                            {"type": "text", "text": from_email, "size": "sm",
+                             "weight": "bold", "flex": 5, "wrap": True},
+                        ],
+                    },
+                    {
+                        "type": "box",
+                        "layout": "horizontal",
+                        "contents": [
+                            {"type": "text", "text": "件名", "size": "sm",
+                             "color": "#888888", "flex": 2},
+                            {"type": "text", "text": subject or "(件名なし)", "size": "sm",
+                             "flex": 5, "wrap": True},
+                        ],
+                    },
+                    {"type": "separator"},
+                    {
+                        "type": "text",
+                        "text": preview or "(本文なし)",
+                        "size": "xs",
+                        "color": "#666666",
+                        "wrap": True,
+                        "maxLines": 8,
+                    },
+                    {"type": "separator"},
+                    {
+                        "type": "text",
+                        "text": "次のアクション: 24時間以内に返信しましょう",
+                        "size": "xs",
+                        "color": "#27ae60",
+                        "weight": "bold",
+                    },
+                ],
+            },
+            "footer": {
+                "type": "box",
+                "layout": "horizontal",
+                "spacing": "md",
+                "paddingAll": "15px",
+                "contents": [
+                    {
+                        "type": "button",
+                        "action": {
+                            "type": "postback",
+                            "label": "商談設定",
+                            "data": f"action=set_meeting&lead_id={lead_id}",
+                            "displayText": "商談日程を設定します",
+                        },
+                        "style": "primary",
+                        "color": "#27ae60",
+                    },
+                    {
+                        "type": "button",
+                        "action": {
+                            "type": "uri",
+                            "label": "詳細",
+                            "uri": f"{settings.RENDER_BASE_URL or 'https://sales-6g78.onrender.com'}/leads/{lead_id}",
+                        },
+                        "style": "secondary",
+                    },
+                ],
+            },
+        },
+    }
+
+    payload = {
+        "to": settings.LINE_USER_ID,
+        "messages": [flex_message],
+    }
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{LINE_API_BASE}/message/push",
+            headers=_headers(),
+            json=payload,
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            logger.info(f"返信通知LINE送信成功: lead_id={lead_id}")
+        else:
+            logger.error(f"返信通知LINE送信失敗: {resp.status_code} {resp.text}")
+
+
+async def push_inbound_notification(
+    lead_id: int,
+    email: str,
+    name: str,
+    company: str,
+    source: str,
+    message: str,
+) -> None:
+    """インバウンドリード受信時のLINE通知"""
+    source_labels = {
+        "wordpress": "WordPress問い合わせ",
+        "diagnostic": "診断ツール",
+        "landing_page": "LP",
+    }
+    source_label = source_labels.get(source, source)
+    preview = message[:200] + "..." if len(message) > 200 else message
+
+    flex_message = {
+        "type": "flex",
+        "altText": f"インバウンドリード: {name or email}",
+        "contents": {
+            "type": "bubble",
+            "size": "giga",
+            "header": {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#8e44ad",
+                "paddingAll": "15px",
+                "contents": [
+                    {"type": "text", "text": f"インバウンド ({source_label})", "color": "#ffffff", "size": "xs", "weight": "bold"},
+                    {"type": "text", "text": name or email, "color": "#ffffff", "size": "md", "weight": "bold", "wrap": True},
+                ],
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "md",
+                "paddingAll": "15px",
+                "contents": [
+                    {"type": "box", "layout": "horizontal", "contents": [
+                        {"type": "text", "text": "メール", "size": "sm", "color": "#888888", "flex": 2},
+                        {"type": "text", "text": email, "size": "sm", "flex": 5, "wrap": True},
+                    ]},
+                    {"type": "box", "layout": "horizontal", "contents": [
+                        {"type": "text", "text": "会社", "size": "sm", "color": "#888888", "flex": 2},
+                        {"type": "text", "text": company or "-", "size": "sm", "flex": 5},
+                    ]},
+                    {"type": "separator"},
+                    {"type": "text", "text": preview or "(メッセージなし)", "size": "xs", "color": "#666666", "wrap": True, "maxLines": 6},
+                    {"type": "separator"},
+                    {"type": "text", "text": "1時間以内に返信で成約率3倍UP", "size": "xs", "color": "#8e44ad", "weight": "bold"},
+                ],
+            },
+            "footer": {
+                "type": "box",
+                "layout": "horizontal",
+                "spacing": "md",
+                "paddingAll": "15px",
+                "contents": [
+                    {"type": "button", "action": {"type": "uri", "label": "詳細", "uri": f"{settings.RENDER_BASE_URL or 'https://sales-6g78.onrender.com'}/inbound"}, "style": "primary", "color": "#8e44ad"},
+                ],
+            },
+        },
+    }
+
+    payload = {"to": settings.LINE_USER_ID, "messages": [flex_message]}
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(f"{LINE_API_BASE}/message/push", headers=_headers(), json=payload, timeout=10)
+        if resp.status_code == 200:
+            logger.info(f"インバウンドLINE通知成功: lead_id={lead_id}")
+        else:
+            logger.error(f"インバウンドLINE通知失敗: {resp.status_code} {resp.text}")
+
+
+async def push_weekly_report(report_data: dict) -> None:
+    """週次レポートをLINE Flex Messageで送信"""
+    d = report_data
+    flex_message = {
+        "type": "flex",
+        "altText": f"週次レポート: {d.get('period', '')}",
+        "contents": {
+            "type": "bubble",
+            "size": "giga",
+            "header": {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#2c3e50",
+                "paddingAll": "15px",
+                "contents": [
+                    {"type": "text", "text": "週次レポート", "color": "#ffffff", "size": "xs", "weight": "bold"},
+                    {"type": "text", "text": d.get("period", ""), "color": "#ffffff", "size": "md", "weight": "bold"},
+                ],
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "sm",
+                "paddingAll": "15px",
+                "contents": [
+                    _report_row("リード", d.get("leads", 0), d.get("leads_prev", 0)),
+                    _report_row("送信", d.get("sent", 0), d.get("sent_prev", 0)),
+                    _report_row("返信", d.get("replies", 0), d.get("replies_prev", 0)),
+                    _report_row("商談", d.get("meetings", 0), d.get("meetings_prev", 0)),
+                    _report_row("成約", d.get("closed", 0), d.get("closed_prev", 0)),
+                    {"type": "separator"},
+                    {"type": "box", "layout": "horizontal", "contents": [
+                        {"type": "text", "text": "返信率", "size": "sm", "color": "#888888", "flex": 3},
+                        {"type": "text", "text": f"{d.get('reply_rate', 0)}%", "size": "sm", "weight": "bold", "flex": 2},
+                    ]},
+                    {"type": "box", "layout": "horizontal", "contents": [
+                        {"type": "text", "text": "着地予測(月)", "size": "sm", "color": "#888888", "flex": 3},
+                        {"type": "text", "text": f"送信{d.get('forecast_sent', '-')} / 返信{d.get('forecast_replies', '-')}", "size": "sm", "flex": 4},
+                    ]},
+                ],
+            },
+            "footer": {
+                "type": "box",
+                "layout": "horizontal",
+                "paddingAll": "15px",
+                "contents": [
+                    {"type": "button", "action": {"type": "uri", "label": "ダッシュボード", "uri": f"{settings.RENDER_BASE_URL or 'https://sales-6g78.onrender.com'}/dashboard"}, "style": "secondary"},
+                ],
+            },
+        },
+    }
+
+    payload = {"to": settings.LINE_USER_ID, "messages": [flex_message]}
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(f"{LINE_API_BASE}/message/push", headers=_headers(), json=payload, timeout=10)
+        if resp.status_code == 200:
+            logger.info("週次レポートLINE送信成功")
+        else:
+            logger.error(f"週次レポートLINE送信失敗: {resp.status_code} {resp.text}")
+
+
+def _report_row(label: str, current: int, prev: int) -> dict:
+    """レポート行ヘルパー"""
+    diff = current - prev
+    diff_text = f"+{diff}" if diff > 0 else str(diff)
+    diff_color = "#27ae60" if diff > 0 else "#e74c3c" if diff < 0 else "#888888"
+    return {
+        "type": "box",
+        "layout": "horizontal",
+        "contents": [
+            {"type": "text", "text": label, "size": "sm", "color": "#888888", "flex": 3},
+            {"type": "text", "text": str(current), "size": "sm", "weight": "bold", "flex": 2},
+            {"type": "text", "text": diff_text, "size": "xs", "color": diff_color, "flex": 2, "align": "end"},
+        ],
+    }
+
+
 async def reply_text(reply_token: str, text: str) -> None:
     """Webhookイベントにテキストで返信"""
     payload = {

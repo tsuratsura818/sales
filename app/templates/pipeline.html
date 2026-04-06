@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+{% block title %}リスト収集パイプライン - SellBuddy{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>リスト収集パイプライン</h1>
+    <p>Yahoo!/楽天/Googleから営業リードを自動収集 → スコアリング → MailForgeインポート</p>
+</div>
+
+<!-- 実行コントロール -->
+<div class="dashboard-card">
+    <h2>パイプライン実行</h2>
+    <div class="pipeline-controls">
+        <div class="source-checkboxes">
+            <label><input type="checkbox" id="src-yahoo" checked /> Yahoo!ショッピング</label>
+            <label><input type="checkbox" id="src-rakuten" checked /> 楽天市場</label>
+            <label><input type="checkbox" id="src-google" checked /> Google検索（SerpAPI）</label>
+        </div>
+        <div class="pipeline-actions">
+            <button class="btn btn-primary btn-lg" id="btn-start" onclick="startPipeline()">
+                収集開始
+            </button>
+        </div>
+    </div>
+
+    <!-- 進捗バー -->
+    <div id="progress-area" style="display: none; margin-top: 16px;">
+        <div class="pipeline-progress-bar">
+            <div class="pipeline-progress-fill" id="progress-fill" style="width: 0%"></div>
+        </div>
+        <div class="pipeline-progress-text">
+            <span id="progress-pct">0%</span>
+            <span id="progress-msg">準備中...</span>
+        </div>
+    </div>
+
+    <!-- 実行結果サマリー -->
+    <div id="result-summary" style="display: none; margin-top: 16px;">
+        <div class="pipeline-summary-grid">
+            <div class="pipeline-summary-item">
+                <div class="summary-number" id="sum-total">0</div>
+                <div class="summary-label">収集合計</div>
+            </div>
+            <div class="pipeline-summary-item rank-s">
+                <div class="summary-number" id="sum-s">0</div>
+                <div class="summary-label">Sランク</div>
+            </div>
+            <div class="pipeline-summary-item rank-a">
+                <div class="summary-number" id="sum-a">0</div>
+                <div class="summary-label">Aランク</div>
+            </div>
+            <div class="pipeline-summary-item rank-b">
+                <div class="summary-number" id="sum-b">0</div>
+                <div class="summary-label">Bランク</div>
+            </div>
+            <div class="pipeline-summary-item">
+                <div class="summary-number" id="sum-imported">0</div>
+                <div class="summary-label">MailForge</div>
+            </div>
+            <div class="pipeline-summary-item">
+                <div class="summary-number" id="sum-duration">-</div>
+                <div class="summary-label">実行時間</div>
+            </div>
+        </div>
+        <div style="margin-top: 12px;">
+            <button class="btn btn-secondary btn-sm" id="btn-csv" onclick="downloadCSV()" style="display:none;">CSV出力</button>
+        </div>
+    </div>
+</div>
+
+<!-- 結果プレビュー -->
+<div class="dashboard-card" id="results-card" style="display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h2 style="margin-bottom: 0;">収集結果</h2>
+        <div class="result-filters">
+            <select id="filter-rank" onchange="loadResults()">
+                <option value="">全ランク</option>
+                <option value="S">Sランク</option>
+                <option value="A">Aランク</option>
+                <option value="B">Bランク</option>
+                <option value="C">Cランク</option>
+            </select>
+            <select id="filter-source" onchange="loadResults()">
+                <option value="">全ソース</option>
+                <option value="yahoo">Yahoo!</option>
+                <option value="rakuten">楽天</option>
+                <option value="google">Google</option>
+            </select>
+        </div>
+    </div>
+    <div class="table-scroll">
+        <table class="data-table" id="results-table">
+            <thead>
+                <tr>
+                    <th>ランク</th>
+                    <th>会社名</th>
+                    <th>メール</th>
+                    <th>EC状況</th>
+                    <th>プラットフォーム</th>
+                    <th>所在地</th>
+                    <th>提案切り口</th>
+                    <th>MF</th>
+                </tr>
+            </thead>
+            <tbody id="results-tbody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 実行履歴 -->
+<div class="dashboard-card">
+    <h2>実行履歴</h2>
+    <div id="history-area">
+        <div class="loading-spinner">読み込み中...</div>
+    </div>
+</div>
+
+<!-- スタイルはstyle.cssに統合済み -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentRunId = null;
+let pollTimer = null;
+
+function esc(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+async function startPipeline() {
+    const sources = [];
+    if (document.getElementById('src-yahoo').checked) sources.push('yahoo');
+    if (document.getElementById('src-rakuten').checked) sources.push('rakuten');
+    if (document.getElementById('src-google').checked) sources.push('google');
+
+    if (sources.length === 0) {
+        alert('ソースを1つ以上選択してください');
+        return;
+    }
+
+    document.getElementById('btn-start').disabled = true;
+    document.getElementById('btn-start').textContent = '実行中...';
+    document.getElementById('progress-area').style.display = 'block';
+    document.getElementById('result-summary').style.display = 'none';
+    document.getElementById('results-card').style.display = 'none';
+
+    try {
+        const resp = await fetch('/api/pipeline/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({sources, skip_mx: true}),
+        });
+        const data = await resp.json();
+        if (data.error) {
+            alert(data.error);
+            document.getElementById('btn-start').disabled = false;
+            document.getElementById('btn-start').textContent = '収集開始';
+            return;
+        }
+        currentRunId = data.run_id;
+        pollStatus();
+    } catch(e) {
+        alert('起動エラー: ' + e.message);
+        document.getElementById('btn-start').disabled = false;
+        document.getElementById('btn-start').textContent = '収集開始';
+    }
+}
+
+async function pollStatus() {
+    if (!currentRunId) return;
+    try {
+        const resp = await fetch(`/api/pipeline/status/${currentRunId}`);
+        const data = await resp.json();
+
+        document.getElementById('progress-fill').style.width = data.progress_pct + '%';
+        document.getElementById('progress-pct').textContent = data.progress_pct + '%';
+        document.getElementById('progress-msg').textContent = data.progress_message || '';
+
+        if (data.status === 'completed' || data.status === 'failed') {
+            clearTimeout(pollTimer);
+            document.getElementById('btn-start').disabled = false;
+            document.getElementById('btn-start').textContent = '収集開始';
+
+            if (data.status === 'completed') {
+                showSummary(data);
+                await loadResults();
+                document.getElementById('results-card').style.display = 'block';
+            } else {
+                alert('パイプラインエラー: ' + (data.error_message || '不明'));
+            }
+            loadHistory();
+            return;
+        }
+
+        pollTimer = setTimeout(pollStatus, 3000);
+    } catch(e) {
+        pollTimer = setTimeout(pollStatus, 5000);
+    }
+}
+
+function showSummary(data) {
+    document.getElementById('result-summary').style.display = 'block';
+    document.getElementById('sum-total').textContent = data.total_found;
+    document.getElementById('sum-s').textContent = (data.rank_counts || {}).S || 0;
+    document.getElementById('sum-a').textContent = (data.rank_counts || {}).A || 0;
+    document.getElementById('sum-b').textContent = (data.rank_counts || {}).B || 0;
+    document.getElementById('sum-imported').textContent = data.total_imported || 0;
+    document.getElementById('sum-duration').textContent = data.duration_sec ? formatDuration(data.duration_sec) : '-';
+    document.getElementById('btn-csv').style.display = 'inline-block';
+}
+
+function formatDuration(sec) {
+    if (sec < 60) return sec + '秒';
+    return Math.floor(sec / 60) + '分' + (sec % 60) + '秒';
+}
+
+async function loadResults() {
+    if (!currentRunId) return;
+    const rank = document.getElementById('filter-rank').value;
+    const source = document.getElementById('filter-source').value;
+    let url = `/api/pipeline/results/${currentRunId}?sort=score`;
+    if (rank) url += `&rank=${rank}`;
+    if (source) url += `&source=${source}`;
+
+    try {
+        const resp = await fetch(url);
+        const data = await resp.json();
+        renderResults(data.results);
+    } catch(e) {
+        console.error('結果取得エラー:', e);
+    }
+}
+
+function renderResults(results) {
+    const tbody = document.getElementById('results-tbody');
+    if (!results.length) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;padding:20px;">結果なし</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = results.map(r => `
+        <tr>
+            <td><span class="rank-badge rank-${esc(r.rank)}">${esc(r.rank)}</span></td>
+            <td>${esc(r.company) || '-'}</td>
+            <td><a href="mailto:${encodeURIComponent(r.email)}" style="color:#4a90d9">${esc(r.email)}</a></td>
+            <td>${esc(r.ec_status) || '-'}</td>
+            <td>${esc(r.platform) || '-'}</td>
+            <td>${esc(r.location) || '-'}</td>
+            <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(r.proposal)}">${esc(r.proposal) || '-'}</td>
+            <td>${r.imported_to_mailforge ? '<span class="mf-badge mf-yes">済</span>' : ''}</td>
+        </tr>
+    `).join('');
+}
+
+function downloadCSV() {
+    if (currentRunId) {
+        window.location.href = `/api/pipeline/results/${currentRunId}/csv`;
+    }
+}
+
+async function loadHistory() {
+    try {
+        const resp = await fetch('/api/pipeline/runs');
+        const data = await resp.json();
+        renderHistory(data.runs);
+    } catch(e) {
+        console.error('履歴取得エラー:', e);
+    }
+}
+
+function renderHistory(runs) {
+    const area = document.getElementById('history-area');
+    if (!runs.length) {
+        area.innerHTML = '<div style="color:#888;padding:12px;">実行履歴なし</div>';
+        return;
+    }
+
+    let html = '<table class="history-table"><thead><tr><th>日時</th><th>ステータス</th><th>ソース</th><th>結果</th><th>MF</th><th>時間</th><th>操作</th></tr></thead><tbody>';
+    for (const r of runs) {
+        const dt = r.created_at ? new Date(r.created_at).toLocaleString('ja-JP') : '-';
+        const sources = (r.sources || []).join(', ');
+        const breakdown = r.source_breakdown || {};
+        const details = Object.entries(breakdown).map(([k,v]) => `${k}:${v}`).join(' ');
+        html += `<tr>
+            <td>${dt}</td>
+            <td><span class="status-badge status-${r.status}">${r.status}</span></td>
+            <td>${sources}</td>
+            <td>${r.total_found}件 ${details ? '(' + details + ')' : ''}</td>
+            <td>${r.total_imported || 0}件</td>
+            <td>${r.duration_sec ? formatDuration(r.duration_sec) : '-'}</td>
+            <td><button class="btn btn-sm btn-secondary" onclick="viewRun(${r.id})">表示</button></td>
+        </tr>`;
+    }
+    html += '</tbody></table>';
+    area.innerHTML = html;
+}
+
+async function viewRun(runId) {
+    currentRunId = runId;
+    const resp = await fetch(`/api/pipeline/status/${runId}`);
+    const data = await resp.json();
+    if (data.status === 'completed') {
+        showSummary(data);
+        document.getElementById('results-card').style.display = 'block';
+        await loadResults();
+    }
+}
+
+// 初期化
+document.addEventListener('DOMContentLoaded', () => {
+    loadHistory();
+});
+</script>
+{% endblock %}

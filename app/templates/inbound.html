@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}インバウンドリード - SellBuddy{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>インバウンドリード</h1>
+    <p>WordPress (soreiine) / 診断ツール / LP経由のリード</p>
+</div>
+
+<!-- 統計 -->
+<div class="stats-row-6" id="inbound-stats">
+    <div class="stat-card stat-leads">
+        <div class="stat-number" id="stat-total">-</div>
+        <div class="stat-label">合計</div>
+    </div>
+    <div class="stat-card stat-sent-kpi">
+        <div class="stat-number" id="stat-new">-</div>
+        <div class="stat-label">新規</div>
+    </div>
+    <div class="stat-card stat-reply-rate">
+        <div class="stat-number" id="stat-contacted">-</div>
+        <div class="stat-label">対応済み</div>
+    </div>
+    <div class="stat-card stat-meeting">
+        <div class="stat-number" id="stat-qualified">-</div>
+        <div class="stat-label">有望</div>
+    </div>
+    <div class="stat-card stat-closed-kpi">
+        <div class="stat-number" id="stat-converted">-</div>
+        <div class="stat-label">成約</div>
+    </div>
+</div>
+
+<!-- フィルタ -->
+<div style="margin-bottom: 16px;">
+    <select id="filter-status" onchange="loadLeads()" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px;">
+        <option value="">全ステータス</option>
+        <option value="new">新規</option>
+        <option value="contacted">対応済み</option>
+        <option value="qualified">有望</option>
+        <option value="converted">成約</option>
+        <option value="lost">失注</option>
+    </select>
+</div>
+
+<!-- リード一覧 -->
+<div class="dashboard-card">
+    <div class="table-scroll">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>日時</th>
+                    <th>名前</th>
+                    <th>会社</th>
+                    <th>メール</th>
+                    <th>ソース</th>
+                    <th>ステータス</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="leads-tbody">
+                <tr><td colspan="7"><div class="loading-spinner">読み込み中...</div></td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Webhook設定ガイド -->
+<div class="dashboard-card" style="margin-top: 20px;">
+    <h2>WordPress Webhook設定</h2>
+    <div style="font-size: 0.85rem; color: #666; line-height: 1.8;">
+        <p>Contact Form 7 や WPForms から以下のURLにPOSTしてください:</p>
+        <code style="background: #f5f5f5; padding: 4px 8px; border-radius: 4px; display: block; margin: 8px 0;">
+            POST {{ request.url_for('receive_inbound') }}
+        </code>
+        <p>JSON形式: <code>{"email": "...", "name": "...", "company": "...", "message": "...", "source": "wordpress"}</code></p>
+    </div>
+</div>
+
+<!-- スタイルはstyle.cssに統合済み -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STATUS_JA = {new: '新規', contacted: '対応済み', qualified: '有望', converted: '成約', lost: '失注'};
+const SOURCE_JA = {wordpress: 'WordPress', diagnostic: '診断ツール', landing_page: 'LP'};
+
+function esc(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+async function loadLeads() {
+    const status = document.getElementById('filter-status').value;
+    let url = '/api/inbound';
+    if (status) url += `?status=${status}`;
+
+    try {
+        const resp = await fetch(url);
+        const data = await resp.json();
+        renderLeads(data.leads);
+        updateStats(data.leads);
+    } catch(e) {
+        console.error('取得エラー:', e);
+    }
+}
+
+function renderLeads(leads) {
+    const tbody = document.getElementById('leads-tbody');
+    if (!leads.length) {
+        tbody.innerHTML = '<tr><td colspan="7"><div class="empty-card"><div class="empty-card-icon">📥</div><div class="empty-card-text">まだインバウンドリードがありません</div><div style="font-size:0.85rem;color:#888;">WordPress Webhookを設定してリードを受信しましょう</div></div></td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = leads.map(l => {
+        const dt = l.created_at ? new Date(l.created_at).toLocaleString('ja-JP') : '-';
+        return `<tr>
+            <td style="white-space:nowrap">${esc(dt)}</td>
+            <td>${esc(l.name) || '-'}</td>
+            <td>${esc(l.company) || '-'}</td>
+            <td><a href="mailto:${encodeURIComponent(l.email)}" style="color:#4a90d9">${esc(l.email)}</a></td>
+            <td>${esc(SOURCE_JA[l.source] || l.source)}</td>
+            <td>
+                <select class="status-select" onchange="updateStatus(${parseInt(l.id)}, this.value)">
+                    ${Object.entries(STATUS_JA).map(([k,v]) =>
+                        `<option value="${k}" ${l.status === k ? 'selected' : ''}>${v}</option>`
+                    ).join('')}
+                </select>
+            </td>
+            <td>${l.message ? '<span title="' + esc(l.message).substring(0, 100) + '">💬</span>' : ''}</td>
+        </tr>`;
+    }).join('');
+}
+
+function updateStats(leads) {
+    document.getElementById('stat-total').textContent = leads.length;
+    document.getElementById('stat-new').textContent = leads.filter(l => l.status === 'new').length;
+    document.getElementById('stat-contacted').textContent = leads.filter(l => l.status === 'contacted').length;
+    document.getElementById('stat-qualified').textContent = leads.filter(l => l.status === 'qualified').length;
+    document.getElementById('stat-converted').textContent = leads.filter(l => l.status === 'converted').length;
+}
+
+async function updateStatus(id, status) {
+    try {
+        const resp = await fetch(`/api/inbound/${id}/status`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({status}),
+        });
+        if (resp.ok) {
+            showToast('ステータスを更新しました');
+        } else {
+            showToast('更新に失敗しました', true);
+        }
+    } catch(e) {
+        showToast('通信エラー', true);
+    }
+}
+
+function showToast(msg, isError) {
+    const t = document.createElement('div');
+    t.textContent = msg;
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;padding:12px 24px;border-radius:8px;color:#fff;font-size:0.9rem;font-weight:600;z-index:9999;transition:opacity 0.3s;' +
+        (isError ? 'background:#e74c3c;' : 'background:#27ae60;');
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
+}
+
+document.addEventListener('DOMContentLoaded', loadLeads);
+</script>
+{% endblock %}

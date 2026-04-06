@@ -14,7 +14,7 @@ class Lead(Base):
     url: Mapped[str] = mapped_column(String, nullable=False)
     domain: Mapped[str | None] = mapped_column(String, nullable=True)
     title: Mapped[str | None] = mapped_column(String, nullable=True)
-    status: Mapped[str] = mapped_column(String, default="new")
+    status: Mapped[str] = mapped_column(String, default="new", index=True)
     # new / analyzing / analyzed / email_generated / sent / replied / meeting / closed / error / excluded
 
     # 分析結果
@@ -47,7 +47,7 @@ class Lead(Base):
     has_robots_txt: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     # 連絡先
-    contact_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    contact_email: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     contact_page_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Phase 5: スマートスコアリング
@@ -81,6 +81,13 @@ class Lead(Base):
     meeting_scheduled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     deal_closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     deal_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 成約金額（円）
+
+    # Phase 1（営業自動化）: 案件進捗
+    probability: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 成約確率 0-100%
+    deal_stage: Mapped[str | None] = mapped_column(String, nullable=True)
+    # lead / contacted / meeting / proposal / negotiation / closed_won / closed_lost
+    lost_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    expected_close_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     search_job: Mapped["SearchJob"] = relationship("SearchJob", back_populates="leads")  # noqa: F821
     email_logs: Mapped[list] = relationship("EmailLog", back_populates="lead", lazy="select")

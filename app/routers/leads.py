@@ -169,6 +169,24 @@ async def mark_closed(
     return {"success": True}
 
 
+@router.post("/leads/{lead_id}/meeting-email")
+async def generate_meeting_email_endpoint(lead_id: int, db: Session = Depends(get_db)):
+    """日程調整メール自動生成（Googleカレンダー空き時間連携）"""
+    from app.services.meeting_scheduler import generate_meeting_email
+    result = generate_meeting_email(db, lead_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.get("/meeting/slots")
+async def get_meeting_slots():
+    """空き時間スロット一覧"""
+    from app.services.meeting_scheduler import get_free_slots
+    slots = get_free_slots()
+    return {"slots": slots}
+
+
 def _lead_to_dict(lead: Lead) -> dict:
     d = {c.name: getattr(lead, c.name) for c in lead.__table__.columns}
     if d.get("score_breakdown") and isinstance(d["score_breakdown"], str):

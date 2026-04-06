@@ -45,6 +45,19 @@ class Settings(BaseSettings):
     DAILY_PLAN_HOUR_JST: int = 8
     DAILY_PLAN_ENABLED: bool = True
 
+    # Render
+    RENDER_BASE_URL: str = "https://sales-6g78.onrender.com"
+
+    # 返信検知
+    REPLY_CHECK_INTERVAL_SEC: int = 300
+
+    # Webhook
+    WEBHOOK_SECRET: str = ""
+
+    # 週次レポート
+    WEEKLY_REPORT_DAY: int = 0  # 0=月曜
+    WEEKLY_REPORT_HOUR_JST: int = 9
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

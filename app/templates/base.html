@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}営業自動化ツール{% endblock %}</title>
+    <title>{% block title %}SellBuddy{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
     <nav class="navbar">
-        <a href="/dashboard" class="nav-brand">🎯 営業自動化ツール</a>
+        <a href="/dashboard" class="nav-brand">🤝 SellBuddy</a>
         <div class="nav-links">
             <a href="/dashboard" class="nav-item">📊 ダッシュボード</a>
+            <a href="/goals" class="nav-item">🎯 目標</a>
 
             <div class="nav-dropdown">
                 <button class="nav-dropdown-btn">📅 スケジュール ▾</button>
@@ -29,6 +30,14 @@
                     <a href="/sent">📨 送信済み</a>
                     <a href="/followups">📩 フォローアップ</a>
                     <a href="/jobs">📡 案件モニター</a>
+                </div>
+            </div>
+
+            <div class="nav-dropdown">
+                <button class="nav-dropdown-btn">📥 獲得 ▾</button>
+                <div class="nav-dropdown-menu">
+                    <a href="/pipeline">🔄 リスト収集</a>
+                    <a href="/inbound">📥 インバウンド</a>
                 </div>
             </div>
 
