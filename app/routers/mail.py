@@ -42,8 +42,10 @@ async def mail_dashboard(request: Request):
             "campaigns": campaigns,
         })
     except Exception as e:
-        log.error(f"/mail error: {e}", exc_info=True)
-        return HTMLResponse(f"<h3>メール配信エラー</h3><pre>{e}</pre>", status_code=500)
+        import traceback
+        tb = traceback.format_exc()
+        log.error(f"/mail error: {tb}")
+        return HTMLResponse(f"<h3>メール配信エラー</h3><pre>{tb}</pre>", status_code=500)
 
 
 @router.get("/mail/campaigns", response_class=HTMLResponse)
