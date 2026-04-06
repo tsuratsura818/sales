@@ -29,13 +29,19 @@ CC_STATUS_JA = {
 async def mail_dashboard(request: Request):
     try:
         stats = mf.get_stats()
+        # campaignsのdictをそのまま渡す
+        campaigns = stats.get("campaigns", [])
         return templates.TemplateResponse("mail/dashboard.html", {
             "request": request,
-            "stats": stats,
+            "total_contacts": stats.get("total_contacts", 0),
+            "total_campaigns": stats.get("total_campaigns", 0),
+            "active_campaigns": stats.get("active_campaigns", 0),
+            "total_sent": stats.get("total_sent", 0),
+            "campaigns": campaigns,
             "STATUS_JA": STATUS_JA,
         })
     except Exception as e:
-        log.error(f"/mail error: {e}")
+        log.error(f"/mail error: {e}", exc_info=True)
         return HTMLResponse(f"<h3>メール配信エラー</h3><pre>{e}</pre>", status_code=500)
 
 

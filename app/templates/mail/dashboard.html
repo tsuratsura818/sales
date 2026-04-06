@@ -4,41 +4,39 @@
 {% block content %}
 <h2>📨 メール配信</h2>
 
-<div class="stats-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
   <div class="card" style="text-align:center;padding:20px;">
-    <div style="font-size:28px;font-weight:bold;">{{ stats.total_contacts }}</div>
+    <div style="font-size:28px;font-weight:bold;">{{ total_contacts }}</div>
     <div style="color:#666;font-size:13px;">コンタクト数</div>
   </div>
   <div class="card" style="text-align:center;padding:20px;">
-    <div style="font-size:28px;font-weight:bold;">{{ stats.total_campaigns }}</div>
+    <div style="font-size:28px;font-weight:bold;">{{ total_campaigns }}</div>
     <div style="color:#666;font-size:13px;">キャンペーン</div>
   </div>
   <div class="card" style="text-align:center;padding:20px;">
-    <div style="font-size:28px;font-weight:bold;color:#4f46e5;">{{ stats.active_campaigns }}</div>
+    <div style="font-size:28px;font-weight:bold;color:#4f46e5;">{{ active_campaigns }}</div>
     <div style="color:#666;font-size:13px;">配信中</div>
   </div>
   <div class="card" style="text-align:center;padding:20px;">
-    <div style="font-size:28px;font-weight:bold;color:#059669;">{{ stats.total_sent }}</div>
+    <div style="font-size:28px;font-weight:bold;color:#059669;">{{ total_sent }}</div>
     <div style="color:#666;font-size:13px;">累計送信数</div>
   </div>
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-  <!-- キャンペーン -->
   <div class="card" style="padding:20px;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
       <h3 style="margin:0;">キャンペーン</h3>
       <a href="/mail/campaigns/new" style="font-size:13px;color:#4f46e5;">+ 新規作成</a>
     </div>
-    {% if stats.campaigns %}
-      {% for c in stats.campaigns[:5] %}
+    {% if campaigns %}
+      {% for c in campaigns[:5] %}
       <a href="/mail/campaigns/{{ c['id'] }}" style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:6px;text-decoration:none;color:inherit;margin-bottom:4px;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
         <div>
           <div style="font-size:14px;font-weight:500;">{{ c['name'] }}</div>
           <div style="font-size:12px;color:#94a3b8;">{{ c['sent_count'] }}/{{ c['total_contacts'] }} 送信済み</div>
         </div>
-        {% set st = c['status'] %}
-        <span class="badge badge-{{ st }}">{{ STATUS_JA.get(st, st) }}</span>
+        <span style="font-size:11px;padding:2px 8px;border-radius:99px;background:#e0e7ff;color:#4338ca;">{{ STATUS_JA.get(c['status'], c['status']) }}</span>
       </a>
       {% endfor %}
     {% else %}
@@ -46,29 +44,14 @@
     {% endif %}
   </div>
 
-  <!-- クイックリンク -->
   <div class="card" style="padding:20px;">
     <h3 style="margin:0 0 12px;">クイックアクション</h3>
     <div style="display:flex;flex-direction:column;gap:8px;">
-      <a href="/mail/campaigns" class="btn btn-outline" style="text-align:center;">📋 キャンペーン一覧</a>
-      <a href="/mail/contacts" class="btn btn-outline" style="text-align:center;">👥 コンタクト一覧</a>
-      <a href="/mail/campaigns/new" class="btn btn-primary" style="text-align:center;">✉️ 新規キャンペーン作成</a>
-      <a href="/mail/logs" class="btn btn-outline" style="text-align:center;">📊 送信ログ</a>
+      <a href="/mail/campaigns" style="display:block;text-align:center;padding:10px;border:1px solid #e2e8f0;border-radius:8px;text-decoration:none;color:#334155;font-size:13px;">📋 キャンペーン一覧</a>
+      <a href="/mail/contacts" style="display:block;text-align:center;padding:10px;border:1px solid #e2e8f0;border-radius:8px;text-decoration:none;color:#334155;font-size:13px;">👥 コンタクト一覧</a>
+      <a href="/mail/campaigns/new" style="display:block;text-align:center;padding:10px;background:#4f46e5;border-radius:8px;text-decoration:none;color:white;font-size:13px;">✉️ 新規キャンペーン作成</a>
+      <a href="/mail/logs" style="display:block;text-align:center;padding:10px;border:1px solid #e2e8f0;border-radius:8px;text-decoration:none;color:#334155;font-size:13px;">📊 送信ログ</a>
     </div>
   </div>
 </div>
-
-<style>
-.badge { font-size:11px; padding:2px 8px; border-radius:99px; font-weight:500; }
-.badge-draft { background:#f1f5f9; color:#64748b; }
-.badge-review { background:#fef9c3; color:#a16207; }
-.badge-sending { background:#e0e7ff; color:#4338ca; }
-.badge-paused { background:#fed7aa; color:#c2410c; }
-.badge-completed { background:#d1fae5; color:#047857; }
-.badge-cancelled { background:#fee2e2; color:#b91c1c; }
-.btn-outline { border:1px solid #e2e8f0; border-radius:8px; padding:10px; font-size:13px; text-decoration:none; color:#334155; }
-.btn-outline:hover { background:#f8fafc; }
-.btn-primary { background:#4f46e5; color:white; border:none; border-radius:8px; padding:10px; font-size:13px; text-decoration:none; }
-.btn-primary:hover { background:#4338ca; }
-</style>
 {% endblock %}
