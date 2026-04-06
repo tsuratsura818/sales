@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}コンタクト - メール配信{% endblock %}
+
+{% block content %}
+<h2>👥 コンタクト</h2>
+
+<div style="display:flex;gap:12px;margin-bottom:16px;">
+  <form style="flex:1;display:flex;gap:8px;" method="get">
+    <input name="search" value="{{ search }}" placeholder="検索..." style="flex:1;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+    <select name="list_id" style="padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+      <option value="">すべてのリスト</option>
+      {% for l in lists %}
+      <option value="{{ l.id }}" {{ 'selected' if l.id == list_id }}>{{ l.name }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" style="padding:8px 16px;background:#4f46e5;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;">検索</button>
+  </form>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden;">
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead>
+      <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+        <th style="text-align:left;padding:10px 12px;font-size:11px;color:#64748b;">会社名</th>
+        <th style="text-align:left;padding:10px 12px;font-size:11px;color:#64748b;">メール</th>
+        <th style="text-align:left;padding:10px 12px;font-size:11px;color:#64748b;">業種</th>
+        <th style="text-align:left;padding:10px 12px;font-size:11px;color:#64748b;">状態</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in contacts %}
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:10px 12px;font-weight:500;">{{ c.company_name or '-' }}</td>
+        <td style="padding:10px 12px;color:#64748b;">{{ c.email }}</td>
+        <td style="padding:10px 12px;color:#64748b;">{{ c.industry or '-' }}</td>
+        <td style="padding:10px 12px;">
+          {% if c.opted_out %}<span style="color:#dc2626;font-size:12px;">配信停止</span>
+          {% elif c.get('bounce_count', 0) > 0 %}<span style="color:#ea580c;font-size:12px;">バウンス</span>
+          {% elif c.is_valid %}<span style="color:#059669;font-size:12px;">有効</span>
+          {% else %}<span style="color:#94a3b8;font-size:12px;">無効</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not contacts %}
+      <tr><td colspan="4" style="text-align:center;padding:40px;color:#94a3b8;">コンタクトがありません</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:13px;color:#64748b;">
+  <span>{{ total }} 件</span>
+  <div style="display:flex;gap:8px;">
+    {% if page > 1 %}<a href="?page={{ page - 1 }}&search={{ search }}&list_id={{ list_id }}" style="padding:4px 12px;border:1px solid #e2e8f0;border-radius:4px;text-decoration:none;color:#334155;">前へ</a>{% endif %}
+    <span style="padding:4px 8px;">{{ page }}ページ</span>
+    {% if contacts|length >= 50 %}<a href="?page={{ page + 1 }}&search={{ search }}&list_id={{ list_id }}" style="padding:4px 12px;border:1px solid #e2e8f0;border-radius:4px;text-decoration:none;color:#334155;">次へ</a>{% endif %}
+  </div>
+</div>
+{% endblock %}

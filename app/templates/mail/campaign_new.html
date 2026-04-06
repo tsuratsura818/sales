@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}新規キャンペーン - メール配信{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+  <a href="/mail/campaigns" style="color:#64748b;text-decoration:none;">&larr;</a>
+  <h2 style="margin:0;">新規キャンペーン作成</h2>
+</div>
+
+<div class="card" style="padding:24px;max-width:600px;">
+  <form id="campaign-form">
+    <div style="margin-bottom:16px;">
+      <label style="display:block;font-size:12px;font-weight:500;color:#64748b;margin-bottom:4px;">キャンペーン名</label>
+      <input name="name" required placeholder="例: 関西EC 第1弾" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;">
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label style="display:block;font-size:12px;font-weight:500;color:#64748b;margin-bottom:4px;">コンタクトリスト</label>
+      <select name="list_id" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;">
+        <option value="">リストを選択...</option>
+        {% for l in lists %}
+        <option value="{{ l.id }}">{{ l.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div>
+        <label style="display:block;font-size:12px;font-weight:500;color:#64748b;margin-bottom:4px;">送信開始時間</label>
+        <input name="send_start_time" type="time" value="09:00" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:500;color:#64748b;margin-bottom:4px;">送信終了時間</label>
+        <input name="send_end_time" type="time" value="18:00" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;">
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label style="display:block;font-size:12px;font-weight:500;color:#64748b;margin-bottom:4px;">送信者名</label>
+      <input name="sender_name" value="西川" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;">
+    </div>
+
+    <div style="display:flex;gap:8px;">
+      <button type="submit" style="padding:10px 24px;background:#4f46e5;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer;">作成</button>
+      <a href="/mail/campaigns" style="padding:10px 24px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;text-decoration:none;color:#334155;">キャンセル</a>
+    </div>
+  </form>
+</div>
+
+<script>
+document.getElementById('campaign-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const form = new FormData(e.target);
+  const data = Object.fromEntries(form);
+  data.send_days = [1,2,3,4,5];
+  data.min_interval_sec = 120;
+  data.max_interval_sec = 300;
+  data.total_contacts = 0;
+
+  const res = await fetch('/api/mail/campaigns', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data)
+  });
+  const result = await res.json();
+  if (result.id) {
+    location.href = '/mail/campaigns/' + result.id;
+  } else {
+    alert('作成に失敗しました');
+  }
+});
+</script>
+{% endblock %}
