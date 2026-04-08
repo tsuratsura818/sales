@@ -106,7 +106,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script>
 // グローバル設定
 Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif';
@@ -417,25 +417,21 @@ function renderForecast(data) {
 // 初期化: 全データを並列取得
 document.addEventListener('DOMContentLoaded', async function() {
     try {
-        const [kpiResp, funnelResp, industryResp, scoreResp, effectResp, reportResp, goalsResp, forecastResp] = await Promise.all([
-            fetch('/api/dashboard/kpi'),
-            fetch('/api/dashboard/funnel'),
-            fetch('/api/dashboard/reply-by-industry'),
-            fetch('/api/dashboard/reply-by-score'),
-            fetch('/api/dashboard/issue-effectiveness'),
+        // 統合API（1リクエスト）+ レポート（1リクエスト）= 計2リクエスト
+        const [allResp, reportResp] = await Promise.all([
+            fetch('/api/dashboard/all'),
             fetch('/api/dashboard/report?period=weekly'),
-            fetch('/api/goals/current'),
-            fetch('/api/dashboard/forecast'),
         ]);
 
-        const kpi = await kpiResp.json();
-        const funnel = await funnelResp.json();
-        const industry = await industryResp.json();
-        const score = await scoreResp.json();
-        const effect = await effectResp.json();
+        const all = await allResp.json();
+        const kpi = all.kpi;
+        const funnel = all.funnel;
+        const industry = all.industry;
+        const score = all.score;
+        const effect = all.effectiveness;
         const report = await reportResp.json();
-        const goalsData = await goalsResp.json();
-        const forecastData = await forecastResp.json();
+        const goalsData = {goals: all.goals};
+        const forecastData = all.forecast;
 
         // KPIカード更新
         document.getElementById('kpi-leads').textContent = kpi.total_leads.toLocaleString();

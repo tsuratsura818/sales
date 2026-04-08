@@ -1,9 +1,15 @@
+"""ダッシュボードAPI（パフォーマンス最適化版）
+
+全エンドポイントをSQL集計ベースに変更。.all()によるフルテーブルロードを廃止。
+統合エンドポイント /api/dashboard/all でフロント側のリクエスト数を削減。
+"""
 import json
+import time
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case, and_
 
 from app.database import get_db
 from app.models.lead import Lead
@@ -12,72 +18,69 @@ from app.models.search_job import SearchJob
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard-api"])
 
-# ファネルで「送信済み以降」とみなすステータス
 SENT_STATUSES = ("sent", "replied", "meeting", "closed")
 REPLIED_STATUSES = ("replied", "meeting", "closed")
 MEETING_STATUSES = ("meeting", "closed")
 
+# キャッシュ（TTL: 60秒）
+_cache: dict[str, tuple[float, dict]] = {}
+_CACHE_TTL = 60
 
-@router.get("/kpi")
-async def kpi_summary(db: Session = Depends(get_db)):
-    """KPIサマリー（カード表示用）"""
-    total_leads = db.query(func.count(Lead.id)).filter(
-        Lead.status != "excluded"
-    ).scalar() or 0
 
-    total_sent = db.query(func.count(Lead.id)).filter(
-        Lead.status.in_(SENT_STATUSES)
-    ).scalar() or 0
+def _cached(key: str, fn, *args):
+    """簡易キャッシュ"""
+    now = time.time()
+    if key in _cache:
+        cached_at, data = _cache[key]
+        if now - cached_at < _CACHE_TTL:
+            return data
+    result = fn(*args)
+    _cache[key] = (now, result)
+    return result
 
-    total_replied = db.query(func.count(Lead.id)).filter(
-        Lead.status.in_(REPLIED_STATUSES)
-    ).scalar() or 0
 
-    total_meeting = db.query(func.count(Lead.id)).filter(
-        Lead.status.in_(MEETING_STATUSES)
-    ).scalar() or 0
+def _kpi_data(db: Session) -> dict:
+    """KPI — 1クエリで全カウントを取得"""
+    row = db.query(
+        func.count(case((Lead.status != "excluded", 1))).label("total_leads"),
+        func.count(case((Lead.status.in_(SENT_STATUSES), 1))).label("total_sent"),
+        func.count(case((Lead.status.in_(REPLIED_STATUSES), 1))).label("total_replied"),
+        func.count(case((Lead.status.in_(MEETING_STATUSES), 1))).label("total_meeting"),
+        func.count(case((Lead.status == "closed", 1))).label("total_closed"),
+        func.sum(case((and_(Lead.status == "closed", Lead.deal_amount.isnot(None)), Lead.deal_amount), else_=0)).label("total_revenue"),
+    ).first()
 
-    total_closed = db.query(func.count(Lead.id)).filter(
-        Lead.status == "closed"
-    ).scalar() or 0
+    total_sent = row.total_sent or 0
+    total_replied = row.total_replied or 0
 
-    total_revenue = db.query(func.sum(Lead.deal_amount)).filter(
-        Lead.status == "closed",
-        Lead.deal_amount.isnot(None),
-    ).scalar() or 0
-
-    reply_rate = round(total_replied / total_sent * 100, 1) if total_sent > 0 else 0
-
-    # 今週の送信数
     week_start = datetime.now() - timedelta(days=datetime.now().weekday())
     week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
     week_sent = db.query(func.count(EmailLog.id)).filter(
-        EmailLog.sent_at >= week_start,
-        EmailLog.sent_at.isnot(None),
+        EmailLog.sent_at >= week_start, EmailLog.sent_at.isnot(None),
     ).scalar() or 0
 
     return {
-        "total_leads": total_leads,
+        "total_leads": row.total_leads or 0,
         "total_sent": total_sent,
         "total_replied": total_replied,
-        "total_meeting": total_meeting,
-        "total_closed": total_closed,
-        "total_revenue": total_revenue,
-        "reply_rate": reply_rate,
+        "total_meeting": row.total_meeting or 0,
+        "total_closed": row.total_closed or 0,
+        "total_revenue": row.total_revenue or 0,
+        "reply_rate": round(total_replied / total_sent * 100, 1) if total_sent > 0 else 0,
         "week_sent": week_sent,
     }
 
 
-@router.get("/funnel")
-async def funnel_data(db: Session = Depends(get_db)):
-    """営業ファネルデータ"""
-    leads = db.query(Lead).filter(Lead.status != "excluded").all()
-
-    analyzed = sum(1 for l in leads if l.status not in ("new", "analyzing", "error"))
-    sent = sum(1 for l in leads if l.status in SENT_STATUSES)
-    replied = sum(1 for l in leads if l.status in REPLIED_STATUSES)
-    meeting = sum(1 for l in leads if l.status in MEETING_STATUSES)
-    closed = sum(1 for l in leads if l.status == "closed")
+def _funnel_data(db: Session) -> dict:
+    """ファネル — SQL COUNTのみ"""
+    analyzed = db.query(func.count(Lead.id)).filter(
+        Lead.status != "excluded",
+        Lead.status.notin_(["new", "analyzing", "error"]),
+    ).scalar() or 0
+    sent = db.query(func.count(Lead.id)).filter(Lead.status.in_(SENT_STATUSES)).scalar() or 0
+    replied = db.query(func.count(Lead.id)).filter(Lead.status.in_(REPLIED_STATUSES)).scalar() or 0
+    meeting = db.query(func.count(Lead.id)).filter(Lead.status.in_(MEETING_STATUSES)).scalar() or 0
+    closed = db.query(func.count(Lead.id)).filter(Lead.status == "closed").scalar() or 0
 
     values = [analyzed, sent, replied, meeting, closed]
     rates = []
@@ -89,116 +92,76 @@ async def funnel_data(db: Session = Depends(get_db)):
             rates.append(round(v / prev * 100, 1) if prev > 0 else 0)
         prev = v
 
-    return {
-        "labels": ["分析完了", "メール送信", "返信あり", "商談", "成約"],
-        "values": values,
-        "rates": rates,
-    }
+    return {"labels": ["分析完了", "メール送信", "返信あり", "商談", "成約"], "values": values, "rates": rates}
 
 
-@router.get("/reply-by-industry")
-async def reply_by_industry(db: Session = Depends(get_db)):
-    """業種別返信率"""
-    leads = db.query(Lead).filter(
+def _industry_data(db: Session) -> dict:
+    """業種別返信率 — GROUP BY集計"""
+    rows = db.query(
+        Lead.industry_category,
+        func.count(Lead.id).label("sent"),
+        func.count(case((Lead.status.in_(REPLIED_STATUSES), 1))).label("replied"),
+    ).filter(
         Lead.status.in_(SENT_STATUSES),
         Lead.industry_category.isnot(None),
-    ).all()
+    ).group_by(Lead.industry_category).order_by(func.count(Lead.id).desc()).all()
 
-    stats = {}
-    for lead in leads:
-        cat = lead.industry_category or "その他"
-        if cat not in stats:
-            stats[cat] = {"sent": 0, "replied": 0}
-        stats[cat]["sent"] += 1
-        if lead.status in REPLIED_STATUSES:
-            stats[cat]["replied"] += 1
-
-    sorted_items = sorted(stats.items(), key=lambda x: x[1]["sent"], reverse=True)
-
-    return {
-        "labels": [c for c, _ in sorted_items],
-        "sent": [s["sent"] for _, s in sorted_items],
-        "replied": [s["replied"] for _, s in sorted_items],
-        "rates": [
-            round(s["replied"] / s["sent"] * 100, 1) if s["sent"] > 0 else 0
-            for _, s in sorted_items
-        ],
-    }
+    labels = [r.industry_category or "その他" for r in rows]
+    sent = [r.sent for r in rows]
+    replied = [r.replied for r in rows]
+    rates = [round(r.replied / r.sent * 100, 1) if r.sent > 0 else 0 for r in rows]
+    return {"labels": labels, "sent": sent, "replied": replied, "rates": rates}
 
 
-@router.get("/reply-by-score")
-async def reply_by_score(db: Session = Depends(get_db)):
-    """スコア帯別返信率"""
-    leads = db.query(Lead).filter(Lead.status.in_(SENT_STATUSES)).all()
+def _score_data(db: Session) -> dict:
+    """スコア帯別返信率 — CASE集計"""
+    bands = [("0-19", 0, 19), ("20-39", 20, 39), ("40-59", 40, 59), ("60-79", 60, 79), ("80+", 80, 999)]
+    labels, sent_counts, replied_counts, rates = [], [], [], []
 
-    bands = [
-        ("0-19", 0, 19),
-        ("20-39", 20, 39),
-        ("40-59", 40, 59),
-        ("60-79", 60, 79),
-        ("80+", 80, 999),
-    ]
-
-    labels = []
-    sent_counts = []
-    replied_counts = []
-    rates = []
     for label, lo, hi in bands:
-        sent = sum(1 for l in leads if lo <= (l.score or 0) <= hi)
-        replied = sum(
-            1 for l in leads
-            if lo <= (l.score or 0) <= hi and l.status in REPLIED_STATUSES
-        )
+        row = db.query(
+            func.count(Lead.id).label("sent"),
+            func.count(case((Lead.status.in_(REPLIED_STATUSES), 1))).label("replied"),
+        ).filter(
+            Lead.status.in_(SENT_STATUSES),
+            Lead.score >= lo, Lead.score <= hi,
+        ).first()
+        s, r = row.sent or 0, row.replied or 0
         labels.append(label)
-        sent_counts.append(sent)
-        replied_counts.append(replied)
-        rates.append(round(replied / sent * 100, 1) if sent > 0 else 0)
+        sent_counts.append(s)
+        replied_counts.append(r)
+        rates.append(round(r / s * 100, 1) if s > 0 else 0)
 
-    return {
-        "labels": labels,
-        "sent": sent_counts,
-        "replied": replied_counts,
-        "rates": rates,
-    }
+    return {"labels": labels, "sent": sent_counts, "replied": replied_counts, "rates": rates}
 
 
 ISSUE_LABELS = {
-    "no_https": "HTTPS非対応",
-    "old_copyright_3yr": "著作権年が古い(3年+)",
-    "old_copyright_5yr": "著作権年が古い(5年+)",
-    "no_mobile": "モバイル非対応",
-    "old_domain_10yr": "ドメイン10年以上",
-    "has_flash": "Flash使用",
-    "ssl_expiry_90days": "SSL期限切れ間近",
-    "low_pagespeed": "低速表示",
-    "old_wordpress": "WordPress旧バージョン",
-    "no_og_image": "OGP画像なし",
-    "no_favicon": "ファビコンなし",
-    "table_layout": "テーブルレイアウト",
-    "many_missing_alt": "alt属性欠落",
-    "no_structured_data": "構造化データなし",
-    "no_sitemap": "サイトマップなし",
-    "no_robots_txt": "robots.txtなし",
+    "no_https": "HTTPS非対応", "old_copyright_3yr": "著作権年が古い(3年+)",
+    "old_copyright_5yr": "著作権年が古い(5年+)", "no_mobile": "モバイル非対応",
+    "old_domain_10yr": "ドメイン10年以上", "has_flash": "Flash使用",
+    "ssl_expiry_90days": "SSL期限切れ間近", "low_pagespeed": "低速表示",
+    "old_wordpress": "WordPress旧バージョン", "no_og_image": "OGP画像なし",
+    "no_favicon": "ファビコンなし", "table_layout": "テーブルレイアウト",
+    "many_missing_alt": "alt属性欠落", "no_structured_data": "構造化データなし",
+    "no_sitemap": "サイトマップなし", "no_robots_txt": "robots.txtなし",
     "no_breadcrumb": "パンくずリストなし",
 }
 
 
-@router.get("/issue-effectiveness")
-async def issue_effectiveness(db: Session = Depends(get_db)):
-    """問題点別の返信率（効果分析）"""
-    leads = db.query(Lead).filter(
+def _effectiveness_data(db: Session) -> dict:
+    """効果分析 — score_breakdownのみロード（Leadオブジェクト全体をロードしない）"""
+    rows = db.query(Lead.score_breakdown, Lead.status).filter(
         Lead.status.in_(SENT_STATUSES),
         Lead.score_breakdown.isnot(None),
     ).all()
 
-    issue_stats = {}
-    for lead in leads:
+    issue_stats: dict[str, dict[str, int]] = {}
+    for breakdown_str, status in rows:
         try:
-            breakdown = json.loads(lead.score_breakdown) if isinstance(lead.score_breakdown, str) else {}
+            breakdown = json.loads(breakdown_str) if isinstance(breakdown_str, str) else {}
         except Exception:
-            breakdown = {}
-
-        is_replied = lead.status in REPLIED_STATUSES
+            continue
+        is_replied = status in REPLIED_STATUSES
         for key in breakdown:
             if key not in issue_stats:
                 issue_stats[key] = {"sent": 0, "replied": 0}
@@ -206,16 +169,11 @@ async def issue_effectiveness(db: Session = Depends(get_db)):
             if is_replied:
                 issue_stats[key]["replied"] += 1
 
-    result = []
-    for key, s in issue_stats.items():
-        if s["sent"] >= 1:
-            result.append({
-                "key": key,
-                "label": ISSUE_LABELS.get(key, key),
-                "sent": s["sent"],
-                "replied": s["replied"],
-                "rate": round(s["replied"] / s["sent"] * 100, 1) if s["sent"] > 0 else 0,
-            })
+    result = [
+        {"key": k, "label": ISSUE_LABELS.get(k, k), "sent": s["sent"], "replied": s["replied"],
+         "rate": round(s["replied"] / s["sent"] * 100, 1) if s["sent"] > 0 else 0}
+        for k, s in issue_stats.items() if s["sent"] >= 1
+    ]
     result.sort(key=lambda x: x["rate"], reverse=True)
 
     return {
@@ -227,18 +185,60 @@ async def issue_effectiveness(db: Session = Depends(get_db)):
     }
 
 
+# ===== 統合エンドポイント =====
+
+@router.get("/all")
+async def dashboard_all(db: Session = Depends(get_db)):
+    """全ダッシュボードデータを1リクエストで返す"""
+    from app.services.forecast_service import get_monthly_forecast
+    from app.services.goal_service import get_current_goals
+
+    return _cached("dashboard_all", lambda: {
+        "kpi": _kpi_data(db),
+        "funnel": _funnel_data(db),
+        "industry": _industry_data(db),
+        "score": _score_data(db),
+        "effectiveness": _effectiveness_data(db),
+        "forecast": get_monthly_forecast(db),
+        "goals": get_current_goals(db),
+    })
+
+
+# ===== 個別エンドポイント（互換性維持） =====
+
+@router.get("/kpi")
+async def kpi_summary(db: Session = Depends(get_db)):
+    return _cached("kpi", _kpi_data, db)
+
+
+@router.get("/funnel")
+async def funnel_data(db: Session = Depends(get_db)):
+    return _cached("funnel", _funnel_data, db)
+
+
+@router.get("/reply-by-industry")
+async def reply_by_industry(db: Session = Depends(get_db)):
+    return _cached("industry", _industry_data, db)
+
+
+@router.get("/reply-by-score")
+async def reply_by_score(db: Session = Depends(get_db)):
+    return _cached("score", _score_data, db)
+
+
+@router.get("/issue-effectiveness")
+async def issue_effectiveness(db: Session = Depends(get_db)):
+    return _cached("effectiveness", _effectiveness_data, db)
+
+
 @router.get("/forecast")
 async def forecast_data(db: Session = Depends(get_db)):
-    """今月の着地予測"""
     from app.services.forecast_service import get_monthly_forecast
-    return get_monthly_forecast(db)
+    return _cached("forecast", get_monthly_forecast, db)
 
 
 @router.get("/report")
-async def report_data(
-    period: str = Query("weekly"),
-    db: Session = Depends(get_db),
-):
+async def report_data(period: str = Query("weekly"), db: Session = Depends(get_db)):
     """週次/月次レポート"""
     now = datetime.now()
 
@@ -253,69 +253,32 @@ async def report_data(
                 next_month = (start.month % 12) + 1
                 year = start.year + (1 if next_month == 1 else 0)
                 end = start.replace(year=year, month=next_month)
-            periods.append({
-                "label": start.strftime("%Y/%m"),
-                "start": start,
-                "end": end,
-            })
+            periods.append({"label": start.strftime("%Y/%m"), "start": start, "end": end})
     else:
         periods = []
         for i in range(7, -1, -1):
             start = now - timedelta(weeks=i, days=now.weekday())
             start = start.replace(hour=0, minute=0, second=0, microsecond=0)
             end = start + timedelta(days=7)
-            periods.append({
-                "label": start.strftime("%m/%d") + "~",
-                "start": start,
-                "end": end,
-            })
+            periods.append({"label": start.strftime("%m/%d") + "~", "start": start, "end": end})
 
-    labels = []
-    analyzed_counts = []
-    sent_counts = []
-    replied_counts = []
-    costs = []
-
+    labels, analyzed_counts, sent_counts, replied_counts, costs = [], [], [], [], []
     for p in periods:
         labels.append(p["label"])
-
-        # 分析済みリード
-        analyzed = db.query(func.count(Lead.id)).filter(
-            Lead.created_at >= p["start"],
-            Lead.created_at < p["end"],
+        analyzed_counts.append(db.query(func.count(Lead.id)).filter(
+            Lead.created_at >= p["start"], Lead.created_at < p["end"],
             Lead.status.notin_(["new", "analyzing", "error", "excluded"]),
-        ).scalar() or 0
-        analyzed_counts.append(analyzed)
-
-        # 送信数
-        sent = db.query(func.count(EmailLog.id)).filter(
-            EmailLog.sent_at >= p["start"],
-            EmailLog.sent_at < p["end"],
-            EmailLog.sent_at.isnot(None),
-        ).scalar() or 0
-        sent_counts.append(sent)
-
-        # 返信数（updated_atベース近似）
-        replied = db.query(func.count(Lead.id)).filter(
-            Lead.updated_at >= p["start"],
-            Lead.updated_at < p["end"],
-            Lead.status.in_(REPLIED_STATUSES),
-        ).scalar() or 0
-        replied_counts.append(replied)
-
-        # コスト（SerpAPI + Claude概算）
+        ).scalar() or 0)
+        sent_counts.append(db.query(func.count(EmailLog.id)).filter(
+            EmailLog.sent_at >= p["start"], EmailLog.sent_at < p["end"], EmailLog.sent_at.isnot(None),
+        ).scalar() or 0)
+        replied_counts.append(db.query(func.count(Lead.id)).filter(
+            Lead.updated_at >= p["start"], Lead.updated_at < p["end"], Lead.status.in_(REPLIED_STATUSES),
+        ).scalar() or 0)
         serpapi_cost = db.query(func.sum(SearchJob.serpapi_calls_used)).filter(
-            SearchJob.created_at >= p["start"],
-            SearchJob.created_at < p["end"],
+            SearchJob.created_at >= p["start"], SearchJob.created_at < p["end"],
         ).scalar() or 0
-        cost_jpy = round(serpapi_cost * 1.5 + sent * 4.5)
-        costs.append(cost_jpy)
+        costs.append(round(serpapi_cost * 1.5 + sent_counts[-1] * 4.5))
 
-    return {
-        "period": period,
-        "labels": labels,
-        "analyzed": analyzed_counts,
-        "sent": sent_counts,
-        "replied": replied_counts,
-        "costs": costs,
-    }
+    return {"period": period, "labels": labels, "analyzed": analyzed_counts,
+            "sent": sent_counts, "replied": replied_counts, "costs": costs}

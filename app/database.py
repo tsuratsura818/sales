@@ -15,8 +15,9 @@ if _db_url and not _db_url.startswith("sqlite") and "%" not in _db_url:
 _is_sqlite = _db_url.startswith("sqlite")
 connect_args = {"check_same_thread": False} if _is_sqlite else {}
 
+_pool_args = {"pool_pre_ping": True, "pool_size": 10, "max_overflow": 20, "pool_recycle": 300} if not _is_sqlite else {}
 try:
-    engine = create_engine(_db_url, connect_args=connect_args, pool_pre_ping=True)
+    engine = create_engine(_db_url, connect_args=connect_args, **_pool_args)
 except Exception as e:
     log.warning(f"DB接続URL解析エラー、SQLiteにフォールバック: {e}")
     _db_url = "sqlite:///./sales.db"

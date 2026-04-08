@@ -63,56 +63,31 @@ def get_period_range(period_type: str, period_key: str) -> tuple[datetime, datet
 
 
 def calculate_actuals(db: Session, period_type: str, period_key: str) -> dict:
-    """指定期間の実績を集計"""
+    """指定期間の実績を集計（2クエリに統合）"""
+    from sqlalchemy import case, and_
     start, end = get_period_range(period_type, period_key)
 
-    # リード数（期間内作成、excludedを除く）
-    leads_count = db.query(func.count(Lead.id)).filter(
-        Lead.created_at >= start,
-        Lead.created_at < end,
-        Lead.status != "excluded",
-    ).scalar() or 0
+    # Lead集計（1クエリで5指標）
+    lead_row = db.query(
+        func.count(case((and_(Lead.created_at >= start, Lead.created_at < end, Lead.status != "excluded"), 1))).label("leads"),
+        func.count(case((and_(Lead.updated_at >= start, Lead.updated_at < end, Lead.status.in_(REPLIED_STATUSES)), 1))).label("replies"),
+        func.count(case((and_(Lead.meeting_scheduled_at >= start, Lead.meeting_scheduled_at < end), 1))).label("meetings"),
+        func.count(case((and_(Lead.deal_closed_at >= start, Lead.deal_closed_at < end), 1))).label("closed"),
+        func.sum(case((and_(Lead.deal_closed_at >= start, Lead.deal_closed_at < end, Lead.deal_amount.isnot(None)), Lead.deal_amount), else_=0)).label("revenue"),
+    ).first()
 
-    # 送信数
+    # EmailLog集計（1クエリ）
     sent_count = db.query(func.count(EmailLog.id)).filter(
-        EmailLog.sent_at >= start,
-        EmailLog.sent_at < end,
-        EmailLog.sent_at.isnot(None),
-    ).scalar() or 0
-
-    # 返信数（updated_atベース近似）
-    replies_count = db.query(func.count(Lead.id)).filter(
-        Lead.updated_at >= start,
-        Lead.updated_at < end,
-        Lead.status.in_(REPLIED_STATUSES),
-    ).scalar() or 0
-
-    # 商談数
-    meetings_count = db.query(func.count(Lead.id)).filter(
-        Lead.meeting_scheduled_at >= start,
-        Lead.meeting_scheduled_at < end,
-    ).scalar() or 0
-
-    # 成約数
-    closed_count = db.query(func.count(Lead.id)).filter(
-        Lead.deal_closed_at >= start,
-        Lead.deal_closed_at < end,
-    ).scalar() or 0
-
-    # 売上
-    revenue = db.query(func.sum(Lead.deal_amount)).filter(
-        Lead.deal_closed_at >= start,
-        Lead.deal_closed_at < end,
-        Lead.deal_amount.isnot(None),
+        EmailLog.sent_at >= start, EmailLog.sent_at < end, EmailLog.sent_at.isnot(None),
     ).scalar() or 0
 
     return {
-        "leads": leads_count,
+        "leads": lead_row.leads or 0,
         "sent": sent_count,
-        "replies": replies_count,
-        "meetings": meetings_count,
-        "closed": closed_count,
-        "revenue": revenue,
+        "replies": lead_row.replies or 0,
+        "meetings": lead_row.meetings or 0,
+        "closed": lead_row.closed or 0,
+        "revenue": lead_row.revenue or 0,
     }
 
 
