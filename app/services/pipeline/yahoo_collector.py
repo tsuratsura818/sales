@@ -45,7 +45,7 @@ async def collect(
             if on_progress:
                 on_progress(f"Yahoo! 検索中 ({i+1}/{total_kw})")
 
-            for page in range(1, 3):
+            for page in range(1, 2):  # 1ページのみ（キーワード数でカバー）
                 try:
                     url = f"https://shopping.yahoo.co.jp/search?p={keyword.replace(' ', '+')}&page={page}"
                     resp = await client.get(url, headers=random_ua())
@@ -73,10 +73,12 @@ async def collect(
 
         log.info(f"Yahoo! 店舗ID: {len(shop_ids)}件")
 
-        # Step 2: 特商法ページ取得
+        # Step 2: 特商法ページ取得（最大150店舗）
+        MAX_SHOPS = 150
         checked = 0
-        total = len(shop_ids)
-        for shop_id, industry in shop_ids.items():
+        shop_items = list(shop_ids.items())[:MAX_SHOPS]
+        total = len(shop_items)
+        for shop_id, industry in shop_items:
             checked += 1
             if checked % 20 == 0:
                 log.info(f"Yahoo! 進捗: {checked}/{total} (取得: {len(leads)}件)")

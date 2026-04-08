@@ -50,7 +50,7 @@ async def collect(
             if on_progress:
                 on_progress(f"楽天 検索中 ({i+1}/{total_kw})")
 
-            for page in range(1, 3):
+            for page in range(1, 2):  # 1ページのみ（キーワード数でカバー）
                 try:
                     url = f"https://search.rakuten.co.jp/search/mall/{keyword.replace(' ', '+')}/?p={page}"
                     resp = await client.get(url, headers=random_ua())
@@ -80,10 +80,12 @@ async def collect(
 
         log.info(f"楽天 店舗ID: {len(shop_codes)}件")
 
-        # Step 2: 特商法ページをhttpxで取得
+        # Step 2: 特商法ページをhttpxで取得（最大150店舗）
+        MAX_SHOPS = 150
         checked = 0
-        total = len(shop_codes)
-        for shop_code, industry in shop_codes.items():
+        shop_items = list(shop_codes.items())[:MAX_SHOPS]
+        total = len(shop_items)
+        for shop_code, industry in shop_items:
             checked += 1
             if checked % 20 == 0:
                 log.info(f"楽天 進捗: {checked}/{total} (取得: {len(leads)}件)")

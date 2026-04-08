@@ -6,10 +6,10 @@ from app.config import get_settings
 settings = get_settings()
 
 # レート制限（サイト別）
-RATE_LIMIT_SEC = 2.0  # デフォルト
-RATE_LIMIT_YAHOO = 2.5
-RATE_LIMIT_RAKUTEN = 3.0  # 楽天は制限が厳しい
-RATE_LIMIT_GOOGLE = 2.0
+RATE_LIMIT_SEC = 1.5  # デフォルト
+RATE_LIMIT_YAHOO = 1.5
+RATE_LIMIT_RAKUTEN = 2.0  # 楽天は制限がやや厳しい
+RATE_LIMIT_GOOGLE = 1.5
 
 # User-Agent ローテーション（2026年版）
 USER_AGENTS = [
