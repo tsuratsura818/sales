@@ -49,7 +49,7 @@ async def pipeline_page(request: Request):
 
 @router.post("/api/pipeline/start")
 async def start_pipeline(data: PipelineStartRequest, db: Session = Depends(get_db)):
-    """パイプライン実行を開始（バックグラウンド）"""
+    """パイプライン実行（リクエスト内で直接実行 — Render無料プラン対応）"""
     # 既に実行中のものがないかチェック
     running = db.query(PipelineRun).filter(PipelineRun.status == "running").first()
     if running:
@@ -65,10 +65,8 @@ async def start_pipeline(data: PipelineStartRequest, db: Session = Depends(get_d
     db.commit()
     db.refresh(run)
 
-    # バックグラウンドタスクとして実行（完了後に自動クリーンアップ）
-    task = asyncio.create_task(run_pipeline(run.id))
-    _running_tasks[run.id] = task
-    task.add_done_callback(lambda t: _running_tasks.pop(run.id, None))
+    # リクエスト内で直接実行（バックグラウンドタスクはRender無料プランで不安定）
+    await run_pipeline(run.id)
 
     return {"success": True, "run_id": run.id}
 

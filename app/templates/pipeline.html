@@ -150,12 +150,31 @@ async function startPipeline() {
     document.getElementById('result-summary').style.display = 'none';
     document.getElementById('results-card').style.display = 'none';
 
+    // 進捗ポーリング開始（リクエスト完了前に進捗を表示するため）
+    let progressPoll = setInterval(async () => {
+        try {
+            const runsResp = await fetch('/api/pipeline/runs');
+            const runsData = await runsResp.json();
+            const latest = runsData.runs[0];
+            if (latest && latest.status === 'running') {
+                currentRunId = latest.id;
+                const statusResp = await fetch(`/api/pipeline/status/${latest.id}`);
+                const status = await statusResp.json();
+                document.getElementById('progress-fill').style.width = status.progress_pct + '%';
+                document.getElementById('progress-pct').textContent = status.progress_pct + '%';
+                document.getElementById('progress-msg').textContent = status.progress_message || '';
+            }
+        } catch(e) {}
+    }, 5000);
+
     try {
         const resp = await fetch('/api/pipeline/start', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({sources, skip_mx: true}),
+            signal: AbortSignal.timeout(1200000),  // 20分タイムアウト
         });
+        clearInterval(progressPoll);
         const data = await resp.json();
         if (data.error) {
             alert(data.error);
@@ -164,11 +183,32 @@ async function startPipeline() {
             return;
         }
         currentRunId = data.run_id;
-        pollStatus();
-    } catch(e) {
-        alert('起動エラー: ' + e.message);
+        // 完了済みなのでステータスを取得して表示
+        const statusResp = await fetch(`/api/pipeline/status/${data.run_id}`);
+        const statusData = await statusResp.json();
+        document.getElementById('progress-fill').style.width = '100%';
+        document.getElementById('progress-pct').textContent = '100%';
+        document.getElementById('progress-msg').textContent = statusData.progress_message || '完了';
+        if (statusData.status === 'completed') {
+            showSummary(statusData);
+            await loadResults();
+            document.getElementById('results-card').style.display = 'block';
+        } else if (statusData.status === 'failed') {
+            alert('パイプラインエラー: ' + (statusData.error_message || '不明'));
+        }
         document.getElementById('btn-start').disabled = false;
         document.getElementById('btn-start').textContent = '収集開始';
+        loadHistory();
+    } catch(e) {
+        clearInterval(progressPoll);
+        // タイムアウトの場合はポーリングに切り替え
+        if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+            pollStatus();
+        } else {
+            alert('起動エラー: ' + e.message);
+            document.getElementById('btn-start').disabled = false;
+            document.getElementById('btn-start').textContent = '収集開始';
+        }
     }
 }
 
