@@ -191,37 +191,57 @@ async def run_pipeline(run_id: int):
 
         source_breakdown: dict[str, int] = {}
 
-        # コレクターを並列実行（DBキーワードを渡す）
-        tasks = []
-        if "yahoo" in sources:
-            run.progress_pct = 5
-            run.progress_message = "Yahoo!ショッピング収集中..."
-            db.commit()
-            yahoo_kw = [(k, i) for k, i in keyword_list]
-            tasks.append(("yahoo", yahoo_collector.collect(seen_emails, keywords=yahoo_kw)))
-        if "rakuten" in sources:
-            rakuten_kw = [(k, i) for k, i in keyword_list]
-            tasks.append(("rakuten", rakuten_collector.collect(seen_emails, keywords=rakuten_kw)))
-        if "google" in sources:
-            tasks.append(("google", google_collector.collect(seen_emails)))
-
         all_leads = []
-        if tasks:
-            run.progress_message = "収集中（並列実行）..."
-            db.commit()
 
-            results = await asyncio.gather(
-                *[coro for _, coro in tasks],
-                return_exceptions=True,
-            )
+        def update_progress(pct: int, msg: str):
+            run.progress_pct = pct
+            run.progress_message = msg
+            try:
+                db.commit()
+            except Exception:
+                pass
 
-            for (source_name, _), result in zip(tasks, results):
-                if isinstance(result, Exception):
-                    log.error(f"{source_name} コレクターエラー: {result}")
-                    source_breakdown[source_name] = 0
-                else:
-                    all_leads.extend(result)
-                    source_breakdown[source_name] = len(result)
+        # コレクターを直列実行（seen_emailsの共有安全性 + 進捗更新）
+        source_count = len([s for s in ["yahoo", "rakuten", "google"] if s in sources])
+        pct_per_source = 80 // max(source_count, 1)
+        current_pct = 5
+
+        if "yahoo" in sources:
+            update_progress(current_pct, "Yahoo!ショッピング収集中...")
+            try:
+                yahoo_kw = [(k, i) for k, i in keyword_list]
+                yahoo_leads = await yahoo_collector.collect(seen_emails, keywords=yahoo_kw)
+                all_leads.extend(yahoo_leads)
+                source_breakdown["yahoo"] = len(yahoo_leads)
+                log.info(f"Yahoo! 完了: {len(yahoo_leads)}件")
+            except Exception as e:
+                log.error(f"Yahoo! コレクターエラー: {e}")
+                source_breakdown["yahoo"] = 0
+            current_pct += pct_per_source
+
+        if "rakuten" in sources:
+            update_progress(current_pct, "楽天市場収集中...")
+            try:
+                rakuten_kw = [(k, i) for k, i in keyword_list]
+                rakuten_leads = await rakuten_collector.collect(seen_emails, keywords=rakuten_kw)
+                all_leads.extend(rakuten_leads)
+                source_breakdown["rakuten"] = len(rakuten_leads)
+                log.info(f"楽天 完了: {len(rakuten_leads)}件")
+            except Exception as e:
+                log.error(f"楽天 コレクターエラー: {e}")
+                source_breakdown["rakuten"] = 0
+            current_pct += pct_per_source
+
+        if "google" in sources:
+            update_progress(current_pct, "Google検索収集中...")
+            try:
+                google_leads = await google_collector.collect(seen_emails)
+                all_leads.extend(google_leads)
+                source_breakdown["google"] = len(google_leads)
+                log.info(f"Google 完了: {len(google_leads)}件")
+            except Exception as e:
+                log.error(f"Google コレクターエラー: {e}")
+                source_breakdown["google"] = 0
 
         # Shopify構築済みを除外
         before_shopify = len(all_leads)
