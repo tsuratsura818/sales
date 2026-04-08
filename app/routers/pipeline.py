@@ -332,6 +332,32 @@ async def delete_keyword(keyword_id: int, db: Session = Depends(get_db)):
     return {"success": True}
 
 
+@router.post("/api/pipeline/test")
+async def test_pipeline(db: Session = Depends(get_db)):
+    """デバッグ: Yahoo!のみ、キーワード3件で即テスト（同期実行）"""
+    import logging
+    log = logging.getLogger("pipeline.test")
+
+    try:
+        from app.services.pipeline.yahoo_collector import collect, CollectedLead
+        from app.services.pipeline.config import SEARCH_KEYWORDS
+
+        test_kw = SEARCH_KEYWORDS[:3]
+        seen: set[str] = set()
+        log.info(f"テスト実行: {len(test_kw)}キーワード")
+
+        leads = await collect(seen, keywords=test_kw)
+        return {
+            "success": True,
+            "found": len(leads),
+            "keywords_used": len(test_kw),
+            "leads": [{"email": l.email, "company": l.company, "industry": l.industry} for l in leads[:5]],
+        }
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e), "traceback": traceback.format_exc()[-500:]}
+
+
 @router.post("/api/pipeline/cancel/{run_id}")
 async def cancel_pipeline(run_id: int, db: Session = Depends(get_db)):
     """stuckしたパイプラインをキャンセル"""
