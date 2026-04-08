@@ -332,6 +332,22 @@ async def delete_keyword(keyword_id: int, db: Session = Depends(get_db)):
     return {"success": True}
 
 
+@router.post("/api/pipeline/cancel/{run_id}")
+async def cancel_pipeline(run_id: int, db: Session = Depends(get_db)):
+    """stuckしたパイプラインをキャンセル"""
+    run = db.query(PipelineRun).filter(PipelineRun.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="実行が見つかりません")
+    if run.status == "running":
+        run.status = "failed"
+        run.error_message = "手動キャンセル"
+        run.progress_message = "キャンセル済み"
+        from datetime import datetime
+        run.completed_at = datetime.now()
+        db.commit()
+    return {"success": True}
+
+
 @router.patch("/api/pipeline/keywords/toggle-all")
 async def toggle_all_keywords(enabled: int = Query(...), db: Session = Depends(get_db)):
     """全キーワードの有効/無効を一括切り替え"""
