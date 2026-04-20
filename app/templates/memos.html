@@ -27,7 +27,10 @@
                 <option value="linked">案件紐付済</option>
                 <option value="unlinked">未分類</option>
             </select>
-            <button class="btn" id="recNewBtn" onclick="toggleRecording('new')" title="録音して新規メモを作成">🎙️ 録音して新規メモ</button>
+            <button class="btn" id="recNewBtn" onclick="toggleRecording('new', 'mic')" title="マイクのみで録音">🎙️ マイク録音</button>
+            <button class="btn" id="recTabBtn" onclick="toggleRecording('new', 'tab')" title="Zoom/Meetタブ音声+マイクで録音 (相手の声も拾える)">🖥️ タブ+マイク録音</button>
+            <button class="btn" onclick="document.getElementById('audioUploadNew').click()" title="既存の音声ファイルをアップロード">📁 ファイル</button>
+            <input type="file" id="audioUploadNew" accept="audio/*,video/*" style="display:none" onchange="uploadAudioFile(this.files[0], 'new'); this.value='';">
             <button class="btn btn-primary" onclick="createMemo()">＋ 新規メモ</button>
         </div>
     </div>
@@ -71,7 +74,10 @@
                 <div class="memo-editor-toolbar">
                     <div class="memo-editor-project" id="projectBadge"></div>
                     <div class="memo-editor-actions">
-                        <button class="btn btn-sm" id="recAppendBtn" onclick="toggleRecording('append')" title="録音してこのメモに追記">🎙️ 録音追記</button>
+                        <button class="btn btn-sm" id="recAppendBtn" onclick="toggleRecording('append', 'mic')" title="マイクで録音してこのメモに追記">🎙️ マイク</button>
+                        <button class="btn btn-sm" id="recTabAppendBtn" onclick="toggleRecording('append', 'tab')" title="タブ音声+マイクで録音して追記">🖥️ タブ+マイク</button>
+                        <button class="btn btn-sm" onclick="document.getElementById('audioUploadAppend').click()" title="音声ファイルをアップロードして追記">📁</button>
+                        <input type="file" id="audioUploadAppend" accept="audio/*,video/*" style="display:none" onchange="uploadAudioFile(this.files[0], 'append'); this.value='';">
                         <button class="btn btn-sm" onclick="toMinutes()" title="Claudeで議事録フォーマットに整形">✨ 議事録整形</button>
                         <button class="btn btn-sm" onclick="reclassifyMemo()" title="AIで再分類">🔄 再分類</button>
                         <button class="btn btn-sm" onclick="linkManually()" title="手動で案件を選択">🔗 手動リンク</button>
@@ -488,7 +494,7 @@ function searchMemos(query) {
 // ========== 録音機能 ==========
 let mediaRecorder = null;
 let recordedChunks = [];
-let recStream = null;
+let recStreams = []; // 複数ストリームを保持 (mic + tab)
 let recAudioCtx = null;
 let recAnalyser = null;
 let recTimerInterval = null;
@@ -496,7 +502,8 @@ let recStartTime = 0;
 let recMode = 'new';  // new | append
 let recLevelRAF = null;
 
-async function toggleRecording(mode) {
+async function toggleRecording(mode, source) {
+    // source: 'mic' | 'tab'
     if (mediaRecorder && mediaRecorder.state === 'recording') {
         await stopRecording();
         return;
@@ -509,26 +516,25 @@ async function toggleRecording(mode) {
 
     recMode = mode;
 
+    let finalStream;
     try {
-        recStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                channelCount: 1,
-                sampleRate: 16000,
-                echoCancellation: true,
-                noiseSuppression: true,
-            },
-        });
+        if (source === 'tab') {
+            finalStream = await acquireTabPlusMicStream();
+        } else {
+            finalStream = await acquireMicStream();
+        }
     } catch (e) {
-        alert('マイクアクセスが拒否されました: ' + e.message);
+        cleanupStreams();
+        alert('音声取得に失敗: ' + e.message);
         return;
     }
 
     const mimeType = pickMimeType();
     try {
-        mediaRecorder = new MediaRecorder(recStream, mimeType ? {mimeType} : undefined);
+        mediaRecorder = new MediaRecorder(finalStream, mimeType ? {mimeType} : undefined);
     } catch (e) {
+        cleanupStreams();
         alert('MediaRecorder初期化失敗: ' + e.message);
-        recStream.getTracks().forEach(t => t.stop());
         return;
     }
 
@@ -536,27 +542,103 @@ async function toggleRecording(mode) {
     mediaRecorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) recordedChunks.push(e.data);
     };
+    mediaRecorder.onerror = (e) => {
+        console.error('MediaRecorder error:', e);
+    };
 
-    mediaRecorder.start(1000); // 1秒ごとにチャンク
+    mediaRecorder.start(1000);
     recStartTime = Date.now();
 
     // 音量可視化
-    recAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const source = recAudioCtx.createMediaStreamSource(recStream);
+    if (!recAudioCtx) {
+        recAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const vizSource = recAudioCtx.createMediaStreamSource(finalStream);
     recAnalyser = recAudioCtx.createAnalyser();
     recAnalyser.fftSize = 512;
-    source.connect(recAnalyser);
+    vizSource.connect(recAnalyser);
     updateLevel();
 
-    // フローティングウィジェット表示
+    // ウィジェット表示
     document.getElementById('recOverlay').style.display = 'block';
-    document.getElementById('recTitle').textContent =
-        mode === 'append' ? '録音中 (追記)' : '録音中 (新規)';
+    const labelMap = {
+        'mic:new': '録音中 (マイク・新規)',
+        'mic:append': '録音中 (マイク・追記)',
+        'tab:new': '録音中 (タブ+マイク・新規)',
+        'tab:append': '録音中 (タブ+マイク・追記)',
+    };
+    document.getElementById('recTitle').textContent = labelMap[`${source}:${mode}`] || '録音中';
 
     recTimerInterval = setInterval(updateTimer, 500);
-    document.getElementById('recNewBtn').classList.add('btn-rec-active');
-    const appendBtn = document.getElementById('recAppendBtn');
-    if (appendBtn) appendBtn.classList.add('btn-rec-active');
+    ['recNewBtn','recTabBtn','recAppendBtn','recTabAppendBtn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('btn-rec-active');
+    });
+    const activeBtnMap = {
+        'mic:new': 'recNewBtn', 'tab:new': 'recTabBtn',
+        'mic:append': 'recAppendBtn', 'tab:append': 'recTabAppendBtn',
+    };
+    const activeBtn = document.getElementById(activeBtnMap[`${source}:${mode}`]);
+    if (activeBtn) activeBtn.classList.add('btn-rec-active');
+}
+
+async function acquireMicStream() {
+    const mic = await navigator.mediaDevices.getUserMedia({
+        audio: {
+            channelCount: 1,
+            sampleRate: 16000,
+            echoCancellation: true,
+            noiseSuppression: true,
+        },
+    });
+    recStreams.push(mic);
+    return mic;
+}
+
+async function acquireTabPlusMicStream() {
+    // タブ音声 (Zoom/Meet等) を取得
+    const display = await navigator.mediaDevices.getDisplayMedia({
+        video: true,  // Chrome要件: video:true でないと audio を要求できない
+        audio: true,
+    });
+    recStreams.push(display);
+
+    const tabAudioTracks = display.getAudioTracks();
+    if (tabAudioTracks.length === 0) {
+        cleanupStreams();
+        throw new Error('タブ音声が共有されていません。「このタブ」を選び「タブの音声を共有」チェックを入れてください。');
+    }
+
+    // ビデオトラックは不要なので停止
+    display.getVideoTracks().forEach(t => t.stop());
+
+    // マイク
+    const mic = await navigator.mediaDevices.getUserMedia({
+        audio: {
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+        },
+    });
+    recStreams.push(mic);
+
+    // Web Audio API で mix
+    recAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const dest = recAudioCtx.createMediaStreamDestination();
+
+    const tabSrc = recAudioCtx.createMediaStreamSource(new MediaStream(tabAudioTracks));
+    const micSrc = recAudioCtx.createMediaStreamSource(mic);
+
+    // 軽く音量調整 (タブ音声がうるさくなりがち)
+    const tabGain = recAudioCtx.createGain();
+    tabGain.gain.value = 0.8;
+    const micGain = recAudioCtx.createGain();
+    micGain.gain.value = 1.0;
+
+    tabSrc.connect(tabGain).connect(dest);
+    micSrc.connect(micGain).connect(dest);
+
+    return dest.stream;
 }
 
 function pickMimeType() {
@@ -595,13 +677,17 @@ function updateLevel() {
     recLevelRAF = requestAnimationFrame(updateLevel);
 }
 
+function cleanupStreams() {
+    recStreams.forEach(s => {
+        try { s.getTracks().forEach(t => t.stop()); } catch(e) {}
+    });
+    recStreams = [];
+}
+
 function cleanupRecording() {
     if (recTimerInterval) { clearInterval(recTimerInterval); recTimerInterval = null; }
     if (recLevelRAF) { cancelAnimationFrame(recLevelRAF); recLevelRAF = null; }
-    if (recStream) {
-        recStream.getTracks().forEach(t => t.stop());
-        recStream = null;
-    }
+    cleanupStreams();
     if (recAudioCtx) {
         try { recAudioCtx.close(); } catch(e) {}
         recAudioCtx = null;
@@ -609,9 +695,10 @@ function cleanupRecording() {
     recAnalyser = null;
     mediaRecorder = null;
     document.getElementById('recOverlay').style.display = 'none';
-    document.getElementById('recNewBtn').classList.remove('btn-rec-active');
-    const appendBtn = document.getElementById('recAppendBtn');
-    if (appendBtn) appendBtn.classList.remove('btn-rec-active');
+    ['recNewBtn','recTabBtn','recAppendBtn','recTabAppendBtn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('btn-rec-active');
+    });
 }
 
 function cancelRecording() {
@@ -650,33 +737,50 @@ async function stopRecording() {
     await uploadAudio(blob, mode, memoIdForAppend);
 }
 
-async function uploadAudio(blob, mode, memoId) {
-    const ext = (blob.type.includes('webm') ? 'webm' :
-                 blob.type.includes('ogg') ? 'ogg' :
-                 blob.type.includes('mp4') ? 'm4a' : 'webm');
+async function uploadAudio(blob, mode, memoId, filenameHint) {
+    const sizeMB = blob.size / 1024 / 1024;
+
+    // 30MB超は確認 (Render HTTP timeoutやOOMリスクがあるため)
+    if (sizeMB > 30) {
+        if (!confirm(
+            `音声サイズが ${sizeMB.toFixed(1)}MB と大きいです。\n` +
+            '処理に時間がかかり、サーバータイムアウト (502) が発生する可能性があります。\n\n' +
+            '続行しますか? (キャンセルしてファイルを分割することも検討してください)'
+        )) {
+            return;
+        }
+    }
+
+    const ext = filenameHint || deriveExtFromBlob(blob);
     const filename = `rec_${Date.now()}.${ext}`;
 
     const fd = new FormData();
     fd.append('audio', blob, filename);
 
     const originalStatus = document.getElementById('editorStatus')?.textContent;
-    setBusyBanner('⏳ 文字起こし中... (数十秒〜数分かかります)');
+    setBusyBanner(`⏳ 文字起こし中... (${sizeMB.toFixed(1)}MB、数十秒〜数分)`);
 
     try {
-        let url, options;
+        let url;
         if (mode === 'append' && memoId) {
             url = `/api/memos/${memoId}/transcribe`;
             fd.append('mode', 'append');
-            options = {method: 'POST', body: fd};
         } else {
             url = '/api/memos/transcribe';
-            options = {method: 'POST', body: fd};
         }
 
-        const resp = await fetch(url, options);
+        const resp = await fetch(url, {method: 'POST', body: fd});
         if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.detail || `HTTP ${resp.status}`);
+            let detail = `HTTP ${resp.status}`;
+            try {
+                const err = await resp.json();
+                if (err.detail) detail = err.detail;
+            } catch (_) {
+                if (resp.status === 502 || resp.status === 504) {
+                    detail = `HTTP ${resp.status} (サーバータイムアウト。長すぎる音声は分割するか、ブラウザで短時間録音を分けてください)`;
+                }
+            }
+            throw new Error(detail);
         }
         const data = await resp.json();
 
@@ -690,7 +794,6 @@ async function uploadAudio(blob, mode, memoId) {
             if (originalStatus !== undefined) {
                 document.getElementById('editorStatus').textContent = `追記完了 (${data.transcript_chars}文字)`;
             }
-            // サイドバータイトル更新
             const item = document.querySelector(`.memo-item[data-id="${memoId}"] .memo-item-title`);
             if (item) item.textContent = data.memo.title;
         }
@@ -698,6 +801,27 @@ async function uploadAudio(blob, mode, memoId) {
         clearBusyBanner();
         alert('文字起こし失敗: ' + e.message);
     }
+}
+
+function deriveExtFromBlob(blob) {
+    const t = (blob.type || '').toLowerCase();
+    if (t.includes('webm')) return 'webm';
+    if (t.includes('ogg') || t.includes('opus')) return 'ogg';
+    if (t.includes('mp4') || t.includes('m4a')) return 'm4a';
+    if (t.includes('mpeg') || t.includes('mp3')) return 'mp3';
+    if (t.includes('wav')) return 'wav';
+    return 'webm';
+}
+
+async function uploadAudioFile(file, mode) {
+    if (!file) return;
+    if (mode === 'append' && !currentMemoId) {
+        alert('追記先のメモを選択してください');
+        return;
+    }
+    // 動画(mp4等)も音声トラック抽出でそのまま渡せばGeminiがよしなにやってくれる
+    const ext = file.name.split('.').pop().toLowerCase();
+    await uploadAudio(file, mode, currentMemoId, ext);
 }
 
 function setBusyBanner(text) {

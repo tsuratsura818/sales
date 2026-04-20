@@ -1,5 +1,8 @@
 """メモ管理ルーター - Simplenote風メモ + 案件自動紐付け + 録音議事録化"""
 
+import logging
+import traceback
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -13,6 +16,8 @@ from app.models.memo import Memo
 from app.services.memo_classifier import classify_memo, append_memo_to_project
 from app.services.transcribe_service import transcribe_audio, TranscribeError
 from app.services.minutes_service import transcript_to_minutes
+
+logger = logging.getLogger("memos")
 
 router = APIRouter(tags=["memos"])
 
@@ -215,6 +220,11 @@ async def api_transcribe_audio_new(
 ):
     """音声から新規メモを作成 (文字起こし結果をcontentに格納)"""
     audio_bytes = await audio.read()
+    size_mb = len(audio_bytes) / 1024 / 1024
+    logger.info(
+        "transcribe[new] filename=%s content_type=%s size=%.2fMB",
+        audio.filename, audio.content_type, size_mb,
+    )
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="空の音声ファイルです")
 
@@ -223,7 +233,11 @@ async def api_transcribe_audio_new(
             audio_bytes, filename=audio.filename, content_type=audio.content_type,
         )
     except TranscribeError as e:
+        logger.error("transcribe[new] TranscribeError: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error("transcribe[new] unexpected: %s\n%s", e, traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"文字起こし失敗: {type(e).__name__}: {e}")
 
     title = transcript.split("\n")[0][:100] or "録音メモ"
     memo = Memo(
@@ -259,6 +273,11 @@ async def api_transcribe_audio_append(
         raise HTTPException(status_code=404, detail="メモが見つかりません")
 
     audio_bytes = await audio.read()
+    size_mb = len(audio_bytes) / 1024 / 1024
+    logger.info(
+        "transcribe[append memo=%d] filename=%s content_type=%s size=%.2fMB",
+        memo_id, audio.filename, audio.content_type, size_mb,
+    )
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="空の音声ファイルです")
 
@@ -267,7 +286,11 @@ async def api_transcribe_audio_append(
             audio_bytes, filename=audio.filename, content_type=audio.content_type,
         )
     except TranscribeError as e:
+        logger.error("transcribe[append] TranscribeError: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error("transcribe[append] unexpected: %s\n%s", e, traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"文字起こし失敗: {type(e).__name__}: {e}")
 
     if mode == "replace" or not (memo.content or "").strip():
         memo.content = transcript
