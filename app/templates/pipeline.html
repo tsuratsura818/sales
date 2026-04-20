@@ -17,7 +17,8 @@
         <div class="source-checkboxes">
             <label><input type="checkbox" id="src-yahoo" checked /> Yahoo!ショッピング</label>
             <label><input type="checkbox" id="src-rakuten" checked /> 楽天市場</label>
-            <label><input type="checkbox" id="src-google" checked /> Google検索（SerpAPI）</label>
+            <label><input type="checkbox" id="src-google" checked /> Google検索（SerpAPI・有料）</label>
+            <label><input type="checkbox" id="src-duckduckgo" checked /> DuckDuckGo（無料・APIキー不要）</label>
         </div>
         <div class="pipeline-actions">
             <button class="btn btn-primary btn-lg" id="btn-start" onclick="startPipeline()">
@@ -138,6 +139,7 @@ async function startPipeline() {
     if (document.getElementById('src-yahoo').checked) sources.push('yahoo');
     if (document.getElementById('src-rakuten').checked) sources.push('rakuten');
     if (document.getElementById('src-google').checked) sources.push('google');
+    if (document.getElementById('src-duckduckgo').checked) sources.push('duckduckgo');
 
     if (sources.length === 0) {
         alert('ソースを1つ以上選択してください');

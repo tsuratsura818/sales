@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.pipeline import PipelineRun, PipelineResult
 from .config import EC_PRIORITY, PROPOSAL_MAP, DEFAULT_PROPOSAL
-from . import yahoo_collector, rakuten_collector, google_collector
+from . import yahoo_collector, rakuten_collector, google_collector, duckduckgo_collector
 
 log = logging.getLogger("pipeline.runner")
 
@@ -202,7 +202,7 @@ async def run_pipeline(run_id: int):
                 pass
 
         # コレクターを直列実行（seen_emailsの共有安全性 + 進捗更新）
-        source_count = len([s for s in ["yahoo", "rakuten", "google"] if s in sources])
+        source_count = len([s for s in ["yahoo", "rakuten", "google", "duckduckgo"] if s in sources])
         pct_per_source = 80 // max(source_count, 1)
         current_pct = 5
 
@@ -242,6 +242,19 @@ async def run_pipeline(run_id: int):
             except Exception as e:
                 log.error(f"Google コレクターエラー: {e}")
                 source_breakdown["google"] = 0
+            current_pct += pct_per_source
+
+        if "duckduckgo" in sources:
+            update_progress(current_pct, "DuckDuckGo収集中（無料）...")
+            try:
+                ddg_kw = [(k, i) for k, i in keyword_list]
+                ddg_leads = await duckduckgo_collector.collect(seen_emails, keywords=ddg_kw)
+                all_leads.extend(ddg_leads)
+                source_breakdown["duckduckgo"] = len(ddg_leads)
+                log.info(f"DuckDuckGo 完了: {len(ddg_leads)}件")
+            except Exception as e:
+                log.error(f"DuckDuckGo コレクターエラー: {e}")
+                source_breakdown["duckduckgo"] = 0
 
         # Shopify構築済みを除外
         before_shopify = len(all_leads)

@@ -38,7 +38,7 @@ def _get_templates():
 
 
 class PipelineStartRequest(BaseModel):
-    sources: list[str] = ["yahoo", "rakuten", "google"]
+    sources: list[str] = ["yahoo", "rakuten", "google", "duckduckgo"]
     skip_mx: bool = True
 
 
