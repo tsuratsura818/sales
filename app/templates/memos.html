@@ -740,17 +740,6 @@ async function stopRecording() {
 async function uploadAudio(blob, mode, memoId, filenameHint) {
     const sizeMB = blob.size / 1024 / 1024;
 
-    // 30MB超は確認 (Render HTTP timeoutやOOMリスクがあるため)
-    if (sizeMB > 30) {
-        if (!confirm(
-            `音声サイズが ${sizeMB.toFixed(1)}MB と大きいです。\n` +
-            '処理に時間がかかり、サーバータイムアウト (502) が発生する可能性があります。\n\n' +
-            '続行しますか? (キャンセルしてファイルを分割することも検討してください)'
-        )) {
-            return;
-        }
-    }
-
     const ext = filenameHint || deriveExtFromBlob(blob);
     const filename = `rec_${Date.now()}.${ext}`;
 
@@ -758,7 +747,8 @@ async function uploadAudio(blob, mode, memoId, filenameHint) {
     fd.append('audio', blob, filename);
 
     const originalStatus = document.getElementById('editorStatus')?.textContent;
-    setBusyBanner(`⏳ 文字起こし中... (${sizeMB.toFixed(1)}MB、数十秒〜数分)`);
+    const etaLabel = sizeMB > 50 ? '10-20分' : sizeMB > 20 ? '3-10分' : sizeMB > 5 ? '1-3分' : '30秒-1分';
+    setBusyBanner(`⏳ 文字起こし中... (${sizeMB.toFixed(1)}MB、目安 ${etaLabel}。長尺は自動で10分チャンク分割)`);
 
     try {
         let url;
