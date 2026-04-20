@@ -3,6 +3,21 @@
 
 {% block content %}
 <div class="memo-app">
+    <!-- 録音オーバーレイ -->
+    <div class="rec-overlay" id="recOverlay" style="display:none;">
+        <div class="rec-modal">
+            <div class="rec-pulse"></div>
+            <h3 id="recTitle">🎙️ 録音中</h3>
+            <div class="rec-timer" id="recTimer">00:00</div>
+            <div class="rec-level"><div class="rec-level-bar" id="recLevelBar"></div></div>
+            <p class="rec-note">⚠️ Gemini無料枠は送信データがAI学習に利用されます。<br>機密/クライアント情報を含む会議では使わないでください。</p>
+            <div class="rec-actions">
+                <button class="btn btn-danger" onclick="stopRecording()">⏹ 停止 → 文字起こし</button>
+                <button class="btn" onclick="cancelRecording()">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ヘッダー -->
     <div class="memo-header">
         <h1>📝 メモ</h1>
@@ -12,6 +27,7 @@
                 <option value="linked">案件紐付済</option>
                 <option value="unlinked">未分類</option>
             </select>
+            <button class="btn" id="recNewBtn" onclick="toggleRecording('new')" title="録音して新規メモを作成">🎙️ 録音して新規メモ</button>
             <button class="btn btn-primary" onclick="createMemo()">＋ 新規メモ</button>
         </div>
     </div>
@@ -55,6 +71,8 @@
                 <div class="memo-editor-toolbar">
                     <div class="memo-editor-project" id="projectBadge"></div>
                     <div class="memo-editor-actions">
+                        <button class="btn btn-sm" id="recAppendBtn" onclick="toggleRecording('append')" title="録音してこのメモに追記">🎙️ 録音追記</button>
+                        <button class="btn btn-sm" onclick="toMinutes()" title="Claudeで議事録フォーマットに整形">✨ 議事録整形</button>
                         <button class="btn btn-sm" onclick="reclassifyMemo()" title="AIで再分類">🔄 再分類</button>
                         <button class="btn btn-sm" onclick="linkManually()" title="手動で案件を選択">🔗 手動リンク</button>
                         <button class="btn btn-sm" onclick="syncToNotion()" title="Notionに同期" id="syncBtn">📤 Notion同期</button>
@@ -162,6 +180,46 @@
 .btn-sm { padding: 4px 8px; font-size: 0.75rem; }
 .btn-danger { color: #d32f2f; }
 .btn-danger:hover { background: #ffebee; }
+
+/* 録音オーバーレイ */
+.rec-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center; z-index: 2000;
+}
+.rec-modal {
+    background: #fff; border-radius: 16px; padding: 32px 28px;
+    width: 420px; max-width: 92vw; text-align: center;
+}
+.rec-modal h3 { margin: 0 0 8px; font-size: 1.1rem; }
+.rec-pulse {
+    width: 16px; height: 16px; border-radius: 50%; background: #e53935;
+    margin: 0 auto 12px; animation: rec-pulse 1.2s infinite;
+}
+@keyframes rec-pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.3); }
+}
+.rec-timer {
+    font-size: 2.2rem; font-weight: 700; color: #333;
+    font-variant-numeric: tabular-nums; margin: 8px 0;
+}
+.rec-level {
+    width: 100%; height: 8px; background: #eee; border-radius: 4px;
+    overflow: hidden; margin: 4px 0 12px;
+}
+.rec-level-bar {
+    height: 100%; width: 0%; background: linear-gradient(90deg,#4caf50,#ffc107,#e53935);
+    transition: width 0.1s;
+}
+.rec-note {
+    font-size: 0.75rem; color: #b26a00; background: #fff8e1;
+    padding: 8px 10px; border-radius: 6px; margin: 8px 0 16px; line-height: 1.5;
+}
+.rec-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+.btn.btn-rec-active {
+    background: #e53935 !important; color: #fff !important; border-color: #e53935 !important;
+}
 
 /* モーダル */
 .modal-overlay {
@@ -417,6 +475,278 @@ function searchMemos(query) {
         const badgeText = badge ? badge.textContent.toLowerCase() : '';
         el.style.display = (title.includes(q) || badgeText.includes(q)) ? '' : 'none';
     });
+}
+
+// ========== 録音機能 ==========
+let mediaRecorder = null;
+let recordedChunks = [];
+let recStream = null;
+let recAudioCtx = null;
+let recAnalyser = null;
+let recTimerInterval = null;
+let recStartTime = 0;
+let recMode = 'new';  // new | append
+let recLevelRAF = null;
+
+async function toggleRecording(mode) {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        await stopRecording();
+        return;
+    }
+
+    if (mode === 'append' && !currentMemoId) {
+        alert('追記先のメモを選択してください');
+        return;
+    }
+
+    recMode = mode;
+
+    try {
+        recStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                channelCount: 1,
+                sampleRate: 16000,
+                echoCancellation: true,
+                noiseSuppression: true,
+            },
+        });
+    } catch (e) {
+        alert('マイクアクセスが拒否されました: ' + e.message);
+        return;
+    }
+
+    const mimeType = pickMimeType();
+    try {
+        mediaRecorder = new MediaRecorder(recStream, mimeType ? {mimeType} : undefined);
+    } catch (e) {
+        alert('MediaRecorder初期化失敗: ' + e.message);
+        recStream.getTracks().forEach(t => t.stop());
+        return;
+    }
+
+    recordedChunks = [];
+    mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+    };
+
+    mediaRecorder.start(1000); // 1秒ごとにチャンク
+    recStartTime = Date.now();
+
+    // 音量可視化
+    recAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = recAudioCtx.createMediaStreamSource(recStream);
+    recAnalyser = recAudioCtx.createAnalyser();
+    recAnalyser.fftSize = 512;
+    source.connect(recAnalyser);
+    updateLevel();
+
+    // オーバーレイ表示
+    document.getElementById('recOverlay').style.display = 'flex';
+    document.getElementById('recTitle').textContent =
+        mode === 'append' ? '🎙️ 録音中 (このメモに追記)' : '🎙️ 録音中 (新規メモを作成)';
+
+    recTimerInterval = setInterval(updateTimer, 500);
+    document.getElementById('recNewBtn').classList.add('btn-rec-active');
+    const appendBtn = document.getElementById('recAppendBtn');
+    if (appendBtn) appendBtn.classList.add('btn-rec-active');
+}
+
+function pickMimeType() {
+    const candidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/mp4',
+    ];
+    for (const m of candidates) {
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+    }
+    return '';
+}
+
+function updateTimer() {
+    const elapsed = Math.floor((Date.now() - recStartTime) / 1000);
+    const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const s = String(elapsed % 60).padStart(2, '0');
+    document.getElementById('recTimer').textContent = `${m}:${s}`;
+}
+
+function updateLevel() {
+    if (!recAnalyser) return;
+    const buf = new Uint8Array(recAnalyser.frequencyBinCount);
+    recAnalyser.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) {
+        const v = (buf[i] - 128) / 128;
+        sum += v * v;
+    }
+    const rms = Math.sqrt(sum / buf.length);
+    const pct = Math.min(100, Math.round(rms * 300));
+    const bar = document.getElementById('recLevelBar');
+    if (bar) bar.style.width = pct + '%';
+    recLevelRAF = requestAnimationFrame(updateLevel);
+}
+
+function cleanupRecording() {
+    if (recTimerInterval) { clearInterval(recTimerInterval); recTimerInterval = null; }
+    if (recLevelRAF) { cancelAnimationFrame(recLevelRAF); recLevelRAF = null; }
+    if (recStream) {
+        recStream.getTracks().forEach(t => t.stop());
+        recStream = null;
+    }
+    if (recAudioCtx) {
+        try { recAudioCtx.close(); } catch(e) {}
+        recAudioCtx = null;
+    }
+    recAnalyser = null;
+    mediaRecorder = null;
+    document.getElementById('recOverlay').style.display = 'none';
+    document.getElementById('recNewBtn').classList.remove('btn-rec-active');
+    const appendBtn = document.getElementById('recAppendBtn');
+    if (appendBtn) appendBtn.classList.remove('btn-rec-active');
+}
+
+function cancelRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        try { mediaRecorder.stop(); } catch(e) {}
+    }
+    recordedChunks = [];
+    cleanupRecording();
+}
+
+async function stopRecording() {
+    if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+        cleanupRecording();
+        return;
+    }
+
+    const stopped = new Promise(resolve => {
+        mediaRecorder.addEventListener('stop', resolve, {once: true});
+    });
+    mediaRecorder.stop();
+    await stopped;
+
+    const mimeType = mediaRecorder.mimeType || 'audio/webm';
+    const blob = new Blob(recordedChunks, {type: mimeType});
+    recordedChunks = [];
+
+    const mode = recMode;
+    const memoIdForAppend = currentMemoId;
+    cleanupRecording();
+
+    if (blob.size === 0) {
+        alert('録音データが空でした');
+        return;
+    }
+
+    await uploadAudio(blob, mode, memoIdForAppend);
+}
+
+async function uploadAudio(blob, mode, memoId) {
+    const ext = (blob.type.includes('webm') ? 'webm' :
+                 blob.type.includes('ogg') ? 'ogg' :
+                 blob.type.includes('mp4') ? 'm4a' : 'webm');
+    const filename = `rec_${Date.now()}.${ext}`;
+
+    const fd = new FormData();
+    fd.append('audio', blob, filename);
+
+    const originalStatus = document.getElementById('editorStatus')?.textContent;
+    setBusyBanner('⏳ 文字起こし中... (数十秒〜数分かかります)');
+
+    try {
+        let url, options;
+        if (mode === 'append' && memoId) {
+            url = `/api/memos/${memoId}/transcribe`;
+            fd.append('mode', 'append');
+            options = {method: 'POST', body: fd};
+        } else {
+            url = '/api/memos/transcribe';
+            options = {method: 'POST', body: fd};
+        }
+
+        const resp = await fetch(url, options);
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+
+        clearBusyBanner();
+
+        if (mode === 'new') {
+            alert(`新規メモ作成完了 (${data.transcript_chars}文字)`);
+            location.reload();
+        } else {
+            document.getElementById('memoTextarea').value = data.memo.content;
+            if (originalStatus !== undefined) {
+                document.getElementById('editorStatus').textContent = `追記完了 (${data.transcript_chars}文字)`;
+            }
+            // サイドバータイトル更新
+            const item = document.querySelector(`.memo-item[data-id="${memoId}"] .memo-item-title`);
+            if (item) item.textContent = data.memo.title;
+        }
+    } catch (e) {
+        clearBusyBanner();
+        alert('文字起こし失敗: ' + e.message);
+    }
+}
+
+function setBusyBanner(text) {
+    let banner = document.getElementById('busyBanner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'busyBanner';
+        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#1976d2;color:#fff;padding:10px;text-align:center;z-index:3000;font-weight:600;';
+        document.body.appendChild(banner);
+    }
+    banner.textContent = text;
+}
+
+function clearBusyBanner() {
+    const banner = document.getElementById('busyBanner');
+    if (banner) banner.remove();
+}
+
+// ========== 議事録整形 ==========
+async function toMinutes() {
+    if (!currentMemoId) return;
+
+    const content = document.getElementById('memoTextarea').value.trim();
+    if (!content) {
+        alert('メモが空です');
+        return;
+    }
+
+    const mode = confirm(
+        '議事録フォーマットに整形します。\n\n' +
+        '[OK] = 置換 (元テキストを議事録に上書き)\n' +
+        '[キャンセル] = 追記 (元テキストを残して末尾に議事録を追加)'
+    ) ? 'replace' : 'append';
+
+    await saveMemo();
+    setBusyBanner('✨ Claudeで議事録整形中... (10-30秒)');
+
+    try {
+        const resp = await fetch(`/api/memos/${currentMemoId}/to_minutes`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({mode}),
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        clearBusyBanner();
+        document.getElementById('memoTextarea').value = data.memo.content;
+        document.getElementById('editorStatus').textContent = '議事録整形完了';
+        const item = document.querySelector(`.memo-item[data-id="${currentMemoId}"] .memo-item-title`);
+        if (item) item.textContent = data.memo.title;
+    } catch (e) {
+        clearBusyBanner();
+        alert('議事録整形失敗: ' + e.message);
+    }
 }
 
 async function filterMemos(value) {

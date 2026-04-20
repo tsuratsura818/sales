@@ -1,6 +1,6 @@
-"""メモ管理ルーター - Simplenote風メモ + 案件自動紐付け"""
+"""メモ管理ルーター - Simplenote風メモ + 案件自動紐付け + 録音議事録化"""
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from app.database import get_db
 from app.models.memo import Memo
 from app.services.memo_classifier import classify_memo, append_memo_to_project
+from app.services.transcribe_service import transcribe_audio, TranscribeError
+from app.services.minutes_service import transcript_to_minutes
 
 router = APIRouter(tags=["memos"])
 
@@ -204,6 +206,138 @@ async def api_unlink_memo(memo_id: int, db: Session = Depends(get_db)):
     db.commit()
 
     return {"success": True}
+
+
+@router.post("/api/memos/transcribe")
+async def api_transcribe_audio_new(
+    audio: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """音声から新規メモを作成 (文字起こし結果をcontentに格納)"""
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="空の音声ファイルです")
+
+    try:
+        transcript = await transcribe_audio(
+            audio_bytes, filename=audio.filename, content_type=audio.content_type,
+        )
+    except TranscribeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    title = transcript.split("\n")[0][:100] or "録音メモ"
+    memo = Memo(
+        content=transcript,
+        title=title,
+        classification_status="unlinked",
+    )
+    db.add(memo)
+    db.commit()
+    db.refresh(memo)
+
+    return {
+        "success": True,
+        "memo": {
+            "id": memo.id,
+            "title": memo.title,
+            "content": memo.content,
+        },
+        "transcript_chars": len(transcript),
+    }
+
+
+@router.post("/api/memos/{memo_id}/transcribe")
+async def api_transcribe_audio_append(
+    memo_id: int,
+    audio: UploadFile = File(...),
+    mode: str = Form("append"),  # append | replace
+    db: Session = Depends(get_db),
+):
+    """既存メモに音声文字起こしを追記 or 置換"""
+    memo = db.query(Memo).filter(Memo.id == memo_id).first()
+    if not memo:
+        raise HTTPException(status_code=404, detail="メモが見つかりません")
+
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="空の音声ファイルです")
+
+    try:
+        transcript = await transcribe_audio(
+            audio_bytes, filename=audio.filename, content_type=audio.content_type,
+        )
+    except TranscribeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if mode == "replace" or not (memo.content or "").strip():
+        memo.content = transcript
+    else:
+        memo.content = (memo.content or "").rstrip() + "\n\n---\n\n" + transcript
+
+    if not memo.title or memo.title == "無題":
+        memo.title = memo.content.split("\n")[0][:100] or "録音メモ"
+
+    memo.updated_at = datetime.now(timezone.utc)
+    memo.synced_to_notion = 0
+    db.commit()
+    db.refresh(memo)
+
+    return {
+        "success": True,
+        "memo": {"id": memo.id, "title": memo.title, "content": memo.content},
+        "transcript_chars": len(transcript),
+    }
+
+
+class MinutesRequest(BaseModel):
+    project_hint: Optional[str] = None
+    title_hint: Optional[str] = None
+    mode: str = "replace"  # replace | append
+
+
+@router.post("/api/memos/{memo_id}/to_minutes")
+async def api_to_minutes(
+    memo_id: int,
+    data: MinutesRequest,
+    db: Session = Depends(get_db),
+):
+    """メモ内容 (文字起こし) を議事録フォーマットに整形"""
+    memo = db.query(Memo).filter(Memo.id == memo_id).first()
+    if not memo:
+        raise HTTPException(status_code=404, detail="メモが見つかりません")
+
+    source = (memo.content or "").strip()
+    if not source:
+        raise HTTPException(status_code=400, detail="メモ内容が空です")
+
+    project_hint = data.project_hint or memo.notion_project_name
+
+    try:
+        minutes_md = await transcript_to_minutes(
+            source, project_hint=project_hint, title_hint=data.title_hint,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"議事録整形に失敗: {e}")
+
+    if data.mode == "append":
+        memo.content = source + "\n\n---\n\n" + minutes_md
+    else:
+        memo.content = minutes_md
+
+    # 議事録の1行目(# 議事録: ...)からタイトル生成
+    first_line = memo.content.split("\n", 1)[0].lstrip("# ").strip()
+    if first_line:
+        memo.title = first_line[:100]
+
+    memo.updated_at = datetime.now(timezone.utc)
+    memo.synced_to_notion = 0
+    db.commit()
+    db.refresh(memo)
+
+    return {
+        "success": True,
+        "memo": {"id": memo.id, "title": memo.title, "content": memo.content},
+    }
 
 
 @router.post("/api/memos/{memo_id}/sync")

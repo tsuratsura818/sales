@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     SERPAPI_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     PAGESPEED_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
     DATABASE_URL: str = "sqlite:///./sales.db"
     MAX_CONCURRENT_ANALYSIS: int = 5
     ANALYSIS_TIMEOUT_SEC: int = 15
