@@ -7,7 +7,7 @@ from sqlalchemy import desc
 from app.database import get_db
 from app.models.lead import Lead
 from app.models.email_log import EmailLog
-from app.services import claude_service, gmail_service
+from app.services import gmail_service, proposal_service
 from app.services.portfolio_service import get_portfolios_for_lead, format_portfolio_for_prompt
 from app.schemas.lead import EmailUpdateRequest
 
@@ -20,7 +20,7 @@ class SendEmailRequest(BaseModel):
 
 @router.post("/leads/{lead_id}/generate-email")
 async def generate_email(lead_id: int, db: Session = Depends(get_db)):
-    """Claude APIで営業メールを生成する"""
+    """ローカル Claude Code で営業メールを生成する"""
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
         raise HTTPException(status_code=404, detail="リードが見つかりません")
@@ -30,7 +30,7 @@ async def generate_email(lead_id: int, db: Session = Depends(get_db)):
     try:
         portfolios = get_portfolios_for_lead(db, lead)
         portfolio_text = format_portfolio_for_prompt(portfolios)
-        subject, body = await claude_service.generate_email(lead, portfolio_text=portfolio_text)
+        subject, body = await proposal_service.generate_email(lead, portfolio_text=portfolio_text)
         lead.generated_email_subject = subject
         lead.generated_email_body = body
         lead.status = "email_generated"

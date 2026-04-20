@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.lead import Lead
 from app.models.follow_up import FollowUpStep
 from app.models.email_log import EmailLog
-from app.services import claude_service, gmail_service
+from app.services import gmail_service, proposal_service
 from app.services.portfolio_service import get_portfolios_for_lead, format_portfolio_for_prompt
 
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ async def start_sequence(lead_id: int, db: Session) -> list[dict]:
 
 
 async def generate_step_email(lead: Lead, step: FollowUpStep, db: Session) -> None:
-    """Claude APIでフォローアップメールを生成してステップに保存する"""
+    """ローカル Claude Code でフォローアップメールを生成してステップに保存する"""
     step.status = "generating"
     db.commit()
 
@@ -72,7 +72,7 @@ async def generate_step_email(lead: Lead, step: FollowUpStep, db: Session) -> No
     try:
         portfolios = get_portfolios_for_lead(db, lead)
         portfolio_text = format_portfolio_for_prompt(portfolios)
-        subject, body = await claude_service.generate_followup_email(
+        subject, body = await proposal_service.generate_followup_email(
             lead=lead,
             step_number=step.step_number,
             previous_subjects=previous_subjects,

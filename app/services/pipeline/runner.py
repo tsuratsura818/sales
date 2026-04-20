@@ -8,6 +8,7 @@ import json
 import logging
 import time
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -87,9 +88,11 @@ def _score_lead(ec_status: str, email: str, company: str, location: str, industr
 
 
 def _deduplicate(leads: list) -> list:
-    """メールアドレス + ドメインレベルの重複排除"""
+    """メールアドレス + eTLD+1ドメイン正規化で重複排除"""
+    from .domain_util import normalize_domain
+
     seen_emails: set[str] = set()
-    seen_domains: dict[str, int] = {}  # domain → best score index
+    seen_domains: dict[str, int] = {}  # normalized domain → index in result
     result: list = []
 
     for lead in leads:
@@ -98,17 +101,21 @@ def _deduplicate(leads: list) -> list:
             continue
         seen_emails.add(email_lower)
 
-        # ドメインレベル重複チェック（同一ドメインの複数アドレスを排除）
-        domain = email_lower.split("@")[1] if "@" in email_lower else ""
-        if domain in seen_domains:
-            # 既存のリードとスコア比較（会社名の長さで暫定判定）
+        # eTLD+1正規化でドメインを決定（website > email）
+        website_domain = normalize_domain(getattr(lead, "website", "") or "")
+        email_domain_raw = email_lower.split("@", 1)[1] if "@" in email_lower else ""
+        email_domain = normalize_domain("http://" + email_domain_raw) if email_domain_raw else ""
+        domain = website_domain or email_domain
+
+        if domain and domain in seen_domains:
             existing_idx = seen_domains[domain]
             existing = result[existing_idx]
             if len(lead.company or "") > len(existing.company or ""):
-                result[existing_idx] = lead  # より情報が多い方で上書き
+                result[existing_idx] = lead  # 情報量で上書き
             continue
 
-        seen_domains[domain] = len(result)
+        if domain:
+            seen_domains[domain] = len(result)
         result.append(lead)
 
     removed = len(leads) - len(result)
@@ -118,24 +125,89 @@ def _deduplicate(leads: list) -> list:
 
 
 async def _enrich_with_proposals(leads: list[PipelineResult], db: Session) -> None:
-    """site_analyzer で各リードのサイトを分析し、個別化された提案文を生成する"""
+    """各リードのサイトを分析し、提案文を生成する。
+
+    フロー:
+      1) HTMLスクレイピングで site analysis (並列)
+      2) ローカル Claude Code が利用可能ならバッチで高品質提案文を生成
+      3) Claude CLI不在の環境(Render等)では site_analyzer のテンプレートにフォールバック
+    """
     import httpx
     from dataclasses import asdict
+    from app.services import local_claude, proposal_service
 
-    # サイト分析 + メール抽出 + 提案文生成
     cat_leads = [l for l in leads if l.category and l.website]
     if not cat_leads:
         return
 
-    log.info(f"個別提案文生成: {len(cat_leads)}件")
+    log.info(f"サイト分析開始: {len(cat_leads)}件")
     sem = asyncio.Semaphore(10)
     ua = "Mozilla/5.0 (compatible; TSURATSURA-ResearchBot/3.1; +https://tsuratsura.co.jp/bot)"
 
-    async def _one(lead: PipelineResult, client: httpx.AsyncClient):
+    analyzed_pairs: list[tuple[PipelineResult, Any]] = []
+
+    async def _analyze(lead: PipelineResult, client: httpx.AsyncClient):
         async with sem:
             try:
                 analysis, _email = await analyze_and_extract_email(lead.website, client, ua)
                 analysis.issues = detect_issues(analysis, lead.category or "B")
+                lead.site_analysis = json.dumps(asdict(analysis), ensure_ascii=False, default=str)
+                return lead, analysis
+            except Exception as e:
+                log.debug(f"サイト分析エラー {lead.website}: {e}")
+                return lead, None
+
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            results = await asyncio.gather(
+                *[_analyze(l, client) for l in cat_leads],
+                return_exceptions=True,
+            )
+        for r in results:
+            if isinstance(r, Exception):
+                continue
+            lead, analysis = r
+            if analysis is not None:
+                analyzed_pairs.append((lead, analysis))
+        db.commit()
+    except Exception as e:
+        log.error(f"サイト分析バッチエラー: {e}")
+        return
+
+    if not analyzed_pairs:
+        return
+
+    use_local_claude = local_claude.is_available()
+    engine = "local_claude" if use_local_claude else "template"
+    log.info(f"提案文生成: {len(analyzed_pairs)}件 engine={engine}")
+
+    if use_local_claude:
+        from dataclasses import asdict as _asdict
+        targets = [
+            {
+                "url": lead.website,
+                "company": lead.company or "",
+                "industry": lead.industry or "",
+                "category": lead.category or "B",
+                "prefecture": lead.location or "",
+                "analysis": _asdict(analysis),
+            }
+            for lead, analysis in analyzed_pairs
+        ]
+        try:
+            proposals = await proposal_service.generate_batch_proposals(targets)
+        except Exception as e:
+            log.error(f"Claude CLI バッチ生成エラー: {e}")
+            proposals = [{"subject": "", "body": ""}] * len(analyzed_pairs)
+
+        for (lead, _analysis), prop in zip(analyzed_pairs, proposals):
+            if prop.get("subject") and prop.get("body"):
+                lead.personalized_subject = prop["subject"]
+                lead.personalized_body = prop["body"]
+    else:
+        # Render 等 CLI不在環境: テンプレート版でフォールバック
+        for lead, analysis in analyzed_pairs:
+            try:
                 proposal = build_personalized_proposal(
                     company=lead.company or "",
                     industry=lead.industry or "",
@@ -145,16 +217,13 @@ async def _enrich_with_proposals(leads: list[PipelineResult], db: Session) -> No
                 )
                 lead.personalized_subject = proposal["subject"]
                 lead.personalized_body = proposal["body"]
-                lead.site_analysis = json.dumps(asdict(analysis), ensure_ascii=False, default=str)
             except Exception as e:
-                log.debug(f"提案文生成エラー {lead.website}: {e}")
+                log.debug(f"テンプレ提案文エラー {lead.website}: {e}")
 
     try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            await asyncio.gather(*[_one(l, client) for l in cat_leads], return_exceptions=True)
         db.commit()
     except Exception as e:
-        log.error(f"提案文生成バッチエラー: {e}")
+        log.error(f"提案文DB保存エラー: {e}")
 
 
 async def _import_to_mailforge(leads: list[PipelineResult], db: Session) -> int:

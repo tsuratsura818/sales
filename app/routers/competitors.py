@@ -6,7 +6,7 @@ from sqlalchemy import desc
 from app.database import get_db
 from app.models.lead import Lead
 from app.models.competitor import CompetitorAnalysis
-from app.services import competitor_service, claude_service
+from app.services import competitor_service, proposal_service
 from app.services.portfolio_service import get_portfolios_for_lead, format_portfolio_for_prompt
 
 router = APIRouter(prefix="/api", tags=["competitors"])
@@ -98,7 +98,7 @@ async def generate_competitor_email(lead_id: int, db: Session = Depends(get_db))
     try:
         portfolios = get_portfolios_for_lead(db, lead)
         portfolio_text = format_portfolio_for_prompt(portfolios)
-        subject, body = await claude_service.generate_competitor_email(
+        subject, body = await proposal_service.generate_competitor_email(
             lead=lead,
             comparison_data=comparison_data,
             portfolio_text=portfolio_text,
