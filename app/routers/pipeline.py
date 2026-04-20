@@ -40,6 +40,14 @@ def _get_templates():
 class PipelineStartRequest(BaseModel):
     sources: list[str] = ["yahoo", "rakuten", "google", "duckduckgo"]
     skip_mx: bool = True
+    # モード: ec (関西EC特化) / category (全国カテゴリA-D) / both
+    mode: str = "ec"
+    # カテゴリモード設定
+    categories: list[str] | None = None              # ["A","B","C","D"]
+    prefectures: list[str] | None = None              # 例: ["東京","大阪"] None=主要10都市
+    max_queries_per_category: int | None = 50
+    max_urls_per_category: int | None = 150
+    generate_proposals: bool = True                   # 個別提案文生成を有効化
 
 
 @router.get("/pipeline", response_class=HTMLResponse)
@@ -55,11 +63,26 @@ async def start_pipeline(data: PipelineStartRequest, db: Session = Depends(get_d
     if running:
         return {"error": "パイプラインが既に実行中です", "run_id": running.id}
 
+    # カテゴリモード時は sources に "category" を自動追加
+    effective_sources = list(data.sources)
+    if data.mode in ("category", "both") and "category" not in effective_sources:
+        effective_sources.append("category")
+
+    category_config = {
+        "categories": data.categories or ["A", "B", "C", "D"],
+        "prefectures": data.prefectures,
+        "max_queries_per_category": data.max_queries_per_category or 50,
+        "max_urls_per_category": data.max_urls_per_category or 150,
+        "generate_proposals": data.generate_proposals,
+    } if data.mode in ("category", "both") else None
+
     run = PipelineRun(
-        sources=json.dumps(data.sources),
+        sources=json.dumps(effective_sources),
         keywords_count=len(SEARCH_KEYWORDS),
         skip_mx=1 if data.skip_mx else 0,
         status="pending",
+        mode=data.mode,
+        category_config=json.dumps(category_config, ensure_ascii=False) if category_config else None,
     )
     db.add(run)
     db.commit()

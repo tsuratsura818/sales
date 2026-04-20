@@ -13,18 +13,68 @@
 <!-- 実行コントロール -->
 <div class="dashboard-card">
     <h2>パイプライン実行</h2>
-    <div class="pipeline-controls">
+
+    <!-- モード選択 -->
+    <div style="margin-bottom: 16px;">
+        <label style="font-weight: 600; display: block; margin-bottom: 6px;">収集モード</label>
+        <div class="source-checkboxes" style="gap: 16px;">
+            <label>
+                <input type="radio" name="mode" value="ec" checked onchange="onModeChange()" />
+                EC特化（関西・Yahoo/楽天等）
+            </label>
+            <label>
+                <input type="radio" name="mode" value="category" onchange="onModeChange()" />
+                全国カテゴリ（DuckDuckGo・A/B/C/D業種）
+            </label>
+            <label>
+                <input type="radio" name="mode" value="both" onchange="onModeChange()" />
+                併用
+            </label>
+        </div>
+    </div>
+
+    <!-- ECモード設定 -->
+    <div id="ec-mode-panel" class="pipeline-controls" style="margin-bottom: 16px;">
+        <label style="font-weight: 600; display: block; margin-bottom: 6px;">ECコレクター</label>
         <div class="source-checkboxes">
             <label><input type="checkbox" id="src-yahoo" checked /> Yahoo!ショッピング</label>
             <label><input type="checkbox" id="src-rakuten" checked /> 楽天市場</label>
-            <label><input type="checkbox" id="src-google" checked /> Google検索（SerpAPI・有料）</label>
-            <label><input type="checkbox" id="src-duckduckgo" checked /> DuckDuckGo（無料・APIキー不要）</label>
+            <label><input type="checkbox" id="src-google" /> Google検索（SerpAPI・有料）</label>
+            <label><input type="checkbox" id="src-duckduckgo" checked /> DuckDuckGo（無料）</label>
         </div>
-        <div class="pipeline-actions">
-            <button class="btn btn-primary btn-lg" id="btn-start" onclick="startPipeline()">
-                収集開始
-            </button>
+    </div>
+
+    <!-- カテゴリモード設定 -->
+    <div id="category-mode-panel" style="display:none; margin-bottom: 16px; padding: 12px; background: #f8fafc; border-radius: 8px;">
+        <label style="font-weight: 600; display: block; margin-bottom: 6px;">対象カテゴリ</label>
+        <div class="source-checkboxes" style="gap: 14px; margin-bottom: 10px;">
+            <label><input type="checkbox" id="cat-A" checked /> A: Shopify D2C</label>
+            <label><input type="checkbox" id="cat-B" checked /> B: WordPressコーポレート</label>
+            <label><input type="checkbox" id="cat-C" checked /> C: LP制作</label>
+            <label><input type="checkbox" id="cat-D" checked /> D: 飲食EC</label>
         </div>
+
+        <label style="font-weight: 600; display: block; margin-bottom: 6px;">対象エリア</label>
+        <div style="margin-bottom: 10px;">
+            <label style="margin-right: 14px;"><input type="radio" name="pref-mode" value="priority" checked /> 主要10都市（東京/大阪/愛知/神奈川/福岡/京都/兵庫/埼玉/千葉/北海道）</label>
+            <label><input type="radio" name="pref-mode" value="all" /> 全国47都道府県</label>
+        </div>
+
+        <div style="display:flex; gap: 14px; align-items: center; flex-wrap: wrap;">
+            <label>カテゴリあたり最大クエリ数:
+                <input type="number" id="max-queries" value="50" min="10" max="500" style="width:70px;" />
+            </label>
+            <label>カテゴリあたり最大URL数:
+                <input type="number" id="max-urls" value="150" min="20" max="1000" style="width:80px;" />
+            </label>
+            <label><input type="checkbox" id="gen-proposals" checked /> ローカル個別提案文を生成</label>
+        </div>
+    </div>
+
+    <div class="pipeline-actions">
+        <button class="btn btn-primary btn-lg" id="btn-start" onclick="startPipeline()">
+            収集開始
+        </button>
     </div>
 
     <!-- 進捗バー -->
@@ -134,12 +184,37 @@ function esc(str) {
     return d.innerHTML;
 }
 
+function onModeChange() {
+    const mode = document.querySelector('input[name="mode"]:checked').value;
+    document.getElementById('ec-mode-panel').style.display = (mode === 'ec' || mode === 'both') ? '' : 'none';
+    document.getElementById('category-mode-panel').style.display = (mode === 'category' || mode === 'both') ? '' : 'none';
+}
+
 async function startPipeline() {
+    const mode = document.querySelector('input[name="mode"]:checked').value;
     const sources = [];
-    if (document.getElementById('src-yahoo').checked) sources.push('yahoo');
-    if (document.getElementById('src-rakuten').checked) sources.push('rakuten');
-    if (document.getElementById('src-google').checked) sources.push('google');
-    if (document.getElementById('src-duckduckgo').checked) sources.push('duckduckgo');
+    if (mode === 'ec' || mode === 'both') {
+        if (document.getElementById('src-yahoo').checked) sources.push('yahoo');
+        if (document.getElementById('src-rakuten').checked) sources.push('rakuten');
+        if (document.getElementById('src-google').checked) sources.push('google');
+        if (document.getElementById('src-duckduckgo').checked) sources.push('duckduckgo');
+    }
+
+    const categories = [];
+    let prefectures = null;
+    let maxQueries = 50, maxUrls = 150, genProposals = true;
+    if (mode === 'category' || mode === 'both') {
+        ['A', 'B', 'C', 'D'].forEach(c => {
+            if (document.getElementById('cat-' + c).checked) categories.push(c);
+        });
+        const prefMode = document.querySelector('input[name="pref-mode"]:checked').value;
+        if (prefMode === 'priority') {
+            prefectures = ["東京","大阪","愛知","神奈川","福岡","京都","兵庫","埼玉","千葉","北海道"];
+        }
+        maxQueries = parseInt(document.getElementById('max-queries').value, 10) || 50;
+        maxUrls = parseInt(document.getElementById('max-urls').value, 10) || 150;
+        genProposals = document.getElementById('gen-proposals').checked;
+    }
 
     if (sources.length === 0) {
         alert('ソースを1つ以上選択してください');
@@ -173,7 +248,16 @@ async function startPipeline() {
         const resp = await fetch('/api/pipeline/start', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({sources, skip_mx: true}),
+            body: JSON.stringify({
+                sources,
+                skip_mx: true,
+                mode,
+                categories: categories.length ? categories : null,
+                prefectures,
+                max_queries_per_category: maxQueries,
+                max_urls_per_category: maxUrls,
+                generate_proposals: genProposals,
+            }),
             signal: AbortSignal.timeout(1200000),  // 20分タイムアウト
         });
         clearInterval(progressPoll);

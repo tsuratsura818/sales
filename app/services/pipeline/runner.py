@@ -14,7 +14,13 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.pipeline import PipelineRun, PipelineResult
 from .config import EC_PRIORITY, PROPOSAL_MAP, DEFAULT_PROPOSAL
-from . import yahoo_collector, rakuten_collector, google_collector, duckduckgo_collector
+from . import (
+    yahoo_collector, rakuten_collector, google_collector,
+    duckduckgo_collector, category_collector,
+)
+from .site_analyzer import (
+    analyze_and_extract_email, detect_issues, build_personalized_proposal,
+)
 
 log = logging.getLogger("pipeline.runner")
 
@@ -111,6 +117,46 @@ def _deduplicate(leads: list) -> list:
     return result
 
 
+async def _enrich_with_proposals(leads: list[PipelineResult], db: Session) -> None:
+    """site_analyzer で各リードのサイトを分析し、個別化された提案文を生成する"""
+    import httpx
+    from dataclasses import asdict
+
+    # サイト分析 + メール抽出 + 提案文生成
+    cat_leads = [l for l in leads if l.category and l.website]
+    if not cat_leads:
+        return
+
+    log.info(f"個別提案文生成: {len(cat_leads)}件")
+    sem = asyncio.Semaphore(10)
+    ua = "Mozilla/5.0 (compatible; TSURATSURA-ResearchBot/3.1; +https://tsuratsura.co.jp/bot)"
+
+    async def _one(lead: PipelineResult, client: httpx.AsyncClient):
+        async with sem:
+            try:
+                analysis, _email = await analyze_and_extract_email(lead.website, client, ua)
+                analysis.issues = detect_issues(analysis, lead.category or "B")
+                proposal = build_personalized_proposal(
+                    company=lead.company or "",
+                    industry=lead.industry or "",
+                    category=lead.category or "B",
+                    prefecture=lead.location or "",
+                    analysis=analysis,
+                )
+                lead.personalized_subject = proposal["subject"]
+                lead.personalized_body = proposal["body"]
+                lead.site_analysis = json.dumps(asdict(analysis), ensure_ascii=False, default=str)
+            except Exception as e:
+                log.debug(f"提案文生成エラー {lead.website}: {e}")
+
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            await asyncio.gather(*[_one(l, client) for l in cat_leads], return_exceptions=True)
+        db.commit()
+    except Exception as e:
+        log.error(f"提案文生成バッチエラー: {e}")
+
+
 async def _import_to_mailforge(leads: list[PipelineResult], db: Session) -> int:
     """ランクA以上のリードをMailForgeに非同期インポート"""
     try:
@@ -119,18 +165,41 @@ async def _import_to_mailforge(leads: list[PipelineResult], db: Session) -> int:
         log.warning("mailforge_client インポート不可、スキップ")
         return 0
 
-    a_plus_leads = [l for l in leads if l.rank in ("S", "A")]
+    # 対象: rank S/A 又は カテゴリ分類済み（confidence >= 0.4）
+    a_plus_leads = [
+        l for l in leads
+        if l.rank in ("S", "A") or (l.category and (l.confidence or 0) >= 0.4)
+    ]
     if not a_plus_leads:
         return 0
 
     contacts = []
     for lead in a_plus_leads:
+        cf = {
+            "category": lead.category or "",
+            "ec_status": lead.ec_status or "",
+            "platform": lead.platform or "",
+        }
+        if lead.personalized_subject:
+            cf["proposal_subject"] = lead.personalized_subject
+        if lead.personalized_body:
+            cf["proposal_body"] = lead.personalized_body
+
+        notes_parts = []
+        if lead.category:
+            notes_parts.append(f"[{lead.category}]")
+        if lead.ec_status:
+            notes_parts.append(lead.ec_status)
+        if lead.platform:
+            notes_parts.append(lead.platform)
+
         contacts.append({
             "email": lead.email,
             "company_name": lead.company or "",
             "industry": lead.industry or "",
             "website_url": lead.website or "",
-            "notes": f"{lead.ec_status} | {lead.platform} | {lead.proposal or ''}",
+            "notes": " | ".join(notes_parts) or lead.proposal or "",
+            "custom_fields": cf,
         })
 
     try:
@@ -166,6 +235,11 @@ async def run_pipeline(run_id: int):
         db.commit()
 
         sources = json.loads(run.sources)
+        mode = getattr(run, "mode", None) or "ec"
+        try:
+            cat_config = json.loads(run.category_config) if getattr(run, "category_config", None) else {}
+        except Exception:
+            cat_config = {}
         seen_emails: set[str] = set()
 
         # DBからキーワードを取得（有効なもののみ）
@@ -255,6 +329,30 @@ async def run_pipeline(run_id: int):
             except Exception as e:
                 log.error(f"DuckDuckGo コレクターエラー: {e}")
                 source_breakdown["duckduckgo"] = 0
+            current_pct += pct_per_source
+
+        # === カテゴリモード（全国×業種A/B/C/D） ===
+        if mode in ("category", "both") and "category" in sources:
+            categories = cat_config.get("categories", ["A", "B", "C", "D"])
+            prefs = cat_config.get("prefectures", None)
+            max_q = cat_config.get("max_queries_per_category", 50)
+            max_u = cat_config.get("max_urls_per_category", 150)
+            for cat in categories:
+                update_progress(current_pct, f"カテゴリ{cat} 収集中（全国）...")
+                try:
+                    cat_leads = await category_collector.collect(
+                        seen_emails,
+                        category=cat,
+                        prefectures=prefs,
+                        max_queries=max_q,
+                        max_urls=max_u,
+                    )
+                    all_leads.extend(cat_leads)
+                    source_breakdown[f"category_{cat}"] = len(cat_leads)
+                    log.info(f"カテゴリ{cat} 完了: {len(cat_leads)}件")
+                except Exception as e:
+                    log.error(f"カテゴリ{cat} エラー: {e}")
+                    source_breakdown[f"category_{cat}"] = 0
 
         # Shopify構築済みを除外
         before_shopify = len(all_leads)
@@ -289,11 +387,18 @@ async def run_pipeline(run_id: int):
                 shop_code=lead.shop_code,
                 score=score,
                 rank=rank,
+                category=getattr(lead, "category", None),
+                confidence=getattr(lead, "confidence", None),
             )
             db.add(result)
             pipeline_results.append(result)
 
         db.commit()
+
+        # ローカル個別提案文生成（categoryモードで収集したリードに対して）
+        if cat_config.get("generate_proposals", True) and mode in ("category", "both"):
+            update_progress(88, "個別提案文生成中...")
+            await _enrich_with_proposals(pipeline_results, db)
 
         # MailForge非同期インポート（ランクA以上）
         run.progress_pct = 90

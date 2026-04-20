@@ -98,6 +98,14 @@ def _migrate_sqlite():
         ("leads", "deal_stage",             "TEXT"),
         ("leads", "lost_reason",            "TEXT"),
         ("leads", "expected_close_date",    "TIMESTAMP"),
+        # pipeline v2: モード・カテゴリ・個別化提案文
+        ("pipeline_runs", "mode",           "TEXT DEFAULT 'ec'"),
+        ("pipeline_runs", "category_config","TEXT"),
+        ("pipeline_results", "category",    "TEXT"),
+        ("pipeline_results", "confidence",  "REAL"),
+        ("pipeline_results", "personalized_subject", "TEXT"),
+        ("pipeline_results", "personalized_body",    "TEXT"),
+        ("pipeline_results", "site_analysis",        "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
@@ -118,6 +126,14 @@ def _migrate_postgres():
         ("leads", "deal_stage", "TEXT"),
         ("leads", "lost_reason", "TEXT"),
         ("leads", "expected_close_date", "TIMESTAMP"),
+        # pipeline v2
+        ("pipeline_runs", "mode", "TEXT DEFAULT 'ec'"),
+        ("pipeline_runs", "category_config", "TEXT"),
+        ("pipeline_results", "category", "TEXT"),
+        ("pipeline_results", "confidence", "DOUBLE PRECISION"),
+        ("pipeline_results", "personalized_subject", "TEXT"),
+        ("pipeline_results", "personalized_body", "TEXT"),
+        ("pipeline_results", "site_analysis", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:

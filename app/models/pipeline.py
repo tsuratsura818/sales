@@ -18,6 +18,10 @@ class PipelineRun(Base):
     sources: Mapped[str] = mapped_column(String, nullable=False)  # JSON: ["yahoo","rakuten","google"]
     keywords_count: Mapped[int] = mapped_column(Integer, default=0)
     skip_mx: Mapped[int] = mapped_column(Integer, default=1)  # 0=チェック, 1=スキップ
+    # モード: ec (関西EC特化) / category (全国カテゴリ) / both
+    mode: Mapped[str] = mapped_column(String, default="ec")
+    # カテゴリモード用のオプション設定（JSON: {"categories": ["A","B"], "prefectures": [...], "max_queries": 100}）
+    category_config: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # ステータス: pending / running / completed / failed
     status: Mapped[str] = mapped_column(String, default="pending")
@@ -54,12 +58,20 @@ class PipelineResult(Base):
     platform: Mapped[str | None] = mapped_column(String, nullable=True)
     ec_status: Mapped[str | None] = mapped_column(String, nullable=True)
     proposal: Mapped[str | None] = mapped_column(String, nullable=True)
-    source: Mapped[str | None] = mapped_column(String, nullable=True)  # yahoo / rakuten / google
+    source: Mapped[str | None] = mapped_column(String, nullable=True)  # yahoo / rakuten / google / duckduckgo / category
     shop_code: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # スコアリング
     rank: Mapped[str | None] = mapped_column(String, nullable=True, index=True)  # S / A / B / C
     score: Mapped[int] = mapped_column(Integer, default=0)
+    # カテゴリ分類（全国カテゴリモード用）
+    category: Mapped[str | None] = mapped_column(String, nullable=True, index=True)  # A / B / C / D
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 個別化済み提案文（ローカル生成）
+    personalized_subject: Mapped[str | None] = mapped_column(String, nullable=True)
+    personalized_body: Mapped[str | None] = mapped_column(String, nullable=True)
+    # サイト分析結果（JSON）
+    site_analysis: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # MailForge連携
     imported_to_mailforge: Mapped[int] = mapped_column(Integer, default=0)  # 0/1
