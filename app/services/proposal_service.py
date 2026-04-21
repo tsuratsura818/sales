@@ -31,6 +31,11 @@ Web制作・デザイン・ECサイト制作を手がけており、
 相手企業のWebサイトに見つかった具体的な問題点を礼儀正しく、かつ価値提供を重視した形で指摘し、
 最適な提案の営業メールを作成してください。
 
+【重要: 事実ベース】
+- 「検出された問題点」として入力された内容だけを指摘すること
+- 入力に無い課題(HTTPS/OGP/ファビコン等)を勝手に推測・ねつ造しない
+- 「○○率40%低下」等の根拠のない具体的数値は出さない(一般論表現に留める)
+
 会社が提供できるサービス：
 - Webサイト制作・リニューアル（HTML/CSS/JS、WordPress、モダンフレームワーク）
 - デザイン改善（UI/UX、ブランディング、OGP/SNS最適化）
@@ -143,9 +148,11 @@ Web制作・デザイン・ECサイト制作を手がけており、
 
 【厳守ルール】
 - **本文の名乗りは必ず「株式会社TSURATSURAの西川と申します。」と書くこと**
+- **事実として与えられた「検出された問題点」だけを根拠に書くこと**
+  入力にない課題(HTTPS/OGP/ファビコン等)を勝手に推測・ねつ造しない
+- **根拠のない具体的数値を出さない** (例: 「離脱率40%増」「クリック率30%低下」等は禁止)
 - 押しつけがましくせず、相手の立場を尊重する
-- 具体的な問題点を数字や事実を使って説明する
-- 改善によるメリットを明確に伝える
+- 改善によるメリットは定性的に伝える
 - 締めくくりはお問い合わせへの誘導
 - 本文300〜500文字程度
 - 日本語で作成
@@ -164,9 +171,16 @@ Web制作・デザイン・ECサイト制作を手がけており、
 【厳守ルール】
 - **名乗りは必ず「株式会社TSURATSURAの西川と申します。」と書くこと**
   (○○や◯◯などのプレースホルダや別の会社名・名前を使わないこと)
+
+- **事実として与えられた「検出された問題点」だけを根拠に書くこと**
+  - 入力に問題点リストがなければ、具体的な技術的課題は指摘せず、
+    業界トレンドや改善提案の一般論で書く
+  - HTTPS/OGP/ファビコン等、入力に明記されていない課題を**決して勝手に推測・ねつ造しない**
+  - 「離脱率40%増」「クリック率30%低下」のような**根拠のない具体的な数値を出さない**
+    (一般論として「離脱率に影響する」「クリック率に影響する」程度に留める)
+
 - 押しつけがましくせず、相手の立場を尊重する
-- 具体的な問題点を数字や事実を使って説明する
-- 改善によるメリットを明確に伝える
+- 改善によるメリットは定性的に伝える(数値の捏造禁止)
 - 締めくくりはお問い合わせへの誘導
 - 本文300〜500文字程度
 - 日本語で作成
@@ -227,21 +241,28 @@ def _build_issues_text(lead: Lead, score_breakdown: dict) -> str:
 
 
 def _issues_from_analysis(analysis: dict | None, category: str | None) -> str:
-    """pipeline 経由の site_analyzer 結果から課題テキストを組み立てる"""
+    """pipeline 経由の site_analyzer 結果から課題テキストを組み立てる。
+
+    重要: 値が「存在しない」のと「False(=問題あり)」を厳密に区別する。
+    データが無い項目は課題として列挙しない(でっち上げ防止)。
+    """
     if not analysis:
-        return "・全体的なデザインの刷新が推奨される状況"
+        return ""  # 分析未実施の場合は空にして Claude 側で一般論を書かせない
     lines: list[str] = []
-    if not analysis.get("is_https"):
-        lines.append("・HTTPSに対応していない")
+    # 明示的に False のときだけ「問題」として計上
+    if analysis.get("is_https") is False:
+        lines.append("・HTTPSに対応していない(ブラウザ警告表示・SEO低下)")
     copyright_year = analysis.get("copyright_year")
-    if copyright_year and copyright_year < datetime.now().year - 2:
+    if copyright_year and isinstance(copyright_year, int) and copyright_year < datetime.now().year - 2:
         lines.append(f"・コピーライト表記が{copyright_year}年のまま更新されていない")
     ps = analysis.get("pagespeed_score")
-    if ps is not None and ps < 50:
-        lines.append(f"・ページ表示速度スコアが{ps}点と低い")
-    if not analysis.get("has_og"):
-        lines.append("・OGP画像が未設定でSNSシェア時のクリック率が低い")
-    if not analysis.get("has_favicon"):
+    if ps is not None and isinstance(ps, (int, float)) and ps < 50:
+        lines.append(f"・ページ表示速度スコアが{int(ps)}点と低い")
+    # SiteAnalysis dataclass では has_og_image。古いデータ互換で has_og もチェック
+    og_val = analysis.get("has_og_image", analysis.get("has_og"))
+    if og_val is False:
+        lines.append("・OGP画像が未設定(SNSシェア時のサムネ表示不可)")
+    if analysis.get("has_favicon") is False:
         lines.append("・ファビコン未設定")
     cms = analysis.get("cms_type")
     if cms:
@@ -249,7 +270,8 @@ def _issues_from_analysis(analysis: dict | None, category: str | None) -> str:
     issues = analysis.get("issues") or []
     for iss in issues[:4]:
         lines.append(f"・{iss}")
-    return "\n".join(lines) if lines else "・全体的なデザインの刷新が推奨される状況"
+    # 実データが一つも取れなかった場合は空文字(Claude に一般論を書かせない)
+    return "\n".join(lines)
 
 
 # ============================================================

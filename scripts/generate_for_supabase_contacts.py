@@ -18,8 +18,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import sys
 from pathlib import Path
+
+log = logging.getLogger("regen")
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -57,6 +60,8 @@ async def main() -> int:
                         help="既に custom_fields.proposal_subject_claude がある contact はスキップ(再試行時に使用)")
     parser.add_argument("--append-campaign-id",
                         help="新規キャンペーンを作らず、指定の既存キャンペーンに campaign_contacts を追加")
+    parser.add_argument("--replace-campaign-id",
+                        help="指定キャンペーンの既存 campaign_contacts を全削除 + contacts の proposal_subject_claude をクリア → 全件再生成して同じキャンペーンに再投入")
     args = parser.parse_args()
 
     # dotenv読み込み(他モジュールのos.getenvが効くように)
@@ -79,6 +84,39 @@ async def main() -> int:
     KEY = mf.SUPABASE_KEY
     BASE = mf.API_BASE
     H = {"apikey": KEY, "Authorization": f"Bearer {KEY}", "Content-Type": "application/json", "Prefer": "return=representation"}
+
+    # --replace-campaign-id: キャンペーンをクリア + contacts の Claude proposal を削除
+    if args.replace_campaign_id:
+        print(f"[0/5] 既存キャンペーンを置き換えモード: {args.replace_campaign_id}")
+        # campaign_contacts を全削除
+        r = httpx.delete(f"{BASE}/campaign_contacts",
+                         headers=H,
+                         params={"campaign_id": f"eq.{args.replace_campaign_id}"}, timeout=30)
+        print(f"  campaign_contacts 削除: HTTP {r.status_code}")
+        # 対象キャンペーンに紐づいてた contacts の proposal_subject_claude を消す
+        # まず全 contacts 取得
+        rc = httpx.get(f"{BASE}/contacts", headers=H,
+                       params={"user_id": f"eq.{USER_ID}",
+                               "select": "id,custom_fields",
+                               "custom_fields->>proposal_subject_claude": "not.is.null",
+                               "limit": "2000"}, timeout=30)
+        cts = rc.json() if rc.status_code == 200 else []
+        cleared = 0
+        for ct in cts:
+            cf = dict(ct.get("custom_fields") or {})
+            cf.pop("proposal_subject_claude", None)
+            cf.pop("proposal_body_claude", None)
+            try:
+                httpx.patch(f"{BASE}/contacts", headers=H,
+                            params={"id": f"eq.{ct['id']}"},
+                            json={"custom_fields": cf}, timeout=15)
+                cleared += 1
+            except Exception:
+                pass
+        print(f"  contacts の Claude proposal クリア: {cleared}件")
+        # append モードに切り替え
+        args.append_campaign_id = args.replace_campaign_id
+        args.skip_existing = False  # 全件再生成
 
     r = httpx.get(f"{BASE}/contacts", headers=H,
                   params={"user_id": f"eq.{USER_ID}",
@@ -119,20 +157,53 @@ async def main() -> int:
         print("対象なし、終了")
         return 0
 
-    # Claude バッチ用 dict 構築 (既存 custom_fields をシード情報として使う)
-    print(f"\n[3/5] Claude バッチで提案文生成中 (chunk={args.chunk_size}, 約{(len(survivors)//args.chunk_size+1)*15}秒)...")
+    # 実サイト分析(HTTP fetch) を並列実行。
+    # 実データだけを Claude に渡すことで、根拠のない課題ねつ造を防ぐ。
+    print(f"\n[3a/5] 実サイト分析(並列HTTP fetch) {len(survivors)}件...")
+    import httpx
+    from dataclasses import asdict
+    from app.services.pipeline.site_analyzer import analyze_and_extract_email, detect_issues
+
+    analyses: list[dict] = [None] * len(survivors)
+    sem = asyncio.Semaphore(15)
+    ua = "Mozilla/5.0 (compatible; TSURATSURA-ResearchBot/3.1; +https://tsuratsura.co.jp/bot)"
+    progress_ctr = [0]
+
+    async def _analyze(idx: int, contact: dict, client):
+        async with sem:
+            url = contact.get("website_url") or ""
+            if not url:
+                return
+            try:
+                sa, _em = await analyze_and_extract_email(url, client, ua)
+                cf = contact.get("custom_fields") or {}
+                cat = cf.get("category") or "B"
+                sa.issues = detect_issues(sa, cat)
+                analyses[idx] = asdict(sa)
+            except Exception as e:
+                log.debug(f"site analysis error {url}: {e}")
+            progress_ctr[0] += 1
+            if progress_ctr[0] % 30 == 0 or progress_ctr[0] == len(survivors):
+                print(f"  分析 {progress_ctr[0]}/{len(survivors)}件")
+
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        await asyncio.gather(*[_analyze(i, c, client) for i, c in enumerate(survivors)])
+
+    analyzed_ok = sum(1 for a in analyses if a is not None)
+    print(f"  分析成功: {analyzed_ok}/{len(survivors)}件")
+
+    # Claude バッチ用 dict 構築 (実分析結果を渡す — 根拠のある課題のみ列挙される)
+    print(f"\n[3b/5] Claude バッチで提案文生成中 (chunk={args.chunk_size})...")
     targets = []
-    for c in survivors:
+    for c, sa in zip(survivors, analyses):
         cf = c.get("custom_fields") or {}
-        # 既存テンプレ提案文をヒントとして渡す(Claudeが業界文脈を把握しやすい)
-        seed_proposal = cf.get("proposal_body", "")[:300]
         targets.append({
             "url": c.get("website_url") or "",
             "company": c.get("company_name") or "",
             "industry": c.get("industry") or "",
             "category": cf.get("category") or "B",
             "prefecture": cf.get("prefecture") or "",
-            "analysis": {"_seed_hint": seed_proposal},
+            "analysis": sa or {},  # None → 空dict(Claudeに一般論を書かせない)
         })
 
     proposals = await proposal_service.generate_batch_proposals(targets, chunk_size=args.chunk_size)
