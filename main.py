@@ -1,3 +1,10 @@
+# 全 import より前に .env を読み込む(mailforge_client 等が os.getenv で参照するため)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI

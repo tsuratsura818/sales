@@ -260,6 +260,136 @@ async def regenerate_run_proposals(
     }
 
 
+class CreateCampaignRequest(BaseModel):
+    name: str
+    sender_name: str = "西川"
+    ranks: list[str] = ["S", "A"]
+    list_name: str | None = None  # 既存list名 or 新規作成名
+    send_start_time: str = "09:00"
+    send_end_time: str = "18:00"
+
+
+@router.post("/api/pipeline/runs/{run_id}/create-campaign")
+async def create_campaign_from_run(
+    run_id: int,
+    req: CreateCampaignRequest,
+    db: Session = Depends(get_db),
+):
+    """ローカルClaude生成済みの PipelineResult から MailForgeキャンペーンを作成。
+
+    フロー:
+      1) S/A など指定ランクの PipelineResult を抽出 (personalized_subject/body 必須)
+      2) Supabase contacts に upsert (idマップ取得)
+      3) 必要なら contact_lists 作成
+      4) campaigns INSERT (status='review')
+      5) campaign_contacts INSERT (status='queued', subject/body 直書き)
+      6) Render UI URL を返す
+    """
+    from app.services import mailforge_client as mf
+
+    run = db.query(PipelineRun).filter(PipelineRun.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Runが見つかりません")
+
+    rank_list = [r.strip().upper() for r in req.ranks if r.strip()]
+    targets = (
+        db.query(PipelineResult)
+        .filter(
+            PipelineResult.run_id == run_id,
+            PipelineResult.rank.in_(rank_list),
+            PipelineResult.email.isnot(None),
+            PipelineResult.personalized_subject.isnot(None),
+            PipelineResult.personalized_body.isnot(None),
+        )
+        .all()
+    )
+    if not targets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"対象なし: ranks={rank_list} かつ email/提案文が揃ったPipelineResultがありません。先にClaude再生成を実行してください。",
+        )
+
+    # 1) contact_lists (任意)
+    list_id = ""
+    if req.list_name:
+        existing_lists = mf.get_contact_lists() or []
+        match = next((l for l in existing_lists if l.get("name") == req.list_name), None)
+        if match:
+            list_id = match["id"]
+        else:
+            new_list = mf.create_contact_list(req.list_name, description=f"PipelineRun #{run_id}")
+            list_id = (new_list or {}).get("id", "")
+
+    # 2) contacts upsert
+    contacts_payload = []
+    for r in targets:
+        contacts_payload.append({
+            "email": r.email,
+            "company_name": r.company or "",
+            "industry": r.industry or "",
+            "website_url": r.website or "",
+            "notes": (r.platform or "") + (" / " + (r.ec_status or "") if r.ec_status else ""),
+            "custom_fields": {
+                "category": r.category or "",
+                "rank": r.rank or "",
+                "score": str(r.score or 0),
+                "source": r.source or "",
+            },
+        })
+    upsert_result = mf.upsert_contacts(contacts_payload, list_id=list_id)
+    email_to_id = upsert_result.get("email_to_id", {})
+    if not email_to_id:
+        raise HTTPException(status_code=500, detail=f"contacts upsert 失敗: {upsert_result}")
+
+    # 3) campaigns INSERT
+    campaign_data = {
+        "name": req.name,
+        "status": "review",  # 確認ステータスで停止 (Render UI で「送信開始」を押す)
+        "sender_name": req.sender_name,
+        "send_start_time": req.send_start_time,
+        "send_end_time": req.send_end_time,
+        "send_days": [1, 2, 3, 4, 5],
+        "min_interval_sec": 120,
+        "max_interval_sec": 300,
+        "total_contacts": 0,  # 後で update
+        "subject_template": "(個別生成済み)",  # placeholder
+        "body_template": "(個別生成済み)",
+    }
+    if list_id:
+        campaign_data["list_id"] = list_id
+    campaign = mf.create_campaign(campaign_data)
+    if not campaign or not campaign.get("id"):
+        raise HTTPException(status_code=500, detail=f"campaign作成失敗: {campaign}")
+    campaign_id = campaign["id"]
+
+    # 4) campaign_contacts INSERT (status=queued + 個別文面)
+    cc_items = []
+    for r in targets:
+        cid = email_to_id.get(r.email.lower())
+        if not cid:
+            continue
+        cc_items.append({
+            "contact_id": cid,
+            "personalized_subject": r.personalized_subject,
+            "personalized_body": r.personalized_body,
+        })
+    cc_result = mf.create_campaign_contacts(campaign_id, cc_items)
+
+    # 5) total_contacts を確定値で update
+    actual_count = cc_result.get("inserted", 0)
+    if actual_count > 0:
+        mf.update_campaign(campaign_id, {"total_contacts": actual_count})
+
+    return {
+        "success": True,
+        "campaign_id": campaign_id,
+        "campaign_name": req.name,
+        "contacts_upserted": upsert_result.get("inserted", 0) + upsert_result.get("skipped", 0),
+        "campaign_contacts_inserted": actual_count,
+        "render_url": f"https://sales-6g78.onrender.com/mail/campaigns/{campaign_id}",
+    }
+
+
 @router.post("/api/pipeline/results/{result_id}/promote")
 async def promote_result_to_lead(result_id: int, db: Session = Depends(get_db)):
     """単一の PipelineResult を Lead テーブルに昇格させる"""

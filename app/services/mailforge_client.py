@@ -117,6 +117,8 @@ def create_contact_list(name: str, description: str = "") -> dict:
 def upsert_contacts(contacts: list[dict], list_id: str = "") -> dict:
     inserted = 0
     skipped = 0
+    contact_ids: list[str] = []  # email順を保持
+    email_to_id: dict[str, str] = {}
     for c in contacts:
         data = {
             "user_id": USER_ID,
@@ -134,9 +136,69 @@ def upsert_contacts(contacts: list[dict], list_id: str = "") -> dict:
         result = _upsert("contacts", data, on_conflict="user_id,email")
         if result:
             inserted += 1
+            cid = result.get("id")
+            if cid:
+                contact_ids.append(cid)
+                email_to_id[c["email"].lower()] = cid
         else:
             skipped += 1
-    return {"inserted": inserted, "skipped": skipped}
+            # 既存contactを取得してIDをマップ
+            existing = _get_one("contacts", {"user_id": f"eq.{USER_ID}", "email": f"eq.{c['email']}"})
+            if existing:
+                cid = existing.get("id")
+                if cid:
+                    contact_ids.append(cid)
+                    email_to_id[c["email"].lower()] = cid
+    return {
+        "inserted": inserted,
+        "skipped": skipped,
+        "contact_ids": contact_ids,
+        "email_to_id": email_to_id,
+    }
+
+
+def create_campaign_contacts(campaign_id: str, items: list[dict]) -> dict:
+    """campaign_contacts に一括 INSERT する。
+
+    items の各要素:
+      {
+        "contact_id": str (UUID),
+        "personalized_subject": str,
+        "personalized_body": str,
+      }
+
+    status='queued' で投入することで MailForge の AI生成cron をスキップし、
+    そのまま送信cronで配信される。
+    """
+    if not items:
+        return {"inserted": 0, "skipped": 0}
+
+    # Supabase REST API は配列POSTで bulk insert 可能
+    payload = []
+    for it in items:
+        if not it.get("contact_id"):
+            continue
+        payload.append({
+            "campaign_id": campaign_id,
+            "contact_id": it["contact_id"],
+            "status": "queued",
+            "personalized_subject": it.get("personalized_subject") or "",
+            "personalized_body": it.get("personalized_body") or "",
+        })
+
+    if not payload:
+        return {"inserted": 0, "skipped": len(items)}
+
+    url = f"{API_BASE}/campaign_contacts"
+    h = {**HEADERS, "Prefer": "return=representation,resolution=ignore-duplicates"}
+    # ON CONFLICT (campaign_id, contact_id) を ignore する設定
+    params = {"on_conflict": "campaign_id,contact_id"}
+    resp = httpx.post(url, headers=h, json=payload, params=params, timeout=30)
+    if resp.status_code >= 400:
+        log.warning(f"campaign_contacts insert error: {resp.status_code} {resp.text[:300]}")
+        return {"inserted": 0, "skipped": len(payload), "error": resp.text[:200]}
+    inserted_rows = resp.json() if resp.status_code < 400 else []
+    return {"inserted": len(inserted_rows), "skipped": len(payload) - len(inserted_rows)}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

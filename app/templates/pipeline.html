@@ -218,10 +218,16 @@ async function startPipeline() {
         maxQueries = parseInt(document.getElementById('max-queries').value, 10) || 50;
         maxUrls = parseInt(document.getElementById('max-urls').value, 10) || 150;
         genProposals = document.getElementById('gen-proposals').checked;
+        // backend がカテゴリ収集を実行する条件: "category" in sources
+        sources.push('category');
     }
 
     if (sources.length === 0) {
         alert('ソースを1つ以上選択してください');
+        return;
+    }
+    if ((mode === 'category' || mode === 'both') && categories.length === 0) {
+        alert('対象カテゴリを1つ以上選択してください');
         return;
     }
 
@@ -461,6 +467,7 @@ function renderHistory(runs) {
             <td>
                 <button class="btn btn-sm btn-secondary" onclick="viewRun(${r.id})">表示</button>
                 ${completed ? `<button class="btn btn-sm btn-primary" onclick="regenerateProposals(${r.id})" title="提案文をローカル Claude Code で高品質再生成" style="margin-left:4px;">🤖 Claude再生成</button>` : ''}
+                ${completed ? `<button class="btn btn-sm" style="background:#059669;color:white;margin-left:4px;" onclick="openCreateCampaign(${r.id})" title="MailForge キャンペーン作成 → Render UI で送信開始">📧 キャンペーン作成</button>` : ''}
             </td>
         </tr>`;
     }
@@ -499,6 +506,76 @@ async function regenerateProposals(runId) {
     } catch(e) {
         alert('再生成エラー: ' + e.message);
     }
+}
+
+function openCreateCampaign(runId) {
+    const today = new Date().toISOString().slice(0,10);
+    const defaultName = `Run#${runId} ${today}`;
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:12px;padding:24px;max-width:560px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <h3 style="margin:0 0 12px 0;">📧 MailForge キャンペーンを作成</h3>
+        <p style="color:#475569;font-size:13px;line-height:1.6;margin:0 0 16px 0;">
+          ローカルで生成した個別提案文(personalized_subject/body)をそのままSupabaseに直書きします。
+          作成後、Render UI で「▶ 送信開始」を押せば MailForge cron が SMTP配信を実行します。
+        </p>
+        <div style="margin-bottom:12px;">
+          <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">キャンペーン名</label>
+          <input id="cc-name" value="${defaultName}" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">送信者名</label>
+          <input id="cc-sender" value="西川" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;">
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">対象ランク</label>
+          <label style="margin-right:14px;"><input type="checkbox" id="cc-rank-S" checked> S</label>
+          <label style="margin-right:14px;"><input type="checkbox" id="cc-rank-A" checked> A</label>
+          <label style="margin-right:14px;"><input type="checkbox" id="cc-rank-B"> B</label>
+          <label><input type="checkbox" id="cc-rank-C"> C</label>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-secondary" onclick="this.closest('[data-modal]').remove()">キャンセル</button>
+          <button id="cc-submit" class="btn btn-primary" style="background:#059669;">作成して Render UI を開く</button>
+        </div>
+        <p id="cc-status" style="color:#dc2626;font-size:12px;margin:12px 0 0 0;display:none;"></p>
+      </div>
+    `;
+    overlay.setAttribute('data-modal', '1');
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    document.getElementById('cc-submit').addEventListener('click', async () => {
+        const ranks = ['S','A','B','C'].filter(r => document.getElementById('cc-rank-' + r).checked);
+        if (ranks.length === 0) { alert('ランクを1つ以上選択'); return; }
+        const btn = document.getElementById('cc-submit');
+        const status = document.getElementById('cc-status');
+        btn.disabled = true; btn.textContent = '作成中...';
+        status.style.display = 'none';
+        try {
+            const resp = await fetch(`/api/pipeline/runs/${runId}/create-campaign`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    name: document.getElementById('cc-name').value,
+                    sender_name: document.getElementById('cc-sender').value,
+                    ranks: ranks,
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                status.style.display = ''; status.textContent = 'エラー: ' + (data.detail || resp.status);
+                btn.disabled = false; btn.textContent = '作成して Render UI を開く';
+                return;
+            }
+            alert(`✅ キャンペーン作成完了\n\nキャンペーン名: ${data.campaign_name}\ncontacts upsert: ${data.contacts_upserted}件\ncampaign_contacts: ${data.campaign_contacts_inserted}件\n\nRender UI を新タブで開きます。「▶ 送信開始」を押して配信開始してください。`);
+            window.open(data.render_url, '_blank');
+            overlay.remove();
+        } catch(e) {
+            status.style.display = ''; status.textContent = '通信エラー: ' + e.message;
+            btn.disabled = false; btn.textContent = '作成して Render UI を開く';
+        }
+    });
 }
 
 function showLocalClaudeModal(runId) {
