@@ -222,7 +222,7 @@ async def _enrich_with_proposals(leads: list[PipelineResult], db: Session) -> No
         try:
             proposals = await proposal_service.generate_batch_proposals(targets)
         except Exception as e:
-            log.error(f"Claude CLI バッチ生成エラー: {e}")
+            log.exception(f"Claude CLI バッチ生成エラー (type={type(e).__name__}): {e!r}")
             proposals = [{"subject": "", "body": ""}] * len(analyzed_pairs)
 
         for (lead, _analysis), prop in zip(analyzed_pairs, proposals):

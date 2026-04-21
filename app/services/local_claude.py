@@ -69,32 +69,33 @@ async def invoke(
 
     log.debug("invoke claude cli: budget=%s, prompt_len=%d", args[args.index('--max-budget-usd')+1], len(user_prompt))
 
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-    except FileNotFoundError as e:
-        raise ClaudeCliError(
-            f"claude CLI が見つかりません ({CLAUDE_BIN})。ローカル環境で実行してください。"
-        ) from e
-
-    try:
-        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
-        proc.kill()
+    # Windows + uvicorn の SelectorEventLoop だと asyncio.create_subprocess_exec が
+    # NotImplementedError(空メッセージ) を投げて使えないため、blocking subprocess.run を
+    # thread executor で実行する。プラットフォーム共通で安定。
+    def _run_blocking() -> tuple[int, bytes, bytes]:
         try:
-            await proc.communicate()
-        except Exception:
-            pass
-        raise ClaudeCliError(f"claude CLI timeout after {timeout}s")
+            r = subprocess.run(
+                args,
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+            )
+            return r.returncode, r.stdout or b"", r.stderr or b""
+        except FileNotFoundError as e:
+            raise ClaudeCliError(
+                f"claude CLI が見つかりません ({CLAUDE_BIN})。ローカル環境で実行してください。"
+            ) from e
+        except subprocess.TimeoutExpired:
+            raise ClaudeCliError(f"claude CLI timeout after {timeout}s")
 
-    if proc.returncode != 0:
-        err = (stderr_b or b"").decode("utf-8", errors="replace")[:400]
-        raise ClaudeCliError(f"claude CLI exit {proc.returncode}: {err}")
+    loop = asyncio.get_event_loop()
+    returncode, stdout_b, stderr_b = await loop.run_in_executor(None, _run_blocking)
 
-    stdout = (stdout_b or b"").decode("utf-8", errors="replace")
+    if returncode != 0:
+        err = stderr_b.decode("utf-8", errors="replace")[:400]
+        raise ClaudeCliError(f"claude CLI exit {returncode}: {err}")
+
+    stdout = stdout_b.decode("utf-8", errors="replace")
     try:
         envelope = json.loads(stdout)
     except json.JSONDecodeError as e:
