@@ -53,6 +53,10 @@ async def main() -> int:
     parser.add_argument("--campaign-name", default="本番第1弾(Claude生成)")
     parser.add_argument("--chunk-size", type=int, default=10)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--skip-existing", action="store_true",
+                        help="既に custom_fields.proposal_subject_claude がある contact はスキップ(再試行時に使用)")
+    parser.add_argument("--append-campaign-id",
+                        help="新規キャンペーンを作らず、指定の既存キャンペーンに campaign_contacts を追加")
     args = parser.parse_args()
 
     # dotenv読み込み(他モジュールのos.getenvが効くように)
@@ -95,6 +99,13 @@ async def main() -> int:
     print(f"  残った: {len(survivors)}件")
     for r, n in sorted(skip_reasons.items(), key=lambda x: -x[1]):
         print(f"  除外 {n}件: {r}")
+
+    # --skip-existing: 既に Claude生成済みを除外
+    if args.skip_existing:
+        before = len(survivors)
+        survivors = [c for c in survivors
+                     if not (c.get("custom_fields") or {}).get("proposal_subject_claude")]
+        print(f"  既存Claude生成済みを除外: {before - len(survivors)}件 → {len(survivors)}件が未処理")
 
     if args.limit > 0:
         survivors = survivors[:args.limit]
@@ -148,27 +159,7 @@ async def main() -> int:
             print(f"  [warn] update {c['email']}: {e}")
     print(f"  更新: {updated}件")
 
-    # キャンペーン作成
-    print(f"\n[5/5] キャンペーン作成: {args.campaign_name!r}")
-    campaign = mf.create_campaign({
-        "name": args.campaign_name,
-        "status": "review",
-        "sender_name": "西川",
-        "send_start_time": "09:00",
-        "send_end_time": "18:00",
-        "send_days": [1, 2, 3, 4, 5],
-        "min_interval_sec": 120,
-        "max_interval_sec": 300,
-        "total_contacts": 0,
-        "subject_template": "(個別生成済み Claude)",
-        "body_template": "(個別生成済み Claude)",
-    })
-    if not campaign or not campaign.get("id"):
-        print(f"  [ERROR] campaign作成失敗: {campaign}")
-        return 1
-    cid = campaign["id"]
-    print(f"  campaign_id: {cid}")
-
+    # キャンペーン作成 or 既存キャンペーンへ追加
     items = []
     for c, prop in zip(survivors, proposals):
         if not prop.get("subject") or not prop.get("body"):
@@ -178,11 +169,41 @@ async def main() -> int:
             "personalized_subject": prop["subject"],
             "personalized_body": prop["body"],
         })
-    cc_result = mf.create_campaign_contacts(cid, items)
-    print(f"  campaign_contacts: {cc_result}")
 
-    if cc_result.get("inserted", 0) > 0:
-        mf.update_campaign(cid, {"total_contacts": cc_result["inserted"]})
+    if args.append_campaign_id:
+        print(f"\n[5/5] 既存キャンペーンに追加: {args.append_campaign_id}")
+        cid = args.append_campaign_id
+        cc_result = mf.create_campaign_contacts(cid, items)
+        print(f"  campaign_contacts: {cc_result}")
+        # total_contacts を再計算
+        existing = mf.get_campaign(cid) or {}
+        new_total = (existing.get("total_contacts") or 0) + cc_result.get("inserted", 0)
+        if cc_result.get("inserted", 0) > 0:
+            mf.update_campaign(cid, {"total_contacts": new_total})
+    else:
+        print(f"\n[5/5] キャンペーン作成: {args.campaign_name!r}")
+        campaign = mf.create_campaign({
+            "name": args.campaign_name,
+            "status": "review",
+            "sender_name": "西川",
+            "send_start_time": "09:00",
+            "send_end_time": "18:00",
+            "send_days": [1, 2, 3, 4, 5],
+            "min_interval_sec": 120,
+            "max_interval_sec": 300,
+            "total_contacts": 0,
+            "subject_template": "(個別生成済み Claude)",
+            "body_template": "(個別生成済み Claude)",
+        })
+        if not campaign or not campaign.get("id"):
+            print(f"  [ERROR] campaign作成失敗: {campaign}")
+            return 1
+        cid = campaign["id"]
+        print(f"  campaign_id: {cid}")
+        cc_result = mf.create_campaign_contacts(cid, items)
+        print(f"  campaign_contacts: {cc_result}")
+        if cc_result.get("inserted", 0) > 0:
+            mf.update_campaign(cid, {"total_contacts": cc_result["inserted"]})
 
     print(f"\n✅ 完了")
     print(f"   Render UI: https://sales-6g78.onrender.com/mail/campaigns/{cid}")
