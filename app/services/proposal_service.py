@@ -132,6 +132,31 @@ Web制作・デザイン・ECサイト制作を手がけており、
 - JSON以外の文字(コードフェンス・プリアンブル)は絶対に付けない
 """
 
+SYSTEM_PROMPT_BATCH_AB = """あなたは株式会社TSURATSURAの営業担当・西川です。
+Web制作・デザイン・ECサイト制作を手がけており、
+渡される企業リストの各社について、Webサイトの課題を踏まえたパーソナライズ営業メールを作成してください。
+
+【A/Bテスト用・件名を2種類生成】
+- subject_a: 問題指摘型(課題をストレートに指摘、例「【ご提案】HTTPS化と集客改善について」)
+- subject_b: メリット訴求型(改善後の効果を前面に、例「サイトの集客力UP・信頼性向上のご相談」)
+- body は1つだけでOK(両バリアントで同じ本文を使う)
+
+【厳守ルール】
+- **本文の名乗りは必ず「株式会社TSURATSURAの西川と申します。」と書くこと**
+- 押しつけがましくせず、相手の立場を尊重する
+- 具体的な問題点を数字や事実を使って説明する
+- 改善によるメリットを明確に伝える
+- 締めくくりはお問い合わせへの誘導
+- 本文300〜500文字程度
+- 日本語で作成
+
+出力形式(厳守):
+- 入力配列と同じ順序・同じ長さのJSON配列を返す
+- 各要素は {"subject_a": "件名A", "subject_b": "件名B", "body": "本文"} 形式
+- JSON以外の文字(プリアンブル・コードフェンス・解説)は一切付けない
+"""
+
+
 SYSTEM_PROMPT_BATCH = """あなたは株式会社TSURATSURAの営業担当・西川です。
 Web制作・デザイン・ECサイト制作を手がけており、
 渡される企業リストの各社について、Webサイトの課題を踏まえたパーソナライズ営業メールを作成してください。
@@ -470,4 +495,80 @@ def _build_batch_prompt(chunk: list[dict]) -> str:
         f"{body}\n\n"
         f"同じ順序のJSON配列で返してください。要素数はちょうど{len(chunk)}個です。\n"
         f'例: [{{"subject":"...","body":"..."}}, ...]'
+    )
+
+
+async def generate_batch_proposals_ab(
+    targets: list[dict],
+    *,
+    chunk_size: int = 10,
+    timeout_per_chunk: int = 900,
+) -> list[dict]:
+    """A/Bテスト用: 1件につき件名を2種類 + 共通本文を生成する。
+
+    出力: 入力と同じ順序・同じ長さの list[{"subject_a", "subject_b", "body"}]
+          失敗した要素は {"subject_a":"", "subject_b":"", "body":""}
+    """
+    if not targets:
+        return []
+
+    results: list[dict] = []
+    total = len(targets)
+    log.info(f"A/B batch generate: {total}件 (chunk={chunk_size})")
+
+    for start in range(0, total, chunk_size):
+        chunk = targets[start:start + chunk_size]
+        user_prompt = _build_batch_prompt_ab(chunk)
+
+        try:
+            raw = await invoke(
+                user_prompt,
+                system_prompt=SYSTEM_PROMPT_BATCH_AB,
+                timeout=timeout_per_chunk,
+            )
+            data = extract_json(raw)
+            if not isinstance(data, list):
+                log.warning(f"A/B chunk {start}: response not list ({type(data).__name__})")
+                results.extend([{"subject_a": "", "subject_b": "", "body": ""}] * len(chunk))
+                continue
+            if len(data) < len(chunk):
+                data = list(data) + [{"subject_a": "", "subject_b": "", "body": ""}] * (len(chunk) - len(data))
+            elif len(data) > len(chunk):
+                data = data[:len(chunk)]
+            for item in data:
+                if isinstance(item, dict):
+                    results.append({
+                        "subject_a": str(item.get("subject_a") or ""),
+                        "subject_b": str(item.get("subject_b") or ""),
+                        "body": str(item.get("body") or ""),
+                    })
+                else:
+                    results.append({"subject_a": "", "subject_b": "", "body": ""})
+            log.info(f"  A/B [{min(start + chunk_size, total)}/{total}] chunk done")
+        except ClaudeCliError as e:
+            log.error(f"A/B chunk {start}-{start+len(chunk)} failed: {e}")
+            results.extend([{"subject_a": "", "subject_b": "", "body": ""}] * len(chunk))
+
+    return results
+
+
+def _build_batch_prompt_ab(chunk: list[dict]) -> str:
+    items: list[str] = []
+    for idx, t in enumerate(chunk, 1):
+        analysis = t.get("analysis") or {}
+        issues = _issues_from_analysis(analysis, t.get("category"))
+        items.append(
+            f"[{idx}] {t.get('company') or '(会社名不明)'}"
+            f"\n  URL: {t.get('url') or ''}"
+            f"\n  業種: {t.get('industry') or '不明'}"
+            f"\n  カテゴリ: {t.get('category') or '-'}"
+            f"\n  検出された問題点:\n{issues}"
+        )
+    body_txt = "\n\n".join(items)
+    return (
+        f"以下の{len(chunk)}社について、1社あたり件名を2種類(問題指摘型 subject_a / メリット訴求型 subject_b)と"
+        f"共通本文を作成してください。\n\n"
+        f"{body_txt}\n\n"
+        f"同じ順序のJSON配列で、要素数ちょうど{len(chunk)}個。\n"
+        f'各要素: {{"subject_a":"...","subject_b":"...","body":"..."}}'
     )

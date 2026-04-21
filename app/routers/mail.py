@@ -151,6 +151,58 @@ async def mail_settings_post(request: Request):
     return _render("mail/settings.html", request=request, user=user, message=msg, message_type=msg_type)
 
 
+@router.get("/mail/suppression", response_class=HTMLResponse)
+async def mail_suppression_page(request: Request):
+    """配信停止リスト一覧 + 手動追加フォーム"""
+    from app.database import SessionLocal
+    from app.models.suppression import SuppressionEntry
+    db = SessionLocal()
+    try:
+        entries = db.query(SuppressionEntry).order_by(SuppressionEntry.created_at.desc()).limit(500).all()
+        # count by reason
+        counts: dict[str, int] = {}
+        for e in entries:
+            counts[e.reason] = counts.get(e.reason, 0) + 1
+    finally:
+        db.close()
+    return _render("mail/suppression.html", request=request, entries=entries, counts=counts, total=len(entries))
+
+
+@router.post("/api/mail/suppression")
+async def api_add_suppression(request: Request):
+    """手動で配信停止リストに追加"""
+    from app.database import SessionLocal
+    from app.services.suppression_service import add_suppression
+    body = await request.json()
+    email = (body.get("email") or "").strip()
+    reason = body.get("reason") or "manual"
+    if not email:
+        return JSONResponse({"error": "email required"}, status_code=400)
+    db = SessionLocal()
+    try:
+        entry = add_suppression(email, db, reason=reason, source="manual")
+        return {"success": bool(entry), "id": entry.id if entry else None}
+    finally:
+        db.close()
+
+
+@router.delete("/api/mail/suppression/{entry_id}")
+async def api_remove_suppression(entry_id: int):
+    """配信停止から削除"""
+    from app.database import SessionLocal
+    from app.models.suppression import SuppressionEntry
+    db = SessionLocal()
+    try:
+        row = db.query(SuppressionEntry).filter(SuppressionEntry.id == entry_id).first()
+        if not row:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        db.delete(row)
+        db.commit()
+        return {"success": True}
+    finally:
+        db.close()
+
+
 @router.get("/mail/logs", response_class=HTMLResponse)
 async def mail_logs(request: Request, source: str = ""):
     """送信ログ統合ビュー(MailForge配信 + Gmail直送)

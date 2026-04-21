@@ -18,6 +18,7 @@ from app.tasks.job_monitor import job_monitor
 from app.tasks.keep_alive import keep_alive
 from app.tasks.daily_plan_scheduler import daily_plan_scheduler
 from app.tasks.reply_checker import reply_checker
+from app.tasks.bounce_checker import bounce_checker
 from app.tasks.weekly_report_scheduler import weekly_report_scheduler
 from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects, today, memos, mail, goals, pipeline, webhook, tracking
 
@@ -69,11 +70,12 @@ async def lifespan(app: FastAPI):
     daily_plan_task = asyncio.create_task(daily_plan_scheduler())
     reply_task = asyncio.create_task(reply_checker())
     report_task = asyncio.create_task(weekly_report_scheduler())
+    bounce_task = asyncio.create_task(bounce_checker())
     yield
     # 終了時
-    for task in [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task, reply_task, report_task]:
+    for task in [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task, reply_task, report_task, bounce_task]:
         task.cancel()
-    for task in [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task, reply_task, report_task]:
+    for task in [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task, reply_task, report_task, bounce_task]:
         try:
             await task
         except asyncio.CancelledError:

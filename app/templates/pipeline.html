@@ -528,12 +528,20 @@ function openCreateCampaign(runId) {
           <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">送信者名</label>
           <input id="cc-sender" value="西川" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;">
         </div>
-        <div style="margin-bottom:16px;">
+        <div style="margin-bottom:12px;">
           <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">対象ランク</label>
           <label style="margin-right:14px;"><input type="checkbox" id="cc-rank-S" checked> S</label>
           <label style="margin-right:14px;"><input type="checkbox" id="cc-rank-A" checked> A</label>
           <label style="margin-right:14px;"><input type="checkbox" id="cc-rank-B"> B</label>
           <label><input type="checkbox" id="cc-rank-C"> C</label>
+        </div>
+        <div style="margin-bottom:16px;padding:10px;background:#fef3c7;border-radius:6px;">
+          <label style="font-size:13px;color:#78350f;">
+            <input type="checkbox" id="cc-ab-test"> 🧪 A/Bテスト(件名2種類で2キャンペーン作成、contacts を 50/50 分割)
+          </label>
+          <div style="font-size:11px;color:#92400e;margin-top:4px;">
+            A: 問題指摘型 / B: メリット訴求型 — Claude生成後 open/click 率で比較可能
+          </div>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
           <button class="btn btn-secondary" onclick="this.closest('[data-modal]').remove()">キャンセル</button>
@@ -553,6 +561,7 @@ function openCreateCampaign(runId) {
         btn.disabled = true; btn.textContent = '作成中...';
         status.style.display = 'none';
         try {
+            const ab = document.getElementById('cc-ab-test').checked;
             const resp = await fetch(`/api/pipeline/runs/${runId}/create-campaign`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -560,6 +569,7 @@ function openCreateCampaign(runId) {
                     name: document.getElementById('cc-name').value,
                     sender_name: document.getElementById('cc-sender').value,
                     ranks: ranks,
+                    ab_test: ab,
                 }),
             });
             const data = await resp.json();
@@ -568,8 +578,14 @@ function openCreateCampaign(runId) {
                 btn.disabled = false; btn.textContent = '作成して Render UI を開く';
                 return;
             }
-            alert(`✅ キャンペーン作成完了\n\nキャンペーン名: ${data.campaign_name}\ncontacts upsert: ${data.contacts_upserted}件\ncampaign_contacts: ${data.campaign_contacts_inserted}件\n\nRender UI を新タブで開きます。「▶ 送信開始」を押して配信開始してください。`);
-            window.open(data.render_url, '_blank');
+            if (data.ab_test) {
+                alert(`✅ A/Bテスト キャンペーン作成完了\n\n[A] ${data.campaign_a.contacts}件\n[B] ${data.campaign_b.contacts}件\n\n両方 Render UI で開きます。`);
+                window.open(data.campaign_a.url, '_blank');
+                window.open(data.campaign_b.url, '_blank');
+            } else {
+                alert(`✅ キャンペーン作成完了\n\nキャンペーン名: ${data.campaign_name}\ncontacts upsert: ${data.contacts_upserted}件\ncampaign_contacts: ${data.campaign_contacts_inserted}件\n\nRender UI を新タブで開きます。「▶ 送信開始」を押して配信開始してください。`);
+                window.open(data.render_url, '_blank');
+            }
             overlay.remove();
         } catch(e) {
             status.style.display = ''; status.textContent = '通信エラー: ' + e.message;

@@ -267,6 +267,7 @@ class CreateCampaignRequest(BaseModel):
     list_name: str | None = None  # 既存list名 or 新規作成名
     send_start_time: str = "09:00"
     send_end_time: str = "18:00"
+    ab_test: bool = False  # True なら A/B テストで2キャンペーン作成
 
 
 @router.post("/api/pipeline/runs/{run_id}/create-campaign")
@@ -341,28 +342,94 @@ async def create_campaign_from_run(
     if not email_to_id:
         raise HTTPException(status_code=500, detail=f"contacts upsert 失敗: {upsert_result}")
 
-    # 3) campaigns INSERT
-    campaign_data = {
-        "name": req.name,
-        "status": "review",  # 確認ステータスで停止 (Render UI で「送信開始」を押す)
+    base_campaign_data = {
+        "status": "review",
         "sender_name": req.sender_name,
         "send_start_time": req.send_start_time,
         "send_end_time": req.send_end_time,
         "send_days": [1, 2, 3, 4, 5],
         "min_interval_sec": 120,
         "max_interval_sec": 300,
-        "total_contacts": 0,  # 後で update
-        "subject_template": "(個別生成済み)",  # placeholder
+        "total_contacts": 0,
+        "subject_template": "(個別生成済み)",
         "body_template": "(個別生成済み)",
     }
     if list_id:
-        campaign_data["list_id"] = list_id
-    campaign = mf.create_campaign(campaign_data)
+        base_campaign_data["list_id"] = list_id
+
+    if req.ab_test:
+        # A/B テスト: 2キャンペーン作成、contacts 50/50 分割
+        # 既存件名を subject_a とし、別の切り口の subject_b を新規生成
+        from app.services import proposal_service, local_claude
+        if not local_claude.is_available():
+            raise HTTPException(
+                status_code=503,
+                detail="A/Bテストには Claude CLI が必要です(ローカル実行してください)",
+            )
+
+        ab_targets = [
+            {
+                "url": r.website or "",
+                "company": r.company or "",
+                "industry": r.industry or "",
+                "category": r.category or "B",
+                "prefecture": r.location or "",
+                "analysis": json.loads(r.site_analysis) if r.site_analysis else {},
+            }
+            for r in targets
+        ]
+        ab_props = await proposal_service.generate_batch_proposals_ab(ab_targets)
+
+        # hash で安定した 50/50 分割
+        group_a_items, group_b_items = [], []
+        import hashlib
+        for r, ab in zip(targets, ab_props):
+            cid = email_to_id.get(r.email.lower())
+            if not cid or not ab.get("subject_a") or not ab.get("body"):
+                continue
+            bucket = int(hashlib.md5(cid.encode()).hexdigest(), 16) % 2
+            body_txt = ab["body"]
+            if bucket == 0:
+                group_a_items.append({
+                    "contact_id": cid,
+                    "personalized_subject": ab["subject_a"],
+                    "personalized_body": body_txt,
+                })
+            else:
+                group_b_items.append({
+                    "contact_id": cid,
+                    "personalized_subject": ab.get("subject_b") or ab["subject_a"],
+                    "personalized_body": body_txt,
+                })
+
+        campaign_a = mf.create_campaign({**base_campaign_data, "name": f"{req.name} [A]"})
+        campaign_b = mf.create_campaign({**base_campaign_data, "name": f"{req.name} [B]"})
+        if not (campaign_a and campaign_b and campaign_a.get("id") and campaign_b.get("id")):
+            raise HTTPException(status_code=500, detail=f"A/B campaign作成失敗")
+        cid_a, cid_b = campaign_a["id"], campaign_b["id"]
+
+        r_a = mf.create_campaign_contacts(cid_a, group_a_items)
+        r_b = mf.create_campaign_contacts(cid_b, group_b_items)
+        n_a, n_b = r_a.get("inserted", 0), r_b.get("inserted", 0)
+        if n_a > 0: mf.update_campaign(cid_a, {"total_contacts": n_a})
+        if n_b > 0: mf.update_campaign(cid_b, {"total_contacts": n_b})
+
+        return {
+            "success": True,
+            "ab_test": True,
+            "campaign_a": {"id": cid_a, "name": f"{req.name} [A]", "contacts": n_a,
+                            "url": f"https://sales-6g78.onrender.com/mail/campaigns/{cid_a}"},
+            "campaign_b": {"id": cid_b, "name": f"{req.name} [B]", "contacts": n_b,
+                            "url": f"https://sales-6g78.onrender.com/mail/campaigns/{cid_b}"},
+            "contacts_upserted": upsert_result.get("inserted", 0) + upsert_result.get("skipped", 0),
+        }
+
+    # --- 通常モード(1キャンペーン) ---
+    campaign = mf.create_campaign({**base_campaign_data, "name": req.name})
     if not campaign or not campaign.get("id"):
         raise HTTPException(status_code=500, detail=f"campaign作成失敗: {campaign}")
     campaign_id = campaign["id"]
 
-    # 4) campaign_contacts INSERT (status=queued + 個別文面)
     cc_items = []
     for r in targets:
         cid = email_to_id.get(r.email.lower())
@@ -374,14 +441,13 @@ async def create_campaign_from_run(
             "personalized_body": r.personalized_body,
         })
     cc_result = mf.create_campaign_contacts(campaign_id, cc_items)
-
-    # 5) total_contacts を確定値で update
     actual_count = cc_result.get("inserted", 0)
     if actual_count > 0:
         mf.update_campaign(campaign_id, {"total_contacts": actual_count})
 
     return {
         "success": True,
+        "ab_test": False,
         "campaign_id": campaign_id,
         "campaign_name": req.name,
         "contacts_upserted": upsert_result.get("inserted", 0) + upsert_result.get("skipped", 0),

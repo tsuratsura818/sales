@@ -161,11 +161,30 @@ async def fetch_verification_code(
     )
 
 
+class SuppressedError(RuntimeError):
+    """配信停止リストに登録されている宛先"""
+
+
 def _send_email_sync(to: str, subject: str, body: str, tracking_id: str = "") -> str:
     """Gmail SMTP でメール送信（同期処理）
 
     tracking_id 指定時は multipart/alternative で text + HTML(開封ピクセル+クリック追跡) を送信
+    配信停止リストに登録されている宛先は SuppressedError を raise する
     """
+    # 配信停止チェック(DB接続失敗時は素通しして送信側の判断に委ねる)
+    try:
+        from app.database import SessionLocal
+        from app.services.suppression_service import is_suppressed
+        _db = SessionLocal()
+        try:
+            if is_suppressed(to, _db):
+                raise SuppressedError(f"{to} は配信停止リストに登録されています")
+        finally:
+            _db.close()
+    except SuppressedError:
+        raise
+    except Exception as e:
+        logger.debug(f"suppression check skipped: {e}")
     if tracking_id:
         text_body, html_body = _wrap_with_tracking(body, tracking_id)
         msg = MIMEMultipart("alternative")
