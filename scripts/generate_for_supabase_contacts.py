@@ -62,6 +62,8 @@ async def main() -> int:
                         help="新規キャンペーンを作らず、指定の既存キャンペーンに campaign_contacts を追加")
     parser.add_argument("--replace-campaign-id",
                         help="指定キャンペーンの既存 campaign_contacts を全削除 + contacts の proposal_subject_claude をクリア → 全件再生成して同じキャンペーンに再投入")
+    parser.add_argument("--sleep", type=float, default=0.0,
+                        help="各Claudeバッチ間のスリープ秒数(レート制限回避、推奨 10〜60)")
     args = parser.parse_args()
 
     # dotenv読み込み(他モジュールのos.getenvが効くように)
@@ -206,7 +208,11 @@ async def main() -> int:
             "analysis": sa or {},  # None → 空dict(Claudeに一般論を書かせない)
         })
 
-    proposals = await proposal_service.generate_batch_proposals(targets, chunk_size=args.chunk_size)
+    proposals = await proposal_service.generate_batch_proposals(
+        targets,
+        chunk_size=args.chunk_size,
+        sleep_between_chunks=args.sleep,
+    )
     ok_count = sum(1 for p in proposals if p.get("subject") and p.get("body"))
     print(f"  生成成功: {ok_count}/{len(proposals)}件")
 

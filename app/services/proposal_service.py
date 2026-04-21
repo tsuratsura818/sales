@@ -438,18 +438,16 @@ async def generate_batch_proposals(
     *,
     chunk_size: int = 12,
     timeout_per_chunk: int = 900,
+    sleep_between_chunks: float = 0.0,
+    max_consecutive_failures: int = 5,
 ) -> list[dict]:
     """複数リードの提案文を1回のCLI呼び出しでまとめて生成する。
 
-    入力:
-      targets = [{
-        "url": str,
-        "company": str,
-        "industry": str,
-        "category": str,  # A/B/C/D or None
-        "prefecture": str,
-        "analysis": dict | None,  # site_analyzer の出力 (dataclass asdict)
-      }, ...]
+    レート制限対策:
+    - sleep_between_chunks: 各バッチ終了後に強制スリープ(秒)。Claude Max 等で
+      日次/分次上限に当たらないよう緩慢化できる。
+    - 連続失敗 max_consecutive_failures 回で打ち切り(クォータ到達と判定)
+    - 失敗時は指数バックオフ(5→15→45→135→300秒)してから次に進む
 
     出力: 入力と同じ順序・同じ長さの list[{"subject": str, "body": str}]
           失敗した要素は {"subject": "", "body": ""}
@@ -459,11 +457,19 @@ async def generate_batch_proposals(
 
     results: list[dict] = []
     total = len(targets)
-    log.info(f"batch proposal generate: {total}件 (chunk={chunk_size})")
+    consecutive_fail = 0
+    backoff_levels = [5, 15, 45, 135, 300]
+    log.info(f"batch proposal generate: {total}件 (chunk={chunk_size}, sleep={sleep_between_chunks}s)")
 
     for start in range(0, total, chunk_size):
         chunk = targets[start:start + chunk_size]
         user_prompt = _build_batch_prompt(chunk)
+
+        # 連続失敗が閾値超えたら打ち切り(クォータ到達)
+        if consecutive_fail >= max_consecutive_failures:
+            log.error(f"連続失敗{consecutive_fail}回 → クォータ到達と判定、残り{total-start}件を中断")
+            results.extend([{"subject": "", "body": ""}] * (total - start))
+            break
 
         try:
             raw = await invoke(
@@ -475,24 +481,38 @@ async def generate_batch_proposals(
             if not isinstance(data, list):
                 log.warning(f"batch chunk {start}: response is not a list ({type(data).__name__})")
                 results.extend([{"subject": "", "body": ""}] * len(chunk))
+                consecutive_fail += 1
                 continue
-            # 長さが合わない場合は切り詰め or 埋める
             if len(data) < len(chunk):
                 data = list(data) + [{"subject": "", "body": ""}] * (len(chunk) - len(data))
             elif len(data) > len(chunk):
                 data = data[:len(chunk)]
+            ok_in_chunk = 0
             for item in data:
-                if isinstance(item, dict):
+                if isinstance(item, dict) and item.get("subject") and item.get("body"):
                     results.append({
                         "subject": str(item.get("subject") or ""),
                         "body": str(item.get("body") or ""),
                     })
+                    ok_in_chunk += 1
                 else:
                     results.append({"subject": "", "body": ""})
-            log.info(f"  [{min(start + chunk_size, total)}/{total}] batch chunk done")
+            if ok_in_chunk > 0:
+                consecutive_fail = 0  # 1件でも成功ならカウンタリセット
+            log.info(f"  [{min(start + chunk_size, total)}/{total}] batch chunk done ({ok_in_chunk}/{len(chunk)} OK)")
         except ClaudeCliError as e:
             log.error(f"batch chunk {start}-{start+len(chunk)} failed: {e}")
             results.extend([{"subject": "", "body": ""}] * len(chunk))
+            consecutive_fail += 1
+            # 指数バックオフ
+            wait = backoff_levels[min(consecutive_fail - 1, len(backoff_levels) - 1)]
+            log.warning(f"  バックオフ: {wait}秒待機 (連続失敗{consecutive_fail}回)")
+            await asyncio.sleep(wait)
+            continue
+
+        # バッチ成功後のスリープ(レート制限対策)
+        if sleep_between_chunks > 0 and start + chunk_size < total:
+            await asyncio.sleep(sleep_between_chunks)
 
     return results
 
