@@ -109,6 +109,8 @@ def _migrate_sqlite():
         # 単発検索の自動提案文生成設定
         ("search_jobs", "auto_generate_proposal",   "BOOLEAN DEFAULT 1"),
         ("search_jobs", "auto_proposal_min_score",  "INTEGER DEFAULT 50"),
+        # PipelineResult 昇格リード向け
+        ("leads", "pipeline_result_id",             "INTEGER"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
@@ -119,6 +121,10 @@ def _migrate_sqlite():
                 conn.commit()
             except Exception:
                 pass
+
+        # search_job_id を NULL 許容に変更 (SQLite は NOT NULL 制約変更が難しいので skip)
+        # 既存データは search_job_id があるので問題なし。新規 INSERT のみ NULL を許可。
+        # (SQLAlchemy 側の nullable=True で対応するため、SQLite 側の制約は形式上残ってもOK)
 
 
 def _migrate_postgres():
@@ -140,6 +146,8 @@ def _migrate_postgres():
         # 単発検索の自動提案文生成設定
         ("search_jobs", "auto_generate_proposal", "BOOLEAN DEFAULT TRUE"),
         ("search_jobs", "auto_proposal_min_score", "INTEGER DEFAULT 50"),
+        # PipelineResult 昇格リード向け
+        ("leads", "pipeline_result_id", "INTEGER"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
@@ -150,6 +158,13 @@ def _migrate_postgres():
                 conn.commit()
             except Exception:
                 pass
+
+        # search_job_id を NULL 許容に変更
+        try:
+            conn.execute(text("ALTER TABLE leads ALTER COLUMN search_job_id DROP NOT NULL"))
+            conn.commit()
+        except Exception:
+            pass
 
         # app_settings 初期行（daily_plan_enabled=FALSE で停止状態）
         try:

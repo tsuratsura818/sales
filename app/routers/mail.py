@@ -148,17 +148,62 @@ async def mail_settings_post(request: Request):
 
 
 @router.get("/mail/logs", response_class=HTMLResponse)
-async def mail_logs(request: Request):
-    logs = mf.get_send_logs(limit=200)
-    for lg in logs:
-        s = str(lg.get("status", ""))
-        if s == "sent":
-            lg["status_label"] = "送信済み"
-        elif s == "bounced":
-            lg["status_label"] = "バウンス"
-        else:
-            lg["status_label"] = "失敗"
-    return _render("mail/logs.html", request=request, logs=logs)
+async def mail_logs(request: Request, source: str = ""):
+    """送信ログ統合ビュー(MailForge配信 + Gmail直送)
+
+    クエリ `source=mailforge|gmail|`(空=全部) でフィルタ可能。
+    """
+    from app.database import SessionLocal
+    from app.models.email_log import EmailLog
+
+    logs: list[dict] = []
+
+    # MailForge 配信ログ
+    if source in ("", "mailforge"):
+        mf_logs = mf.get_send_logs(limit=200) or []
+        for lg in mf_logs:
+            s = str(lg.get("status", ""))
+            label = "送信済み" if s == "sent" else ("バウンス" if s == "bounced" else "失敗")
+            logs.append({
+                "source": "mailforge",
+                "source_label": "MF配信",
+                "to_email": lg.get("to_email", ""),
+                "subject": lg.get("subject", ""),
+                "status_label": label,
+                "sent_at": lg.get("sent_at") or "",
+                "error_message": lg.get("error_message") or "",
+                "lead_id": None,
+            })
+
+    # Gmail 直送ログ (sales.db EmailLog)
+    if source in ("", "gmail"):
+        db = SessionLocal()
+        try:
+            gm_logs = db.query(EmailLog).order_by(EmailLog.created_at.desc()).limit(200).all()
+            for lg in gm_logs:
+                if lg.error_message:
+                    label = "失敗"
+                elif lg.sent_at:
+                    label = "送信済み"
+                else:
+                    label = "保留"
+                logs.append({
+                    "source": "gmail",
+                    "source_label": "Gmail直送",
+                    "to_email": lg.to_address,
+                    "subject": lg.subject or "",
+                    "status_label": label,
+                    "sent_at": lg.sent_at.isoformat() if lg.sent_at else "",
+                    "error_message": lg.error_message or "",
+                    "lead_id": lg.lead_id,
+                })
+        finally:
+            db.close()
+
+    # 送信日時で降順ソート (空文字は末尾)
+    logs.sort(key=lambda x: x.get("sent_at") or "", reverse=True)
+
+    return _render("mail/logs.html", request=request, logs=logs, current_source=source)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

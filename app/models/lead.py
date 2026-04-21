@@ -8,7 +8,10 @@ class Lead(Base):
     __tablename__ = "leads"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    search_job_id: Mapped[int] = mapped_column(Integer, ForeignKey("search_jobs.id"), nullable=False)
+    # 単発検索由来(旧 /) - pipeline昇格リードでは NULL
+    search_job_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("search_jobs.id"), nullable=True)
+    # バッチ収集由来(/pipeline) - 単発検索リードでは NULL
+    pipeline_result_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("pipeline_results.id"), nullable=True, index=True)
 
     # 基本情報
     url: Mapped[str] = mapped_column(String, nullable=False)

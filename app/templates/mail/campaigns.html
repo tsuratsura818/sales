@@ -2,6 +2,10 @@
 {% block title %}キャンペーン一覧 - メール配信{% endblock %}
 
 {% block content %}
+<div class="campaign-tabs" style="display:flex;gap:0;border-bottom:2px solid #e2e8f0;margin-bottom:20px;">
+  <a href="/mail/campaigns" class="campaign-tab active" style="padding:10px 20px;border-bottom:3px solid #4f46e5;color:#4f46e5;font-weight:600;text-decoration:none;margin-bottom:-2px;">📋 一斉配信キャンペーン</a>
+  <a href="/followups" class="campaign-tab" style="padding:10px 20px;border-bottom:3px solid transparent;color:#64748b;font-weight:500;text-decoration:none;margin-bottom:-2px;">📩 ステップ配信(フォローアップ)</a>
+</div>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
   <h2>📋 キャンペーン一覧</h2>
   <a href="/mail/campaigns/new" class="btn btn-primary">+ 新規作成</a>

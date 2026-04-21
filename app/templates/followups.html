@@ -2,8 +2,13 @@
 {% block title %}フォローアップ管理{% endblock %}
 
 {% block content %}
+<div class="campaign-tabs" style="display:flex;gap:0;border-bottom:2px solid #e2e8f0;margin-bottom:20px;">
+  <a href="/mail/campaigns" class="campaign-tab" style="padding:10px 20px;border-bottom:3px solid transparent;color:#64748b;font-weight:500;text-decoration:none;margin-bottom:-2px;">📋 一斉配信キャンペーン</a>
+  <a href="/followups" class="campaign-tab active" style="padding:10px 20px;border-bottom:3px solid #4f46e5;color:#4f46e5;font-weight:600;text-decoration:none;margin-bottom:-2px;">📩 ステップ配信(フォローアップ)</a>
+</div>
 <div class="page-header">
-    <h1>📩 フォローアップ管理</h1>
+    <h1>📩 ステップ配信 (フォローアップ)</h1>
+    <p style="color:#64748b;font-size:14px;margin-top:4px;">リード単位で3ステップの自動メールを順番に送信します。</p>
 </div>
 
 <!-- 集計カード -->

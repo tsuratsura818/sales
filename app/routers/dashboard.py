@@ -158,10 +158,11 @@ async def delete_job(job_id: int, db: Session = Depends(get_db)):
     return {"success": True}
 
 
-@router.get("/sent", response_class=HTMLResponse)
-async def sent_page(request: Request, db: Session = Depends(get_db)):
-    logs = db.query(EmailLog).order_by(desc(EmailLog.created_at)).all()
-    return _get_templates().TemplateResponse(request, "sent.html", {"logs": logs})
+@router.get("/sent")
+async def sent_page():
+    """旧 /sent は /mail/logs に統合。Gmail直送のみ表示でリダイレクト"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/mail/logs?source=gmail", status_code=301)
 
 
 @router.get("/links", response_class=HTMLResponse)

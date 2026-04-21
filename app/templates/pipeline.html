@@ -140,6 +140,9 @@
                 <option value="rakuten">楽天</option>
                 <option value="google">Google</option>
             </select>
+            <button class="btn btn-primary btn-sm" onclick="promoteRunRanks()" title="S/Aランクのリードを /leads に昇格">
+                ⬆ S/Aを /leads へ昇格
+            </button>
         </div>
     </div>
     <div class="table-scroll">
@@ -154,6 +157,7 @@
                     <th>所在地</th>
                     <th>提案切り口</th>
                     <th>MF</th>
+                    <th>操作</th>
                 </tr>
             </thead>
             <tbody id="results-tbody"></tbody>
@@ -366,7 +370,7 @@ async function loadResults() {
 function renderResults(results) {
     const tbody = document.getElementById('results-tbody');
     if (!results.length) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;padding:20px;">結果なし</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#888;padding:20px;">結果なし</td></tr>';
         return;
     }
 
@@ -380,8 +384,41 @@ function renderResults(results) {
             <td>${esc(r.location) || '-'}</td>
             <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(r.proposal)}">${esc(r.proposal) || '-'}</td>
             <td>${r.imported_to_mailforge ? '<span class="mf-badge mf-yes">済</span>' : ''}</td>
+            <td><button class="btn btn-xs btn-secondary" onclick="promoteOne(${r.id}, this)" title="このリードを /leads に昇格">⬆</button></td>
         </tr>
     `).join('');
+}
+
+async function promoteOne(resultId, btn) {
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+        const resp = await fetch(`/api/pipeline/results/${resultId}/promote`, {method: 'POST'});
+        const data = await resp.json();
+        if (data.promoted) {
+            btn.textContent = '✓';
+            btn.title = `Lead #${data.lead_id} に昇格`;
+        } else {
+            btn.textContent = '済';
+            btn.title = data.message || '既に昇格済み';
+        }
+    } catch(e) {
+        btn.textContent = '✗';
+        btn.disabled = false;
+    }
+}
+
+async function promoteRunRanks() {
+    if (!currentRunId) return;
+    if (!confirm('このRunのS/Aランクリードを /leads に一括昇格しますか?')) return;
+    try {
+        const resp = await fetch(`/api/pipeline/runs/${currentRunId}/promote?ranks=S,A`, {method: 'POST'});
+        const data = await resp.json();
+        alert(`昇格: ${data.promoted}件 / 既存スキップ: ${data.skipped_existing}件 (候補 ${data.total_candidates}件)`);
+        await loadResults();
+    } catch(e) {
+        alert('昇格エラー: ' + e.message);
+    }
 }
 
 function downloadCSV() {

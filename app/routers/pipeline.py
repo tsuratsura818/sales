@@ -194,6 +194,31 @@ async def pipeline_results(
     }
 
 
+@router.post("/api/pipeline/results/{result_id}/promote")
+async def promote_result_to_lead(result_id: int, db: Session = Depends(get_db)):
+    """単一の PipelineResult を Lead テーブルに昇格させる"""
+    from app.services import promotion_service
+    result = db.query(PipelineResult).filter(PipelineResult.id == result_id).first()
+    if not result:
+        raise HTTPException(status_code=404, detail="結果が見つかりません")
+    lead = promotion_service.promote_to_lead(result, db)
+    if not lead:
+        return {"promoted": False, "message": "既に昇格済みです"}
+    return {"promoted": True, "lead_id": lead.id, "url": f"/leads/{lead.id}"}
+
+
+@router.post("/api/pipeline/runs/{run_id}/promote")
+async def promote_run_to_leads(
+    run_id: int,
+    ranks: str = Query("S,A", description="カンマ区切りの対象ランク"),
+    db: Session = Depends(get_db),
+):
+    """指定 PipelineRun の対象ランクのリードをまとめて昇格"""
+    from app.services import promotion_service
+    rank_list = tuple(r.strip().upper() for r in ranks.split(",") if r.strip())
+    return promotion_service.promote_run(run_id, db, ranks=rank_list)
+
+
 @router.get("/api/pipeline/results/{run_id}/csv")
 async def export_csv(run_id: int, db: Session = Depends(get_db)):
     """結果CSVエクスポート"""

@@ -10,45 +10,53 @@
     <nav class="navbar">
         <a href="/dashboard" class="nav-brand">🤝 SellBuddy</a>
         <div class="nav-links">
-            <a href="/dashboard" class="nav-item">📊 ダッシュボード</a>
-            <a href="/goals" class="nav-item">🎯 目標</a>
+            <!-- 営業フロー: 獲得 → 提案 → 配信 → 分析 -->
+            <div class="nav-dropdown">
+                <button class="nav-dropdown-btn">📥 獲得 ▾</button>
+                <div class="nav-dropdown-menu">
+                    <a href="/">🔍 企業検索(単発)</a>
+                    <a href="/pipeline">🔄 リスト収集(バッチ)</a>
+                    <a href="/pipeline/keywords">🔑 検索キーワード</a>
+                    <a href="/inbound">📥 インバウンド</a>
+                    <a href="/jobs">📡 案件モニター</a>
+                </div>
+            </div>
 
+            <div class="nav-dropdown">
+                <button class="nav-dropdown-btn">📝 提案 ▾</button>
+                <div class="nav-dropdown-menu">
+                    <a href="/leads">📋 リード一覧</a>
+                    <a href="/portfolios">📁 ポートフォリオ</a>
+                </div>
+            </div>
+
+            <div class="nav-dropdown">
+                <button class="nav-dropdown-btn">✉️ 配信 ▾</button>
+                <div class="nav-dropdown-menu">
+                    <a href="/mail">📊 配信ダッシュボード</a>
+                    <a href="/mail/campaigns">📋 キャンペーン</a>
+                    <a href="/followups">📩 ステップ配信</a>
+                    <a href="/mail/contacts">👥 コンタクト</a>
+                    <a href="/mail/logs">📨 送信ログ(統合)</a>
+                    <a href="/mail/settings">⚙️ メール設定</a>
+                </div>
+            </div>
+
+            <div class="nav-dropdown">
+                <button class="nav-dropdown-btn">📊 分析 ▾</button>
+                <div class="nav-dropdown-menu">
+                    <a href="/dashboard">📊 ダッシュボード</a>
+                    <a href="/goals">🎯 目標</a>
+                </div>
+            </div>
+
+            <!-- 横断ツール -->
             <div class="nav-dropdown">
                 <button class="nav-dropdown-btn">📅 スケジュール ▾</button>
                 <div class="nav-dropdown-menu">
                     <a href="/today">📋 今日</a>
                     <a href="/calendar">📅 カレンダー</a>
                     <a href="/memos">📝 メモ</a>
-                </div>
-            </div>
-
-            <div class="nav-dropdown">
-                <button class="nav-dropdown-btn">🔍 営業 ▾</button>
-                <div class="nav-dropdown-menu">
-                    <a href="/">🔍 企業検索</a>
-                    <a href="/leads">📋 リード一覧</a>
-                    <a href="/sent">📨 送信済み</a>
-                    <a href="/followups">📩 フォローアップ</a>
-                    <a href="/jobs">📡 案件モニター</a>
-                </div>
-            </div>
-
-            <div class="nav-dropdown">
-                <button class="nav-dropdown-btn">📥 獲得 ▾</button>
-                <div class="nav-dropdown-menu">
-                    <a href="/pipeline">🔄 リスト収集</a>
-                    <a href="/inbound">📥 インバウンド</a>
-                </div>
-            </div>
-
-            <div class="nav-dropdown">
-                <button class="nav-dropdown-btn">✉️ メール配信 ▾</button>
-                <div class="nav-dropdown-menu">
-                    <a href="/mail">📊 ダッシュボード</a>
-                    <a href="/mail/campaigns">📋 キャンペーン</a>
-                    <a href="/mail/contacts">👥 コンタクト</a>
-                    <a href="/mail/logs">📨 送信ログ</a>
-                    <a href="/mail/settings">⚙️ メール設定</a>
                 </div>
             </div>
 
@@ -64,7 +72,6 @@
             <div class="nav-dropdown">
                 <button class="nav-dropdown-btn">⚙️ その他 ▾</button>
                 <div class="nav-dropdown-menu">
-                    <a href="/portfolios">📁 ポートフォリオ</a>
                     <a href="/links">🔗 リンク一覧</a>
                     <a href="/roadmap">📌 ロードマップ</a>
                     <a href="/manual">📖 マニュアル</a>
