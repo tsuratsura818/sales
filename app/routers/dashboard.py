@@ -110,6 +110,15 @@ async def lead_detail_page(lead_id: int, request: Request, db: Session = Depends
         .all()
     )
 
+    # メール送信履歴(トラッキング情報付き)
+    from app.models.email_log import EmailLog as _EmailLog
+    email_logs = (
+        db.query(_EmailLog)
+        .filter(_EmailLog.lead_id == lead_id)
+        .order_by(desc(_EmailLog.created_at))
+        .all()
+    )
+
     # 競合分析結果（最新）
     competitor_analysis = (
         db.query(CompetitorAnalysis)
@@ -132,6 +141,7 @@ async def lead_detail_page(lead_id: int, request: Request, db: Session = Depends
         "breakdown": breakdown,
         "screenshots": screenshots,
         "follow_up_steps": follow_up_steps,
+        "email_logs": email_logs,
         "competitor_analysis": competitor_analysis,
         "comp_summary": comp_summary,
         "matched_portfolios": matched_portfolios,

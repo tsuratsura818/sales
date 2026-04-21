@@ -261,10 +261,20 @@ def get_stats() -> dict:
     lr = httpx.get(f"{API_BASE}/send_logs", headers=h, params={"user_id": f"eq.{USER_ID}", "status": "eq.sent", "limit": "0"}, timeout=15)
     total_sent = int(lr.headers.get("content-range", "0-0/0").split("/")[-1]) if "content-range" in lr.headers else 0
 
+    # 開封・クリック合計
+    total_opens = sum(int(c.get("open_count") or 0) for c in campaigns)
+    total_clicks = sum(int(c.get("click_count") or 0) for c in campaigns)
+    open_rate = round(total_opens / total_sent * 100, 1) if total_sent > 0 else 0.0
+    click_rate = round(total_clicks / total_sent * 100, 1) if total_sent > 0 else 0.0
+
     return {
         "total_contacts": total_contacts,
         "total_campaigns": len(campaigns),
         "active_campaigns": len(active),
         "total_sent": total_sent,
+        "total_opens": total_opens,
+        "total_clicks": total_clicks,
+        "open_rate": open_rate,
+        "click_rate": click_rate,
         "campaigns": campaigns,
     }

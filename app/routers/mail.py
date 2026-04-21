@@ -51,6 +51,10 @@ async def mail_dashboard(request: Request):
             total_campaigns=stats.get("total_campaigns", 0),
             active_campaigns=stats.get("active_campaigns", 0),
             total_sent=stats.get("total_sent", 0),
+            total_opens=stats.get("total_opens", 0),
+            total_clicks=stats.get("total_clicks", 0),
+            open_rate=stats.get("open_rate", 0.0),
+            click_rate=stats.get("click_rate", 0.0),
             campaigns=campaigns,
         )
     except Exception as e:
@@ -175,7 +179,7 @@ async def mail_logs(request: Request, source: str = ""):
                 "lead_id": None,
             })
 
-    # Gmail 直送ログ (sales.db EmailLog)
+    # Gmail 直送ログ (sales.db EmailLog) — トラッキング情報付き
     if source in ("", "gmail"):
         db = SessionLocal()
         try:
@@ -196,6 +200,10 @@ async def mail_logs(request: Request, source: str = ""):
                     "sent_at": lg.sent_at.isoformat() if lg.sent_at else "",
                     "error_message": lg.error_message or "",
                     "lead_id": lg.lead_id,
+                    "open_count": lg.open_count or 0,
+                    "click_count": lg.click_count or 0,
+                    "opened_at": lg.opened_at.isoformat() if lg.opened_at else "",
+                    "clicked_at": lg.clicked_at.isoformat() if lg.clicked_at else "",
                 })
         finally:
             db.close()

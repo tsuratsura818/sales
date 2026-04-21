@@ -115,6 +115,7 @@ async def send_step(step: FollowUpStep, db: Session) -> None:
             to=lead.contact_email,
             subject=step.email_subject,
             body=step.email_body,
+            tracking_id=log.tracking_id or "",
         )
         log.sent_at = datetime.now()
         step.status = "sent"

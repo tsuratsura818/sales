@@ -88,6 +88,7 @@ async def send_email(lead_id: int, req: SendEmailRequest = SendEmailRequest(), d
             to=to_address,
             subject=lead.generated_email_subject,
             body=lead.generated_email_body,
+            tracking_id=log.tracking_id or "",
         )
         log.sent_at = datetime.now()
         log.outlook_message_id = entry_id

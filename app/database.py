@@ -111,6 +111,12 @@ def _migrate_sqlite():
         ("search_jobs", "auto_proposal_min_score",  "INTEGER DEFAULT 50"),
         # PipelineResult 昇格リード向け
         ("leads", "pipeline_result_id",             "INTEGER"),
+        # メールトラッキング (Phase 6)
+        ("email_logs", "tracking_id",               "TEXT"),
+        ("email_logs", "opened_at",                 "TIMESTAMP"),
+        ("email_logs", "open_count",                "INTEGER DEFAULT 0"),
+        ("email_logs", "clicked_at",                "TIMESTAMP"),
+        ("email_logs", "click_count",               "INTEGER DEFAULT 0"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
@@ -148,6 +154,12 @@ def _migrate_postgres():
         ("search_jobs", "auto_proposal_min_score", "INTEGER DEFAULT 50"),
         # PipelineResult 昇格リード向け
         ("leads", "pipeline_result_id", "INTEGER"),
+        # メールトラッキング (Phase 6)
+        ("email_logs", "tracking_id",  "TEXT"),
+        ("email_logs", "opened_at",    "TIMESTAMP"),
+        ("email_logs", "open_count",   "INTEGER DEFAULT 0"),
+        ("email_logs", "clicked_at",   "TIMESTAMP"),
+        ("email_logs", "click_count",  "INTEGER DEFAULT 0"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:

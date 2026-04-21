@@ -2,16 +2,60 @@ import asyncio
 import imaplib
 import email
 import logging
+import os
 import re
 import smtplib
 import time
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
+from urllib.parse import quote
 
 from app.config import get_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+# トラッキングURLのベース(受信者がアクセスする公開URL)
+TRACKING_BASE_URL = (
+    os.environ.get("TRACKING_BASE_URL")
+    or os.environ.get("RENDER_EXTERNAL_URL")
+    or "https://sales-6g78.onrender.com"
+).rstrip("/")
+
+
+def _wrap_with_tracking(body: str, tracking_id: str) -> tuple[str, str]:
+    """plain text body を (text, html) に変換。HTML には開封ピクセルとクリック追跡を仕込む。"""
+    if not tracking_id:
+        return body, ""
+
+    # plain text 側: URL をクリック追跡用に書き換え
+    url_re = re.compile(r"https?://[^\s<>\"']+")
+
+    def _click_url(orig: str) -> str:
+        return f"{TRACKING_BASE_URL}/track/click?t={tracking_id}&url={quote(orig, safe='')}"
+
+    text_body = url_re.sub(lambda m: _click_url(m.group(0)), body)
+
+    # HTML 側: エスケープ + URLリンク化(クリック追跡) + 改行<br> + ピクセル
+    html_escaped = (
+        body.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+    )
+    html_body = url_re.sub(
+        lambda m: f'<a href="{_click_url(m.group(0))}" style="color:#4f46e5;">{m.group(0)}</a>',
+        html_escaped,
+    ).replace("\n", "<br>\n")
+
+    pixel = f'<img src="{TRACKING_BASE_URL}/track/open?t={tracking_id}" width="1" height="1" style="display:none;width:1px;height:1px;border:0;" alt="" />'
+    html = f"""<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#333;">
+{html_body}
+{pixel}
+</body></html>"""
+    return text_body, html
 
 
 def _fetch_verification_code_sync(
@@ -117,24 +161,36 @@ async def fetch_verification_code(
     )
 
 
-def _send_email_sync(to: str, subject: str, body: str) -> str:
-    """Gmail SMTP でメール送信（同期処理）"""
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = subject
-    msg["From"] = settings.GMAIL_ADDRESS
-    msg["To"] = to
-    msg["Bcc"] = settings.GMAIL_ADDRESS
+def _send_email_sync(to: str, subject: str, body: str, tracking_id: str = "") -> str:
+    """Gmail SMTP でメール送信（同期処理）
+
+    tracking_id 指定時は multipart/alternative で text + HTML(開封ピクセル+クリック追跡) を送信
+    """
+    if tracking_id:
+        text_body, html_body = _wrap_with_tracking(body, tracking_id)
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = settings.GMAIL_ADDRESS
+        msg["To"] = to
+        msg["Bcc"] = settings.GMAIL_ADDRESS
+        msg.attach(MIMEText(text_body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+    else:
+        msg = MIMEText(body, "plain", "utf-8")
+        msg["Subject"] = subject
+        msg["From"] = settings.GMAIL_ADDRESS
+        msg["To"] = to
+        msg["Bcc"] = settings.GMAIL_ADDRESS
 
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(settings.GMAIL_ADDRESS, settings.GMAIL_APP_PASSWORD)
-            # BCC含む全宛先に送信
             server.send_message(msg)
         return ""
     except Exception as e:
         raise RuntimeError(f"Gmail送信エラー: {e}")
 
 
-async def send_email(to: str, subject: str, body: str) -> str:
-    """非同期で Gmail メール送信を実行する"""
-    return await asyncio.to_thread(_send_email_sync, to, subject, body)
+async def send_email(to: str, subject: str, body: str, tracking_id: str = "") -> str:
+    """非同期で Gmail メール送信を実行する。tracking_id 指定で開封/クリック追跡を埋め込む"""
+    return await asyncio.to_thread(_send_email_sync, to, subject, body, tracking_id)

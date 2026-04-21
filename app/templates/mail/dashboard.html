@@ -4,22 +4,30 @@
 {% block content %}
 <h2>📨 メール配信</h2>
 
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
-  <div class="card" style="text-align:center;padding:20px;">
-    <div style="font-size:28px;font-weight:bold;">{{ total_contacts }}</div>
-    <div style="color:#666;font-size:13px;">コンタクト数</div>
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:24px;">
+  <div class="card" style="text-align:center;padding:18px 12px;">
+    <div style="font-size:24px;font-weight:bold;">{{ total_contacts }}</div>
+    <div style="color:#666;font-size:12px;">コンタクト</div>
   </div>
-  <div class="card" style="text-align:center;padding:20px;">
-    <div style="font-size:28px;font-weight:bold;">{{ total_campaigns }}</div>
-    <div style="color:#666;font-size:13px;">キャンペーン</div>
+  <div class="card" style="text-align:center;padding:18px 12px;">
+    <div style="font-size:24px;font-weight:bold;">{{ total_campaigns }}</div>
+    <div style="color:#666;font-size:12px;">キャンペーン</div>
   </div>
-  <div class="card" style="text-align:center;padding:20px;">
-    <div style="font-size:28px;font-weight:bold;color:#4f46e5;">{{ active_campaigns }}</div>
-    <div style="color:#666;font-size:13px;">配信中</div>
+  <div class="card" style="text-align:center;padding:18px 12px;">
+    <div style="font-size:24px;font-weight:bold;color:#4f46e5;">{{ active_campaigns }}</div>
+    <div style="color:#666;font-size:12px;">配信中</div>
   </div>
-  <div class="card" style="text-align:center;padding:20px;">
-    <div style="font-size:28px;font-weight:bold;color:#059669;">{{ total_sent }}</div>
-    <div style="color:#666;font-size:13px;">累計送信数</div>
+  <div class="card" style="text-align:center;padding:18px 12px;">
+    <div style="font-size:24px;font-weight:bold;color:#059669;">{{ total_sent }}</div>
+    <div style="color:#666;font-size:12px;">累計送信</div>
+  </div>
+  <div class="card" style="text-align:center;padding:18px 12px;">
+    <div style="font-size:24px;font-weight:bold;color:#047857;">{{ open_rate }}%</div>
+    <div style="color:#666;font-size:12px;">👁 開封率<br><span style="font-size:11px;color:#94a3b8;">{{ total_opens }}件</span></div>
+  </div>
+  <div class="card" style="text-align:center;padding:18px 12px;">
+    <div style="font-size:24px;font-weight:bold;color:#1e40af;">{{ click_rate }}%</div>
+    <div style="color:#666;font-size:12px;">🖱 クリック率<br><span style="font-size:11px;color:#94a3b8;">{{ total_clicks }}件</span></div>
   </div>
 </div>
 

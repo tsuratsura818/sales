@@ -677,6 +677,41 @@
             </div>
             {% endif %}
 
+            <!-- 送信履歴 + トラッキング (開封・クリック) -->
+            {% if email_logs %}
+            <div class="card" style="padding:16px;margin-top:16px;">
+              <h4 style="margin:0 0 10px;font-size:14px;">📨 送信履歴とトラッキング</h4>
+              <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead>
+                  <tr style="background:#f8fafc;">
+                    <th style="text-align:left;padding:6px 8px;color:#64748b;font-weight:500;">送信日時</th>
+                    <th style="text-align:left;padding:6px 8px;color:#64748b;font-weight:500;">件名</th>
+                    <th style="text-align:center;padding:6px 8px;color:#64748b;font-weight:500;">開封</th>
+                    <th style="text-align:center;padding:6px 8px;color:#64748b;font-weight:500;">クリック</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for el in email_logs %}
+                  <tr style="border-top:1px solid #f1f5f9;">
+                    <td style="padding:6px 8px;color:#475569;">{{ el.sent_at.strftime('%m/%d %H:%M') if el.sent_at else '未送信' }}</td>
+                    <td style="padding:6px 8px;color:#475569;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ el.subject or '-' }}</td>
+                    <td style="padding:6px 8px;text-align:center;">
+                      {% if el.open_count and el.open_count > 0 %}
+                      <span style="color:#047857;font-weight:600;" title="初回: {{ el.opened_at.strftime('%m/%d %H:%M') if el.opened_at else '' }}">👁 {{ el.open_count }}</span>
+                      {% else %}<span style="color:#cbd5e1;">−</span>{% endif %}
+                    </td>
+                    <td style="padding:6px 8px;text-align:center;">
+                      {% if el.click_count and el.click_count > 0 %}
+                      <span style="color:#1e40af;font-weight:600;" title="初回: {{ el.clicked_at.strftime('%m/%d %H:%M') if el.clicked_at else '' }}">🖱 {{ el.click_count }}</span>
+                      {% else %}<span style="color:#cbd5e1;">−</span>{% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% endif %}
+
             <!-- 返信マークボタン -->
             {% if lead.status in ("sent", "replied", "meeting") or lead.followup_status %}
             <div class="followup-reply-section">
