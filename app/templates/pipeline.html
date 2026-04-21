@@ -450,6 +450,7 @@ function renderHistory(runs) {
         const sources = (r.sources || []).join(', ');
         const breakdown = r.source_breakdown || {};
         const details = Object.entries(breakdown).map(([k,v]) => `${k}:${v}`).join(' ');
+        const completed = r.status === 'completed';
         html += `<tr>
             <td>${dt}</td>
             <td><span class="status-badge status-${r.status}">${r.status}</span></td>
@@ -457,11 +458,75 @@ function renderHistory(runs) {
             <td>${r.total_found}件 ${details ? '(' + details + ')' : ''}</td>
             <td>${r.total_imported || 0}件</td>
             <td>${r.duration_sec ? formatDuration(r.duration_sec) : '-'}</td>
-            <td><button class="btn btn-sm btn-secondary" onclick="viewRun(${r.id})">表示</button></td>
+            <td>
+                <button class="btn btn-sm btn-secondary" onclick="viewRun(${r.id})">表示</button>
+                ${completed ? `<button class="btn btn-sm btn-primary" onclick="regenerateProposals(${r.id})" title="提案文をローカル Claude Code で高品質再生成" style="margin-left:4px;">🤖 Claude再生成</button>` : ''}
+            </td>
         </tr>`;
     }
     html += '</tbody></table>';
     area.innerHTML = html;
+}
+
+let _systemInfo = null;
+async function getSystemInfo() {
+    if (_systemInfo) return _systemInfo;
+    try {
+        const resp = await fetch('/api/system/info');
+        _systemInfo = await resp.json();
+    } catch(e) {
+        _systemInfo = { environment: 'unknown', local_claude_available: false };
+    }
+    return _systemInfo;
+}
+
+async function regenerateProposals(runId) {
+    const info = await getSystemInfo();
+    if (!info.local_claude_available) {
+        showLocalClaudeModal(runId);
+        return;
+    }
+    if (!confirm(`Run #${runId} の S/A ランクの提案文を Claude Code で再生成します。よろしいですか?\n(実行に数分〜数十分かかります)`)) return;
+    try {
+        const resp = await fetch(`/api/pipeline/runs/${runId}/regenerate-proposals?ranks=S,A`, {method: 'POST'});
+        const data = await resp.json();
+        if (!resp.ok) {
+            alert('エラー: ' + (data.detail || resp.status));
+            return;
+        }
+        alert(`再生成完了: ${data.regenerated}/${data.total_candidates}件`);
+        if (currentRunId === runId) await loadResults();
+    } catch(e) {
+        alert('再生成エラー: ' + e.message);
+    }
+}
+
+function showLocalClaudeModal(runId) {
+    const cmd = `cd "C:/Users/nishikawa/Desktop/Claude Work/AllProject/sales"\npython scripts/regenerate_proposals.py --run-id ${runId}`;
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:12px;padding:24px;max-width:600px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <h3 style="margin:0 0 12px 0;">🖥 ローカル端末で実行が必要です</h3>
+        <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 16px 0;">
+          Claude Code CLI は本番(Render)では利用できません。<br>
+          以下のコマンドをローカル端末のターミナルで実行してください。
+          完了後、このページをリロードすると新しい提案文が反映されます。
+        </p>
+        <pre id="local-cmd" style="background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;font-size:13px;overflow-x:auto;margin:0 0 12px 0;white-space:pre;">${cmd}</pre>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('local-cmd').textContent).then(()=>this.textContent='✓ コピーしました')">📋 コマンドをコピー</button>
+          <button class="btn btn-primary" onclick="this.closest('[data-modal]').remove()">閉じる</button>
+        </div>
+        <p style="color:#94a3b8;font-size:12px;margin:16px 0 0 0;">
+          ヒント: ローカル <code>.env</code> に Render と同じ <code>DATABASE_URL</code>(Supabase Postgres)を設定しておくと、
+          ローカル実行の結果が Render UI にも即反映されます。
+        </p>
+      </div>
+    `;
+    overlay.setAttribute('data-modal', '1');
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
 }
 
 async function viewRun(runId) {

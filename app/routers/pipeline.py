@@ -194,6 +194,72 @@ async def pipeline_results(
     }
 
 
+@router.get("/api/system/info")
+async def system_info():
+    """実行環境の情報(Claude CLI が利用可能か等)を返す。
+    UI が「ローカル限定機能」を出し分けるために使う。
+    """
+    import os
+    from app.services import local_claude
+    is_render = bool(os.environ.get("RENDER"))
+    return {
+        "environment": "render" if is_render else "local",
+        "local_claude_available": local_claude.is_available(),
+    }
+
+
+@router.post("/api/pipeline/runs/{run_id}/regenerate-proposals")
+async def regenerate_run_proposals(
+    run_id: int,
+    ranks: str = Query("S,A", description="再生成対象のランク(カンマ区切り)"),
+    db: Session = Depends(get_db),
+):
+    """既存 PipelineRun の結果に対して、ローカル Claude Code でバッチ提案文を再生成する。
+
+    Render 本番では CLI 不在のため 503 を返す(クライアント側でローカル起動を促す)。
+    """
+    from app.services import local_claude
+    from app.services.pipeline.runner import _enrich_with_proposals
+
+    if not local_claude.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="ローカル環境(Claude Code CLI)が必要です。" \
+                   " ターミナルで `python scripts/regenerate_proposals.py --run-id %d` を実行してください。" % run_id,
+        )
+
+    run = db.query(PipelineRun).filter(PipelineRun.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Runが見つかりません")
+
+    rank_list = [r.strip().upper() for r in ranks.split(",") if r.strip()]
+    targets = (
+        db.query(PipelineResult)
+        .filter(
+            PipelineResult.run_id == run_id,
+            PipelineResult.rank.in_(rank_list),
+        )
+        .all()
+    )
+    if not targets:
+        return {"regenerated": 0, "message": "対象ランクのリードがありません"}
+
+    # personalized_subject/body をクリアして強制再生成させる
+    for r in targets:
+        r.personalized_subject = None
+        r.personalized_body = None
+    db.commit()
+
+    await _enrich_with_proposals(targets, db)
+
+    regenerated = sum(1 for r in targets if r.personalized_subject and r.personalized_body)
+    return {
+        "regenerated": regenerated,
+        "total_candidates": len(targets),
+        "ranks": rank_list,
+    }
+
+
 @router.post("/api/pipeline/results/{result_id}/promote")
 async def promote_result_to_lead(result_id: int, db: Session = Depends(get_db)):
     """単一の PipelineResult を Lead テーブルに昇格させる"""

@@ -160,7 +160,8 @@ async def _enrich_with_proposals(leads: list[PipelineResult], db: Session) -> No
     from dataclasses import asdict
     from app.services import local_claude, proposal_service
 
-    cat_leads = [l for l in leads if l.category and l.website]
+    # category モード以外でも website があれば再生成対象に含める
+    cat_leads = [l for l in leads if l.website]
     if not cat_leads:
         return
 
