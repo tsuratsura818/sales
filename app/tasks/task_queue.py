@@ -74,8 +74,18 @@ async def _analyze_one(lead_id: int, url: str) -> float:
 
 
 def _url_exists_in_db(db: Session, url: str) -> bool:
-    """全ジョブ横断でURL重複チェック"""
-    return db.query(Lead).filter(Lead.url == url).first() is not None
+    """URL完全一致 + 正規化ドメインで sales.db leads と pipeline_results 横断チェック"""
+    from app.services.pipeline.domain_util import normalize_domain, domain_exists_anywhere
+
+    # URL完全一致(最速)
+    if db.query(Lead.id).filter(Lead.url == url).first() is not None:
+        return True
+
+    # 正規化ドメインでクロステーブル重複
+    domain = normalize_domain(url)
+    if not domain:
+        return False
+    return domain_exists_anywhere(domain, db)
 
 
 async def _run_search_job(job_id: int) -> None:
@@ -207,6 +217,14 @@ async def _run_search_job(job_id: int) -> None:
             page += 1
             await asyncio.sleep(0.5)
 
+        # --- 分析完了後: ローカル Claude で提案文を自動バッチ生成 ---
+        if getattr(job, "auto_generate_proposal", True):
+            await _auto_generate_proposals(
+                job_id=job_id,
+                min_score=getattr(job, "auto_proposal_min_score", 50),
+                db=db,
+            )
+
         job.status = "completed"
         job.total_urls = lead_count
         job.analyzed_count = lead_count
@@ -223,3 +241,46 @@ async def _run_search_job(job_id: int) -> None:
 
     finally:
         db.close()
+
+
+async def _auto_generate_proposals(job_id: int, min_score: int, db: Session) -> None:
+    """単発検索ジョブ完了直後に、高スコア Lead の提案文を一括生成する。
+
+    - local Claude Code CLI が利用可能な場合のみ実行(Render等では no-op)
+    - Lead.generated_email_subject/body を埋めて status を email_generated に
+    """
+    from app.services import local_claude, proposal_service
+    from app.services.portfolio_service import get_portfolios_for_lead, format_portfolio_for_prompt
+
+    if not local_claude.is_available():
+        return
+
+    targets = (
+        db.query(Lead)
+        .filter(
+            Lead.search_job_id == job_id,
+            Lead.status == "analyzed",
+            Lead.score >= min_score,
+        )
+        .all()
+    )
+    if not targets:
+        return
+
+    await progress_store.update(job_id, status="generating_proposals", completed=0, total=len(targets))
+
+    for i, lead in enumerate(targets, 1):
+        try:
+            portfolios = get_portfolios_for_lead(db, lead)
+            portfolio_text = format_portfolio_for_prompt(portfolios)
+            subject, body = await proposal_service.generate_email(lead, portfolio_text=portfolio_text)
+            if subject and body:
+                lead.generated_email_subject = subject
+                lead.generated_email_body = body
+                lead.status = "email_generated"
+                db.commit()
+        except Exception:
+            db.rollback()
+
+        if i % 5 == 0 or i == len(targets):
+            await progress_store.update(job_id, completed=i, total=len(targets))

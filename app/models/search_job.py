@@ -30,4 +30,8 @@ class SearchJob(Base):
     # コスト追跡
     serpapi_calls_used: Mapped[int] = mapped_column(Integer, default=0)
 
+    # ローカル Claude Code で提案文を自動生成するか
+    auto_generate_proposal: Mapped[bool] = mapped_column(Boolean, default=True)
+    auto_proposal_min_score: Mapped[int] = mapped_column(Integer, default=50)
+
     leads: Mapped[list] = relationship("Lead", back_populates="search_job", lazy="select")

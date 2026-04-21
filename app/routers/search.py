@@ -25,6 +25,8 @@ async def create_search(request: SearchRequest, db: Session = Depends(get_db)):
         filter_http_only=request.filter_http_only,
         filter_no_mobile=request.filter_no_mobile,
         filter_cms_list=json.dumps(request.filter_cms_list, ensure_ascii=False) if request.filter_cms_list else None,
+        auto_generate_proposal=request.auto_generate_proposal,
+        auto_proposal_min_score=request.auto_proposal_min_score,
     )
     db.add(job)
     db.commit()

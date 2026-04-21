@@ -78,6 +78,24 @@
             </div>
         </div>
 
+        <div class="filter-section">
+            <div class="filter-section-title">🤖 提案文の自動生成（ローカル Claude Code）</div>
+            <div class="filter-row">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="auto_generate_proposal" checked>
+                    分析完了後、ローカル Claude Code で提案文を自動生成
+                </label>
+                <span style="margin-left: 16px; font-size: 0.9rem; color: #64748b;">
+                    最低スコア:
+                    <input type="number" id="auto_proposal_min_score" value="50" min="0" max="100"
+                        style="width: 60px; padding: 2px 6px; margin-left: 4px;">
+                </span>
+            </div>
+            <div style="font-size: 0.85rem; color: #64748b; margin-top: 4px;">
+                ※ ローカル実行時のみ動作（Render本番ではスキップ）。設定スコア以上のリードに対し提案文を一括生成します。
+            </div>
+        </div>
+
         <div class="cost-preview" id="cost-preview">
             <span class="cost-label">💰 コスト目安:</span>
             <span id="cost-serpapi">SerpAPI: 約15円（100件 = 10回呼び出し）</span>
@@ -185,7 +203,9 @@ document.getElementById("search-form").addEventListener("submit", async function
         search_method: document.getElementById("search_method").value,
         filter_http_only: document.getElementById("filter_http_only").checked,
         filter_no_mobile: document.getElementById("filter_no_mobile").checked,
-        filter_cms_list: cms
+        filter_cms_list: cms,
+        auto_generate_proposal: document.getElementById("auto_generate_proposal").checked,
+        auto_proposal_min_score: parseInt(document.getElementById("auto_proposal_min_score").value) || 50
     };
     try {
         var resp = await fetch("/api/search", {

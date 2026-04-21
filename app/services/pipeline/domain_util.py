@@ -62,3 +62,44 @@ def same_domain(url_a: str, url_b: str) -> bool:
     a = normalize_domain(url_a)
     b = normalize_domain(url_b)
     return bool(a) and a == b
+
+
+def domain_exists_anywhere(domain: str, db) -> bool:
+    """sales.db の `leads` と `pipeline_results` を横断して、
+    その正規化ドメインで既に登録されたリードがあるかチェックする。
+
+    クロステーブル重複排除(単発検索 ⇔ バッチ収集 間)に利用。
+    """
+    if not domain:
+        return False
+    try:
+        from app.models.lead import Lead
+        from app.models.pipeline import PipelineResult
+    except Exception:
+        return False
+
+    # Lead 側: url カラムを正規化して比較
+    like_pattern = f"%{domain}%"
+    lead_hit = (
+        db.query(Lead.id)
+        .filter(Lead.url.like(like_pattern))
+        .first()
+    )
+    if lead_hit:
+        # LIKE は誤検知するので厳密チェック
+        lead = db.query(Lead).filter(Lead.id == lead_hit[0]).first()
+        if lead and normalize_domain(lead.url or "") == domain:
+            return True
+
+    # PipelineResult 側
+    pr_hit = (
+        db.query(PipelineResult.id)
+        .filter(PipelineResult.website.like(like_pattern))
+        .first()
+    )
+    if pr_hit:
+        pr = db.query(PipelineResult).filter(PipelineResult.id == pr_hit[0]).first()
+        if pr and normalize_domain(pr.website or "") == domain:
+            return True
+
+    return False

@@ -124,6 +124,30 @@ def _deduplicate(leads: list) -> list:
     return result
 
 
+def _filter_cross_table_duplicates(leads: list, db: Session) -> list:
+    """sales.db leads と pipeline_results を横断し、同じ正規化ドメインを持つリードを除外。
+
+    単発検索(`/`) と バッチ収集(`/pipeline`) で同じ企業が重複登録されるのを防ぐ。
+    """
+    from .domain_util import normalize_domain, domain_exists_anywhere
+
+    if not leads:
+        return leads
+
+    survivors: list = []
+    skipped = 0
+    for lead in leads:
+        domain = normalize_domain(getattr(lead, "website", "") or "")
+        if domain and domain_exists_anywhere(domain, db):
+            skipped += 1
+            continue
+        survivors.append(lead)
+
+    if skipped:
+        log.info(f"クロステーブル重複: {skipped}件削除 ({len(leads)} → {len(survivors)})")
+    return survivors
+
+
 async def _enrich_with_proposals(leads: list[PipelineResult], db: Session) -> None:
     """各リードのサイトを分析し、提案文を生成する。
 
@@ -430,11 +454,12 @@ async def run_pipeline(run_id: int):
         if shopify_excluded > 0:
             log.info(f"Shopify構築済み除外: {shopify_excluded}件")
 
-        # ドメインレベル重複排除
+        # ドメインレベル重複排除 + sales.db leads とのクロステーブル照合
         run.progress_pct = 85
         run.progress_message = "スコアリング中..."
         db.commit()
         all_leads = _deduplicate(all_leads)
+        all_leads = _filter_cross_table_duplicates(all_leads, db)
 
         # スコアリング + 提案生成 + DB保存
         pipeline_results: list[PipelineResult] = []

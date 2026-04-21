@@ -106,6 +106,9 @@ def _migrate_sqlite():
         ("pipeline_results", "personalized_subject", "TEXT"),
         ("pipeline_results", "personalized_body",    "TEXT"),
         ("pipeline_results", "site_analysis",        "TEXT"),
+        # 単発検索の自動提案文生成設定
+        ("search_jobs", "auto_generate_proposal",   "BOOLEAN DEFAULT 1"),
+        ("search_jobs", "auto_proposal_min_score",  "INTEGER DEFAULT 50"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
@@ -134,6 +137,9 @@ def _migrate_postgres():
         ("pipeline_results", "personalized_subject", "TEXT"),
         ("pipeline_results", "personalized_body", "TEXT"),
         ("pipeline_results", "site_analysis", "TEXT"),
+        # 単発検索の自動提案文生成設定
+        ("search_jobs", "auto_generate_proposal", "BOOLEAN DEFAULT TRUE"),
+        ("search_jobs", "auto_proposal_min_score", "INTEGER DEFAULT 50"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
