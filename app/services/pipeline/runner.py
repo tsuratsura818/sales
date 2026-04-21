@@ -374,56 +374,49 @@ async def run_pipeline(run_id: int):
         pct_per_source = 80 // max(source_count, 1)
         current_pct = 5
 
+        # === ECコレクター 並列実行 (Yahoo / 楽天 / Google / DuckDuckGo) ===
+        # seen_emails は set なので add/in は atomic。並列化しても安全。
+        ec_tasks: list[tuple[str, asyncio.Task]] = []
+        active_ec_sources: list[str] = []
+
         if "yahoo" in sources:
-            update_progress(current_pct, "Yahoo!ショッピング収集中...")
-            try:
-                yahoo_kw = [(k, i) for k, i in keyword_list]
-                yahoo_leads = await yahoo_collector.collect(seen_emails, keywords=yahoo_kw)
-                all_leads.extend(yahoo_leads)
-                source_breakdown["yahoo"] = len(yahoo_leads)
-                log.info(f"Yahoo! 完了: {len(yahoo_leads)}件")
-            except Exception as e:
-                log.error(f"Yahoo! コレクターエラー: {e}")
-                source_breakdown["yahoo"] = 0
-            current_pct += pct_per_source
-
+            active_ec_sources.append("yahoo")
+            yahoo_kw = [(k, i) for k, i in keyword_list]
+            ec_tasks.append(("yahoo", asyncio.create_task(
+                yahoo_collector.collect(seen_emails, keywords=yahoo_kw)
+            )))
         if "rakuten" in sources:
-            update_progress(current_pct, "楽天市場収集中...")
-            try:
-                rakuten_kw = [(k, i) for k, i in keyword_list]
-                rakuten_leads = await rakuten_collector.collect(seen_emails, keywords=rakuten_kw)
-                all_leads.extend(rakuten_leads)
-                source_breakdown["rakuten"] = len(rakuten_leads)
-                log.info(f"楽天 完了: {len(rakuten_leads)}件")
-            except Exception as e:
-                log.error(f"楽天 コレクターエラー: {e}")
-                source_breakdown["rakuten"] = 0
-            current_pct += pct_per_source
-
+            active_ec_sources.append("rakuten")
+            rakuten_kw = [(k, i) for k, i in keyword_list]
+            ec_tasks.append(("rakuten", asyncio.create_task(
+                rakuten_collector.collect(seen_emails, keywords=rakuten_kw)
+            )))
         if "google" in sources:
-            update_progress(current_pct, "Google検索収集中...")
-            try:
-                google_leads = await google_collector.collect(seen_emails)
-                all_leads.extend(google_leads)
-                source_breakdown["google"] = len(google_leads)
-                log.info(f"Google 完了: {len(google_leads)}件")
-            except Exception as e:
-                log.error(f"Google コレクターエラー: {e}")
-                source_breakdown["google"] = 0
-            current_pct += pct_per_source
-
+            active_ec_sources.append("google")
+            ec_tasks.append(("google", asyncio.create_task(
+                google_collector.collect(seen_emails)
+            )))
         if "duckduckgo" in sources:
-            update_progress(current_pct, "DuckDuckGo収集中（無料）...")
-            try:
-                ddg_kw = [(k, i) for k, i in keyword_list]
-                ddg_leads = await duckduckgo_collector.collect(seen_emails, keywords=ddg_kw)
-                all_leads.extend(ddg_leads)
-                source_breakdown["duckduckgo"] = len(ddg_leads)
-                log.info(f"DuckDuckGo 完了: {len(ddg_leads)}件")
-            except Exception as e:
-                log.error(f"DuckDuckGo コレクターエラー: {e}")
-                source_breakdown["duckduckgo"] = 0
-            current_pct += pct_per_source
+            active_ec_sources.append("duckduckgo")
+            ddg_kw = [(k, i) for k, i in keyword_list]
+            ec_tasks.append(("duckduckgo", asyncio.create_task(
+                duckduckgo_collector.collect(seen_emails, keywords=ddg_kw)
+            )))
+
+        if ec_tasks:
+            update_progress(current_pct, f"ECコレクター並列収集中({'+'.join(active_ec_sources)})...")
+            results_ec = await asyncio.gather(
+                *[t for _, t in ec_tasks], return_exceptions=True,
+            )
+            for (name, _task), res in zip(ec_tasks, results_ec):
+                if isinstance(res, Exception):
+                    log.error(f"{name} コレクターエラー: {res}")
+                    source_breakdown[name] = 0
+                else:
+                    all_leads.extend(res)
+                    source_breakdown[name] = len(res)
+                    log.info(f"{name} 完了: {len(res)}件")
+            current_pct += pct_per_source * len(ec_tasks)
 
         # === カテゴリモード（全国×業種A/B/C/D） ===
         if mode in ("category", "both") and "category" in sources:

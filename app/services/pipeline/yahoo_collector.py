@@ -73,66 +73,82 @@ async def collect(
 
         log.info(f"Yahoo! 店舗ID: {len(shop_ids)}件")
 
-        # Step 2: 特商法ページ取得（最大150店舗）
+        # Step 2: 特商法ページ取得（最大150店舗、5並列で高速化）
         MAX_SHOPS = 150
-        checked = 0
         shop_items = list(shop_ids.items())[:MAX_SHOPS]
         total = len(shop_items)
-        for shop_id, industry in shop_items:
-            checked += 1
-            if checked % 20 == 0:
-                log.info(f"Yahoo! 進捗: {checked}/{total} (取得: {len(leads)}件)")
-                if on_progress:
-                    on_progress(f"Yahoo! 特商法取得 ({checked}/{total})")
+        sem = asyncio.Semaphore(5)
+        progress_counter = [0]
+        error_counter = [0]
+        stopped = [False]
+        lock = asyncio.Lock()
 
-            url = f"https://store.shopping.yahoo.co.jp/{shop_id}/info.html"
-            try:
-                resp = await client.get(url, headers=random_ua())
-                if resp.status_code == 403 or resp.status_code == 429:
-                    consecutive_errors += 1
-                    if consecutive_errors >= 5:
-                        log.error("Yahoo! 連続エラー5回、収集中断")
-                        break
-                    await asyncio.sleep(RATE_LIMIT_YAHOO * 3)
-                    continue
-                if resp.status_code != 200:
-                    continue
-                consecutive_errors = 0
-                text = BeautifulSoup(resp.text, "html.parser").get_text()
+        async def _fetch_shop(shop_id: str, industry: str):
+            if stopped[0]:
+                return
+            async with sem:
+                if stopped[0]:
+                    return
+                url = f"https://store.shopping.yahoo.co.jp/{shop_id}/info.html"
+                try:
+                    resp = await client.get(url, headers=random_ua())
+                    if resp.status_code in (403, 429):
+                        async with lock:
+                            error_counter[0] += 1
+                            if error_counter[0] >= 5:
+                                stopped[0] = True
+                                log.error("Yahoo! 連続エラー5回、収集中断")
+                                return
+                        await asyncio.sleep(RATE_LIMIT_YAHOO * 3)
+                        return
+                    if resp.status_code != 200:
+                        return
+                    async with lock:
+                        error_counter[0] = 0
 
-                if not is_kansai(text):
-                    continue
+                    text = BeautifulSoup(resp.text, "html.parser").get_text()
+                    if not is_kansai(text):
+                        return
+                    emails = extract_emails(text)
+                    if not emails:
+                        return
+                    email_lower = emails[0].lower()
+                    async with lock:
+                        if email_lower in seen_emails:
+                            return
+                        seen_emails.add(email_lower)
 
-                emails = extract_emails(text)
-                if not emails:
-                    continue
-                if emails[0].lower() in seen_emails:
-                    continue
+                    company = extract_company(text)
+                    if is_excluded(company):
+                        return
+                    address = extract_address(text)
 
-                company = extract_company(text)
-                if is_excluded(company):
-                    continue
+                    async with lock:
+                        leads.append(CollectedLead(
+                            email=emails[0],
+                            company=company or shop_id,
+                            industry=industry,
+                            location=address,
+                            website=f"https://store.shopping.yahoo.co.jp/{shop_id}/",
+                            platform="Yahoo!ショッピング",
+                            ec_status="Yahoo!出店中",
+                            source="yahoo",
+                            shop_code=shop_id,
+                        ))
+                except httpx.TimeoutException:
+                    log.debug(f"Yahoo! 特商法タイムアウト: {shop_id}")
+                except Exception as e:
+                    log.debug(f"Yahoo! 特商法エラー: {e}")
+                finally:
+                    async with lock:
+                        progress_counter[0] += 1
+                        if progress_counter[0] % 20 == 0:
+                            log.info(f"Yahoo! 進捗: {progress_counter[0]}/{total} (取得: {len(leads)}件)")
+                            if on_progress:
+                                on_progress(f"Yahoo! 特商法取得 ({progress_counter[0]}/{total})")
+                    await asyncio.sleep(RATE_LIMIT_YAHOO)
 
-                address = extract_address(text)
-
-                leads.append(CollectedLead(
-                    email=emails[0],
-                    company=company or shop_id,
-                    industry=industry,
-                    location=address,
-                    website=f"https://store.shopping.yahoo.co.jp/{shop_id}/",
-                    platform="Yahoo!ショッピング",
-                    ec_status="Yahoo!出店中",
-                    source="yahoo",
-                    shop_code=shop_id,
-                ))
-                seen_emails.add(emails[0].lower())
-            except httpx.TimeoutException:
-                log.debug(f"Yahoo! 特商法タイムアウト: {shop_id}")
-            except Exception as e:
-                log.debug(f"Yahoo! 特商法エラー: {e}")
-
-            await asyncio.sleep(RATE_LIMIT_YAHOO)
+        await asyncio.gather(*[_fetch_shop(sid, ind) for sid, ind in shop_items])
 
     log.info(f"Yahoo! 結果: {len(leads)}件")
     return leads

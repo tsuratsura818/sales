@@ -5,11 +5,12 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# レート制限（サイト別）
-RATE_LIMIT_SEC = 1.5  # デフォルト
-RATE_LIMIT_YAHOO = 1.5
-RATE_LIMIT_RAKUTEN = 2.0  # 楽天は制限がやや厳しい
-RATE_LIMIT_GOOGLE = 1.5
+# レート制限(サイト別) — 適応的レート制限のベース値
+# 通常の成功時はこの値、エラー時は x3 にバックオフ
+RATE_LIMIT_SEC = 0.5  # デフォルト(DuckDuckGo等汎用)
+RATE_LIMIT_YAHOO = 0.5
+RATE_LIMIT_RAKUTEN = 0.8  # 楽天は制限がやや厳しい
+RATE_LIMIT_GOOGLE = 1.0
 
 # User-Agent ローテーション（2026年版）
 USER_AGENTS = [
