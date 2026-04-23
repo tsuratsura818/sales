@@ -22,6 +22,13 @@ import logging
 import sys
 from pathlib import Path
 
+# 全ての log.info / log.warning / log.error を stdout に出す(進捗可視化)
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] %(name)s %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
+    stream=sys.stdout,
+)
 log = logging.getLogger("regen")
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -252,11 +259,16 @@ async def main() -> int:
         cid = args.append_campaign_id
         cc_result = mf.create_campaign_contacts(cid, items)
         print(f"  campaign_contacts: {cc_result}")
-        # total_contacts を再計算
-        existing = mf.get_campaign(cid) or {}
-        new_total = (existing.get("total_contacts") or 0) + cc_result.get("inserted", 0)
-        if cc_result.get("inserted", 0) > 0:
-            mf.update_campaign(cid, {"total_contacts": new_total})
+        # total_contacts は加算でなく、実テーブル行数を正として再計算(累計バグ防止)
+        import httpx as _httpx
+        _h = {"apikey": mf.SUPABASE_KEY, "Authorization": f"Bearer {mf.SUPABASE_KEY}",
+              "Prefer": "count=exact"}
+        _r = _httpx.get(f"{mf.API_BASE}/campaign_contacts",
+                        headers=_h,
+                        params={"campaign_id": f"eq.{cid}", "limit": "0"}, timeout=15)
+        actual = int(_r.headers.get("content-range", "0/0").split("/")[-1])
+        mf.update_campaign(cid, {"total_contacts": actual})
+        print(f"  total_contacts 更新: {actual}件(実テーブル行数で正規化)")
     else:
         print(f"\n[5/5] キャンペーン作成: {args.campaign_name!r}")
         campaign = mf.create_campaign({
