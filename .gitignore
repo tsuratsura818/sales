@@ -12,3 +12,13 @@ data/*.png
 data/*.html
 .env.local
 *.sqlite3
+*.db.backup-*
+
+# 比較ビズ自動応募（ローカル状態ファイル / デバッグ / Task Scheduler bat）
+.hikakubiz_applied_tids.json
+.hikakubiz_watcher.lock
+debug_apply_*.png
+run_hikakubiz_watcher.bat
+run_lancers_local.bat
+logs/
+output/
