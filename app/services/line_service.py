@@ -265,6 +265,34 @@ async def push_text_message(text: str) -> None:
             logger.error(f"LINE text push失敗: {resp.status_code} {resp.text}")
 
 
+async def push_job_with_proposal(
+    title: str,
+    platform: str,
+    score: int,
+    reason: str,
+    budget_text: str,
+    job_url: str,
+    proposal_text: str,
+) -> None:
+    """マッチ案件 + 提案文 + URL を1メッセージで送る（webhook不要・コピペ運用）"""
+    text = (
+        f"🎯 新着案件マッチ (スコア {score})\n\n"
+        f"【{platform}】{title}\n"
+        f"予算: {budget_text}\n"
+        f"評価: {reason}\n\n"
+        f"━━━━━━━━━━━━\n"
+        f"📝 提案文（コピペ用）\n"
+        f"━━━━━━━━━━━━\n\n"
+        f"{proposal_text}\n\n"
+        f"━━━━━━━━━━━━\n"
+        f"🔗 応募URL\n{job_url}"
+    )
+    # LINEテキストの上限は5000文字。超えたら切り詰め
+    if len(text) > 4900:
+        text = text[:4900] + "\n...(省略)"
+    await push_text_message(text)
+
+
 async def push_reply_notification(
     lead_id: int,
     lead_domain: str,

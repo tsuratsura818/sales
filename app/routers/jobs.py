@@ -278,7 +278,6 @@ async def import_jobs(request: Request, db: Session = Depends(get_db)):
 
             ms = get_monitor_settings(db)
             if eval_result["score"] >= ms.match_threshold:
-                listing.status = "notified"
                 budget_text = "未定"
                 if listing.budget_min and listing.budget_max:
                     if listing.budget_min == listing.budget_max:
@@ -286,20 +285,39 @@ async def import_jobs(request: Request, db: Session = Depends(get_db)):
                     else:
                         budget_text = f"{listing.budget_min:,}〜{listing.budget_max:,}円"
 
-                deadline_text = "期限なし"
-                if listing.deadline:
-                    deadline_text = listing.deadline.strftime("%Y/%m/%d")
-
-                await line_service.push_job_flex_message(
-                    job_id=listing.id,
-                    title=listing.title[:60],
-                    platform=listing.platform,
-                    budget_text=budget_text,
-                    deadline_text=deadline_text,
-                    match_score=eval_result["score"],
-                    match_reason=eval_result["reason"],
-                    job_url=listing.url,
-                )
+                # 提案文を即生成 → 提案文付きでLINE通知（webhook不要、コピペ運用）
+                try:
+                    proposal_text = await job_matcher.generate_proposal(
+                        title=listing.title,
+                        description=listing.description or "",
+                        budget_min=listing.budget_min,
+                        budget_max=listing.budget_max,
+                        platform=listing.platform,
+                    )
+                    application = JobApplication(
+                        job_listing_id=listing.id,
+                        proposal_text=proposal_text,
+                        result_status="pending",
+                    )
+                    db.add(application)
+                    listing.status = "review"
+                    await line_service.push_job_with_proposal(
+                        title=listing.title[:80],
+                        platform=listing.platform,
+                        score=eval_result["score"],
+                        reason=eval_result["reason"],
+                        budget_text=budget_text,
+                        job_url=listing.url,
+                        proposal_text=proposal_text,
+                    )
+                except Exception as gen_err:
+                    logger.error(f"提案文生成失敗 (job_id={listing.id}): {gen_err}")
+                    listing.status = "notified"
+                    await line_service.push_text_message(
+                        f"⚠️ 提案文生成失敗\n【{listing.platform}】{listing.title[:60]}\n"
+                        f"スコア: {eval_result['score']} / {eval_result['reason']}\n"
+                        f"{listing.url}"
+                    )
                 listing.notified_at = datetime.now()
                 notified += 1
             else:
