@@ -24,6 +24,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -48,6 +49,7 @@ TID_LINE_RE = re.compile(r"案件ID[：:]\s*(\d+)")
 CATEGORY_RE = re.compile(r"^[▼▽]\s*(.+?)$", re.MULTILINE)
 
 STATE_FILE = ROOT / ".hikakubiz_applied_tids.json"
+LOG_FILE = ROOT / ".hikakubiz_log.json"
 LOCK_FILE = ROOT / ".hikakubiz_watcher.lock"
 LOCK_TTL_SEC = 300  # 5分以上前のロックは古いとみなして無視
 
@@ -72,6 +74,27 @@ def load_state() -> set[str]:
 
 def save_state(tids: set[str]) -> None:
     STATE_FILE.write_text(json.dumps(sorted(tids)), encoding="utf-8")
+
+
+def append_log(entry: dict) -> None:
+    """応募ログを追記。タイムスタンプ・所要時間・成否・件名を記録"""
+    log = []
+    if LOG_FILE.exists():
+        try:
+            log = json.loads(LOG_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            log = []
+    log.append(entry)
+    LOG_FILE.write_text(json.dumps(log, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_log() -> list[dict]:
+    if not LOG_FILE.exists():
+        return []
+    try:
+        return json.loads(LOG_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return []
 
 
 # ---------- Gmail 受信検知 ----------
@@ -119,6 +142,15 @@ def fetch_new_hikakubiz_emails() -> list[dict]:
             category = cat_match.group(1).strip() if cat_match else ""
 
             subject = _decode_subject(msg.get("Subject", ""))
+            mail_date_str = msg.get("Date", "")
+            mail_received_at = None
+            if mail_date_str:
+                try:
+                    from email.utils import parsedate_to_datetime
+                    mail_received_at = parsedate_to_datetime(mail_date_str)
+                except Exception:
+                    pass
+
             results.append({
                 "uid": num.decode(),
                 "tid": tid,
@@ -126,6 +158,7 @@ def fetch_new_hikakubiz_emails() -> list[dict]:
                 "category": category,
                 "subject": subject,
                 "details_url": url_match.group(0).split("&utm_")[0],
+                "mail_received_at": mail_received_at.isoformat() if mail_received_at else None,
             })
 
         mail.logout()
@@ -381,29 +414,67 @@ def _process_once_locked() -> None:
             return
 
         for t in targets:
+            apply_started = time.time()
+            apply_started_dt = datetime.now(timezone.utc).astimezone()
+            ok = False
+            title = ""
+            error = None
             try:
                 ok, title = apply_to_job(page, t["details_url"], t["tid"])
-                if ok:
-                    applied_tids.add(t["tid"])
-                    save_state(applied_tids)
-                    msg = (
-                        f"✅ 比較ビズ応募完了\n"
-                        f"案件ID: {t.get('inq_id') or t['tid']}\n"
-                        f"{t['subject']}\n"
-                        f"カテゴリ: {t['category']}\n"
-                        f"{t['details_url']}"
-                    )
-                    line_notify(msg)
-                    logger.info(f"応募成功 tid={t['tid']}")
-                else:
-                    line_notify(
-                        f"⚠️ 比較ビズ応募失敗 (要手動確認)\n"
-                        f"tid={t['tid']}\n{t['details_url']}"
-                    )
-                    logger.warning(f"応募失敗 tid={t['tid']}")
             except Exception as e:
+                error = str(e)[:300]
                 logger.exception(f"応募エラー tid={t['tid']}: {e}")
-                line_notify(f"⚠️ 比較ビズ応募エラー (tid={t['tid']}): {str(e)[:200]}")
+
+            applied_at = datetime.now(timezone.utc).astimezone()
+            apply_duration = round(time.time() - apply_started, 2)
+
+            mail_received = t.get("mail_received_at")
+            mail_to_apply_sec = None
+            if mail_received and ok:
+                try:
+                    received_dt = datetime.fromisoformat(mail_received)
+                    mail_to_apply_sec = round((applied_at - received_dt).total_seconds(), 1)
+                except Exception:
+                    pass
+
+            # ログ追記
+            append_log({
+                "tid": t["tid"],
+                "inq_id": t.get("inq_id"),
+                "subject": t.get("subject", ""),
+                "category": t.get("category", ""),
+                "mail_received_at": mail_received,
+                "applied_at": applied_at.isoformat(),
+                "apply_duration_sec": apply_duration,
+                "mail_to_apply_sec": mail_to_apply_sec,
+                "success": ok,
+                "error": error,
+                "url": t["details_url"],
+            })
+
+            if ok:
+                applied_tids.add(t["tid"])
+                save_state(applied_tids)
+                speed_text = (
+                    f"\n⏱ メール→応募 {mail_to_apply_sec}秒"
+                    if mail_to_apply_sec is not None else ""
+                )
+                msg = (
+                    f"✅ 比較ビズ応募完了\n"
+                    f"案件ID: {t.get('inq_id') or t['tid']}\n"
+                    f"{t['subject']}\n"
+                    f"カテゴリ: {t['category']}{speed_text}\n"
+                    f"{t['details_url']}"
+                )
+                line_notify(msg)
+                logger.info(f"応募成功 tid={t['tid']} (mail→apply {mail_to_apply_sec}秒)")
+            else:
+                err_text = f"\nエラー: {error}" if error else ""
+                line_notify(
+                    f"⚠️ 比較ビズ応募失敗 (要手動確認)\n"
+                    f"tid={t['tid']}{err_text}\n{t['details_url']}"
+                )
+                logger.warning(f"応募失敗 tid={t['tid']}")
 
             time.sleep(2)
 
@@ -423,13 +494,99 @@ def watch_loop(interval_sec: int = 60) -> None:
         time.sleep(interval_sec)
 
 
+def _summarize_log(entries: list[dict], days: int | None = None) -> dict:
+    """ログ集計。daysを指定するとその日数以内に絞る"""
+    if days is not None:
+        cutoff = datetime.now(timezone.utc).astimezone() - timedelta(days=days)
+        entries = [
+            e for e in entries
+            if e.get("applied_at") and datetime.fromisoformat(e["applied_at"]) >= cutoff
+        ]
+    total = len(entries)
+    success = sum(1 for e in entries if e.get("success"))
+    fail = total - success
+    durations = [e["mail_to_apply_sec"] for e in entries if e.get("mail_to_apply_sec") is not None]
+    avg_dur = round(sum(durations) / len(durations), 1) if durations else None
+    min_dur = min(durations) if durations else None
+    max_dur = max(durations) if durations else None
+    return {
+        "total": total,
+        "success": success,
+        "fail": fail,
+        "success_rate": round(success / total * 100, 1) if total > 0 else 0,
+        "avg_mail_to_apply_sec": avg_dur,
+        "min_mail_to_apply_sec": min_dur,
+        "max_mail_to_apply_sec": max_dur,
+    }
+
+
+def cmd_stats() -> None:
+    """ログを標準出力に表示"""
+    log = load_log()
+    if not log:
+        print("(ログなし)")
+        return
+    print(f"=== 比較ビズ応募ログ (全 {len(log)} 件) ===")
+    print()
+    for e in log[-30:]:
+        ok = "✅" if e.get("success") else "❌"
+        applied = e.get("applied_at", "?")[:19]
+        dur = e.get("mail_to_apply_sec")
+        dur_text = f"{dur}秒" if dur is not None else "—"
+        subject = (e.get("subject") or "")[:50]
+        print(f"{ok} {applied}  メール→応募 {dur_text:>8}  {subject}")
+    print()
+    print("--- サマリー ---")
+    for label, days in [("直近7日", 7), ("直近30日", 30), ("全期間", None)]:
+        s = _summarize_log(log, days)
+        print(
+            f"{label}: 応募{s['total']}件 / 成功{s['success']} / 失敗{s['fail']} "
+            f"(成功率{s['success_rate']}%) / 平均{s['avg_mail_to_apply_sec']}秒 "
+            f"(min={s['min_mail_to_apply_sec']}, max={s['max_mail_to_apply_sec']})"
+        )
+
+
+def cmd_weekly_line() -> None:
+    """週次サマリーをLINEに送信（月曜のTask Scheduler想定）"""
+    log = load_log()
+    week = _summarize_log(log, days=7)
+    last4 = _summarize_log(log, days=28)
+
+    if week["total"] == 0:
+        msg = "📊 比較ビズ 週次サマリー\n\n直近7日: 応募なし"
+    else:
+        speed = (
+            f"⏱ メール→応募: 平均{week['avg_mail_to_apply_sec']}秒"
+            f" / 最速{week['min_mail_to_apply_sec']}秒 / 最遅{week['max_mail_to_apply_sec']}秒"
+            if week["avg_mail_to_apply_sec"] is not None else ""
+        )
+        msg = (
+            f"📊 比較ビズ 週次サマリー\n\n"
+            f"【直近7日】\n"
+            f"応募 {week['total']}件 (成功{week['success']} / 失敗{week['fail']})\n"
+            f"成功率 {week['success_rate']}%\n"
+            f"{speed}\n\n"
+            f"【直近28日】\n"
+            f"応募 {last4['total']}件 (成功率 {last4['success_rate']}%)\n"
+            f"平均 {last4['avg_mail_to_apply_sec']}秒"
+        )
+    line_notify(msg)
+    print(msg)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--watch", action="store_true", help="常駐モード")
     parser.add_argument("--interval", type=int, default=60, help="常駐モードのポーリング間隔（秒）")
+    parser.add_argument("--stats", action="store_true", help="応募ログサマリーを標準出力")
+    parser.add_argument("--weekly-line", action="store_true", help="週次サマリーをLINEに送信")
     args = parser.parse_args()
 
-    if args.watch:
+    if args.stats:
+        cmd_stats()
+    elif args.weekly_line:
+        cmd_weekly_line()
+    elif args.watch:
         watch_loop(args.interval)
     else:
         process_once()

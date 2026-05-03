@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.lead import Lead
 from app.models.email_log import EmailLog
 from app.models.goal import GoalSnapshot
+from app.models.job_listing import JobListing
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +186,36 @@ def get_weekly_comparison(db: Session) -> dict:
 
     reply_rate = round(this_week["replies"] / this_week["sent"] * 100, 1) if this_week["sent"] > 0 else 0
 
+    # CW/Lancers 案件取得ファネル（今週）
+    def _job_count(start: datetime, end: datetime, platform: str) -> dict:
+        base = db.query(func.count(JobListing.id)).filter(
+            JobListing.created_at >= start, JobListing.created_at < end, JobListing.platform == platform
+        )
+        detected = base.scalar() or 0
+        review = db.query(func.count(JobListing.id)).filter(
+            JobListing.created_at >= start, JobListing.created_at < end,
+            JobListing.platform == platform, JobListing.status == "review",
+        ).scalar() or 0
+        applied = db.query(func.count(JobListing.id)).filter(
+            JobListing.created_at >= start, JobListing.created_at < end,
+            JobListing.platform == platform, JobListing.status == "applied",
+        ).scalar() or 0
+        avg_score = db.query(func.avg(JobListing.match_score)).filter(
+            JobListing.created_at >= start, JobListing.created_at < end,
+            JobListing.platform == platform, JobListing.match_score.isnot(None),
+        ).scalar()
+        return {
+            "detected": detected,
+            "review": review,
+            "applied": applied,
+            "avg_score": round(float(avg_score), 1) if avg_score else 0,
+        }
+
+    cw_this = _job_count(this_monday, this_sunday, "crowdworks")
+    lc_this = _job_count(this_monday, this_sunday, "lancers")
+    cw_prev = _job_count(last_monday, last_sunday, "crowdworks")
+    lc_prev = _job_count(last_monday, last_sunday, "lancers")
+
     # 着地予測
     forecast = get_monthly_forecast(db)
 
@@ -203,4 +234,17 @@ def get_weekly_comparison(db: Session) -> dict:
         "reply_rate": reply_rate,
         "forecast_sent": forecast["forecast"]["sent"],
         "forecast_replies": forecast["forecast"]["replies"],
+        # 案件取得ファネル
+        "cw_detected": cw_this["detected"],
+        "cw_review": cw_this["review"],
+        "cw_applied": cw_this["applied"],
+        "cw_avg_score": cw_this["avg_score"],
+        "cw_detected_prev": cw_prev["detected"],
+        "cw_review_prev": cw_prev["review"],
+        "lc_detected": lc_this["detected"],
+        "lc_review": lc_this["review"],
+        "lc_applied": lc_this["applied"],
+        "lc_avg_score": lc_this["avg_score"],
+        "lc_detected_prev": lc_prev["detected"],
+        "lc_review_prev": lc_prev["review"],
     }

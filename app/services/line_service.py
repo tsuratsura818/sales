@@ -543,6 +543,16 @@ async def push_weekly_report(report_data: dict) -> None:
                         {"type": "text", "text": "着地予測(月)", "size": "sm", "color": "#888888", "flex": 3},
                         {"type": "text", "text": f"送信{d.get('forecast_sent', '-')} / 返信{d.get('forecast_replies', '-')}", "size": "sm", "flex": 4},
                     ]},
+                    {"type": "separator", "margin": "md"},
+                    {"type": "text", "text": "📥 案件取得（CW / LC）", "size": "sm", "weight": "bold", "color": "#4f46e5", "margin": "md"},
+                    _report_row("CW検知", d.get("cw_detected", 0), d.get("cw_detected_prev", 0)),
+                    _report_row("CW提案文生成", d.get("cw_review", 0), d.get("cw_review_prev", 0)),
+                    _report_row("LC検知", d.get("lc_detected", 0), d.get("lc_detected_prev", 0)),
+                    _report_row("LC提案文生成", d.get("lc_review", 0), d.get("lc_review_prev", 0)),
+                    {"type": "box", "layout": "horizontal", "contents": [
+                        {"type": "text", "text": "平均スコア", "size": "sm", "color": "#888888", "flex": 3},
+                        {"type": "text", "text": f"CW {d.get('cw_avg_score', 0)} / LC {d.get('lc_avg_score', 0)}", "size": "sm", "flex": 4},
+                    ]},
                 ],
             },
             "footer": {
