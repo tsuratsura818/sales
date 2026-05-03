@@ -107,6 +107,11 @@ def _parse_job_list(html: str, known_ids: set[str], seen_titles: set[str] | None
             budget_text = budget_el.get_text(strip=True) if budget_el else ""
             budget_min, budget_max, budget_type = _parse_budget(budget_text)
 
+            # 事前フィルタ: 明らかに対象外な案件はAI評価せず即スキップ
+            if is_low_quality(title, budget_min, budget_max, budget_type):
+                logger.debug(f"Lancers事前フィルタで除外: {title[:40]}")
+                continue
+
             jobs.append({
                 "platform": "lancers",
                 "external_id": external_id,
@@ -208,6 +213,30 @@ def _classify_category(title: str) -> str:
     if any(kw in title_lower for kw in ["seo", "マーケ", "広告", "集客", "リスティング"]):
         return "seo_marketing"
     return "web_development"
+
+
+# 明らかに対象外のキーワード。AI評価コール前に即除外する（コスト削減 + ノイズ通知防止）
+PREFILTER_OUT_PATTERNS = re.compile(
+    r"(コピペ|簡単スマホ|スマホ作業のみ|アンケート回答|データ入力|"
+    r"未経験OK|主婦歓迎|副業歓迎|タスク報酬|タイピング|"
+    r"動画視聴|ゲーム配信|モニター調査|商品レビュー|"
+    r"在宅ワーク[未初]|タップ|転送|簡単作業|"
+    r"アフィリエイト紹介|MLM|ネットワークビジネス|"
+    r"アダルト|出会い系|チャットレディ)"
+)
+
+
+def is_low_quality(title: str, budget_min: int | None = None, budget_max: int | None = None, budget_type: str | None = None) -> bool:
+    """明らかに対象外と分かる案件は事前除外"""
+    if PREFILTER_OUT_PATTERNS.search(title):
+        return True
+    # 固定3000円未満は除外（明らかに低価格）
+    if budget_type == "fixed" and budget_max is not None and budget_max < 3000:
+        return True
+    # 時給800円未満も除外
+    if budget_type == "hourly" and budget_max is not None and budget_max < 800:
+        return True
+    return False
 
 
 async def submit_application(

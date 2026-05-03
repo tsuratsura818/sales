@@ -12,6 +12,7 @@ from app.database import get_db, SessionLocal
 from app.models.job_listing import JobListing
 from app.models.job_application import JobApplication
 from app.models.monitor_settings import MonitorSettings
+from app.models.heartbeat import Heartbeat
 from app.config import get_settings
 from app.services.settings_service import get_monitor_settings
 
@@ -341,6 +342,52 @@ async def import_jobs(request: Request, db: Session = Depends(get_db)):
         "notified_count": notified,
         "message": f"Lancers {len(jobs)}件取得、{notified}件LINE通知",
     }
+
+
+# ---------- Heartbeat API（ローカル実行バッチの生存確認） ----------
+
+@router.post("/api/heartbeat/{name}")
+async def post_heartbeat(name: str, request: Request, db: Session = Depends(get_db)):
+    """ローカル実行バッチからの生存確認 (POST body: {status, message?, count?})"""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    status_text = (body.get("status") or "ok")[:40]
+    message = (body.get("message") or "")[:500]
+    count_val = body.get("count")
+    if isinstance(count_val, (int, float)):
+        count_val = int(count_val)
+    else:
+        count_val = None
+
+    row = db.query(Heartbeat).filter(Heartbeat.name == name).first()
+    if not row:
+        row = Heartbeat(name=name)
+        db.add(row)
+    row.last_at = datetime.now()
+    row.last_status = status_text
+    row.last_message = message
+    row.last_count = count_val
+    db.commit()
+    return {"success": True, "name": name, "last_at": row.last_at.isoformat()}
+
+
+@router.get("/api/heartbeat")
+async def list_heartbeats(db: Session = Depends(get_db)):
+    """全heartbeatの一覧（ダッシュボード用）"""
+    rows = db.query(Heartbeat).all()
+    return [
+        {
+            "name": r.name,
+            "last_at": r.last_at.isoformat() if r.last_at else None,
+            "last_status": r.last_status,
+            "last_message": r.last_message,
+            "last_count": r.last_count,
+            "age_sec": int((datetime.now() - r.last_at).total_seconds()) if r.last_at else None,
+        }
+        for r in rows
+    ]
 
 
 # ---------- モニター設定 API ----------

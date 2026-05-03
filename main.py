@@ -20,6 +20,7 @@ from app.tasks.daily_plan_scheduler import daily_plan_scheduler
 from app.tasks.reply_checker import reply_checker
 from app.tasks.bounce_checker import bounce_checker
 from app.tasks.weekly_report_scheduler import weekly_report_scheduler
+from app.tasks.heartbeat_checker import heartbeat_checker
 from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects, today, memos, mail, goals, pipeline, webhook, tracking
 
 STATUS_JA = {
@@ -71,11 +72,13 @@ async def lifespan(app: FastAPI):
     reply_task = asyncio.create_task(reply_checker())
     report_task = asyncio.create_task(weekly_report_scheduler())
     bounce_task = asyncio.create_task(bounce_checker())
+    heartbeat_task = asyncio.create_task(heartbeat_checker())
     yield
     # 終了時
-    for task in [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task, reply_task, report_task, bounce_task]:
+    all_tasks = [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task, reply_task, report_task, bounce_task, heartbeat_task]
+    for task in all_tasks:
         task.cancel()
-    for task in [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task, reply_task, report_task, bounce_task]:
+    for task in all_tasks:
         try:
             await task
         except asyncio.CancelledError:
@@ -83,6 +86,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="SellBuddy", lifespan=lifespan)
+
+# Basic Auth（BASIC_AUTH_USER / BASIC_AUTH_PASS 未設定なら素通し）
+from app.middleware.basic_auth import BasicAuthMiddleware  # noqa: E402
+app.add_middleware(BasicAuthMiddleware)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

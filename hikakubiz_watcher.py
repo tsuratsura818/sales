@@ -44,6 +44,7 @@ LINE_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 LINE_USER_ID = os.environ.get("LINE_USER_ID", "")
 
 LOGIN_URL = "https://sys.biz.ne.jp/partner/index2.html"
+HEARTBEAT_URL = os.environ.get("RENDER_BASE_URL", "https://sales-6g78.onrender.com").rstrip("/") + "/api/heartbeat/hikakubiz_watcher"
 DETAILS_URL_RE = re.compile(r"https://sys\.biz\.ne\.jp/partner/inq_lump/details\.html\?tid=(\d+)[^\s\"'<>]*")
 TID_LINE_RE = re.compile(r"案件ID[：:]\s*(\d+)")
 CATEGORY_RE = re.compile(r"^[▼▽]\s*(.+?)$", re.MULTILINE)
@@ -199,6 +200,17 @@ def _decode_subject(raw: str) -> str:
 
 
 # ---------- LINE 通知 ----------
+
+def send_heartbeat(status: str = "ok", message: str = "", count: int | None = None) -> None:
+    """Render側に生存通知を送る。失敗してもメイン処理に影響させない"""
+    try:
+        payload = {"status": status, "message": message[:500]}
+        if count is not None:
+            payload["count"] = count
+        httpx.post(HEARTBEAT_URL, json=payload, timeout=10)
+    except Exception as e:
+        logger.debug(f"heartbeat送信失敗（無視）: {e}")
+
 
 def line_notify(text: str) -> None:
     if not LINE_TOKEN or not LINE_USER_ID:
@@ -389,13 +401,16 @@ def process_once() -> None:
 
 def _process_once_locked() -> None:
     emails = fetch_new_hikakubiz_emails()
+    # メールゼロでもheartbeatは送る（生存確認のため）
     if not emails:
+        send_heartbeat(status="ok_no_mail", message="新着メールなし", count=0)
         return
 
     applied_tids = load_state()
     targets = [e for e in emails if e["tid"] not in applied_tids]
     if not targets:
         logger.info(f"全{len(emails)}件は既に応募済み")
+        send_heartbeat(status="ok_already_applied", message=f"全{len(emails)}件応募済み", count=0)
         return
 
     logger.info(f"応募対象 {len(targets)}件: {[t['tid'] for t in targets]}")
@@ -479,6 +494,15 @@ def _process_once_locked() -> None:
             time.sleep(2)
 
         browser.close()
+
+    # 全件処理完了後にheartbeat送信
+    success_n = sum(1 for tid in [t["tid"] for t in targets] if tid in applied_tids)
+    fail_n = len(targets) - success_n
+    send_heartbeat(
+        status="ok" if fail_n == 0 else "partial_fail",
+        message=f"処理{len(targets)}件 成功{success_n} 失敗{fail_n}",
+        count=success_n,
+    )
 
 
 def watch_loop(interval_sec: int = 60) -> None:

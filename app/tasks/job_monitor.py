@@ -24,11 +24,9 @@ async def job_monitor() -> None:
         _log_run("skipped", "LINE未設定")
         return
 
-    # CW/LC認証が両方未設定の場合もスキップ
-    if not settings.CROWDWORKS_EMAIL and not settings.LANCERS_EMAIL:
-        logger.warning("CW/LC認証未設定のため、ジョブモニターをスキップ")
-        _log_run("skipped", "CW/LC認証未設定")
-        return
+    # 注: CW検知は認証なしの公開URLを叩くため EMAIL チェックは不要。
+    # 旧コードの「CROWDWORKS_EMAIL/LANCERS_EMAIL 未設定で全停止」を撤去。
+    # Lancers取得は lancers_local.py 経由なのでサーバー側からは fetch しない。
 
     logger.info("ジョブモニター開始")
 

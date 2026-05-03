@@ -14,6 +14,17 @@ import httpx
 from bs4 import BeautifulSoup
 
 SERVER_URL = "https://sales-6g78.onrender.com"
+HEARTBEAT_URL = SERVER_URL + "/api/heartbeat/lancers_local"
+
+
+def send_heartbeat(status="ok", message="", count=None):
+    try:
+        payload = {"status": status, "message": message[:500]}
+        if count is not None:
+            payload["count"] = int(count)
+        httpx.post(HEARTBEAT_URL, json=payload, timeout=10)
+    except Exception:
+        pass
 
 LC_SELECTORS = {
     "job_list_item": ".c-search-result__item, .p-search-job__item, .c-media",
@@ -60,6 +71,9 @@ def parse_job_list(html, known_ids, known_titles):
             budget_text = budget_el.get_text(strip=True) if budget_el else ""
             budget_min, budget_max, budget_type = parse_budget(budget_text)
 
+            if is_low_quality(title, budget_min, budget_max, budget_type):
+                continue
+
             jobs.append({
                 "platform": "lancers",
                 "external_id": external_id,
@@ -96,6 +110,26 @@ def classify_category(title):
     if any(kw in title_lower for kw in ["seo", "\u30de\u30fc\u30b1", "\u5e83\u544a", "\u96c6\u5ba2", "\u30ea\u30b9\u30c6\u30a3\u30f3\u30b0"]):
         return "seo_marketing"
     return "web_development"
+
+
+PREFILTER_OUT_PATTERNS = re.compile(
+    r"(\u30b3\u30d4\u30da|\u7c21\u5358\u30b9\u30de\u30db|\u30b9\u30de\u30db\u4f5c\u696d\u306e\u307f|\u30a2\u30f3\u30b1\u30fc\u30c8\u56de\u7b54|\u30c7\u30fc\u30bf\u5165\u529b|"
+    r"\u672a\u7d4c\u9a13OK|\u4e3b\u5a66\u6b53\u8fce|\u526f\u696d\u6b53\u8fce|\u30bf\u30b9\u30af\u5831\u916c|\u30bf\u30a4\u30d4\u30f3\u30b0|"
+    r"\u52d5\u753b\u8996\u8074|\u30b2\u30fc\u30e0\u914d\u4fe1|\u30e2\u30cb\u30bf\u30fc\u8abf\u67fb|\u5546\u54c1\u30ec\u30d3\u30e5\u30fc|"
+    r"\u30bf\u30c3\u30d7|\u8ee2\u9001|\u7c21\u5358\u4f5c\u696d|"
+    r"\u30a2\u30d5\u30a3\u30ea\u30a8\u30a4\u30c8\u7d39\u4ecb|MLM|\u30cd\u30c3\u30c8\u30ef\u30fc\u30af\u30d3\u30b8\u30cd\u30b9|"
+    r"\u30a2\u30c0\u30eb\u30c8|\u51fa\u4f1a\u3044\u7cfb|\u30c1\u30e3\u30c3\u30c8\u30ec\u30c7\u30a3)"
+)
+
+
+def is_low_quality(title, budget_min, budget_max, budget_type):
+    if PREFILTER_OUT_PATTERNS.search(title):
+        return True
+    if budget_type == "fixed" and budget_max is not None and budget_max < 3000:
+        return True
+    if budget_type == "hourly" and budget_max is not None and budget_max < 800:
+        return True
+    return False
 
 
 async def main():
@@ -143,6 +177,7 @@ async def main():
 
     if not jobs:
         print("\n新規案件なし。終了します。")
+        send_heartbeat(status="ok_no_jobs", message="新規案件なし", count=0)
         return
 
     # 3. サーバーに送信
@@ -156,8 +191,14 @@ async def main():
             resp.raise_for_status()
             result = resp.json()
             print(f"\n  {result['message']}")
+            send_heartbeat(
+                status="ok",
+                message=result.get("message", ""),
+                count=result.get("notified_count") or result.get("new_count") or len(jobs),
+            )
         except Exception as e:
             print(f"  送信エラー: {e}")
+            send_heartbeat(status="error", message=str(e)[:300])
             sys.exit(1)
 
     print("\n完了!")
