@@ -309,6 +309,7 @@ async def import_jobs(request: Request, db: Session = Depends(get_db)):
                         budget_text=budget_text,
                         job_url=listing.url,
                         proposal_text=proposal_text,
+                        job_id=listing.id,
                     )
                 except Exception as gen_err:
                     logger.error(f"提案文生成失敗 (job_id={listing.id}): {gen_err}")
@@ -407,6 +408,61 @@ async def update_settings_api(request: Request, db: Session = Depends(get_db)):
 
 
 # ---------- 応募バックグラウンド処理 ----------
+
+async def _regenerate_with_new_format(job_id: int) -> None:
+    """提案文を再生成 → 新フォーマット（テキスト+ボタンFlex）でLINE再送信"""
+    from app.services import job_matcher, line_service
+
+    db = SessionLocal()
+    try:
+        job = db.query(JobListing).filter(JobListing.id == job_id).first()
+        if not job:
+            return
+
+        try:
+            proposal_text = await job_matcher.generate_proposal(
+                title=job.title,
+                description=job.description or "",
+                budget_min=job.budget_min,
+                budget_max=job.budget_max,
+                platform=job.platform,
+            )
+            application = db.query(JobApplication).filter(JobApplication.job_listing_id == job_id).first()
+            if application:
+                application.proposal_text = proposal_text
+            else:
+                application = JobApplication(
+                    job_listing_id=job_id,
+                    proposal_text=proposal_text,
+                    result_status="pending",
+                )
+                db.add(application)
+            job.status = "review"
+            db.commit()
+
+            budget_text = "未定"
+            if job.budget_min and job.budget_max:
+                if job.budget_min == job.budget_max:
+                    budget_text = f"{job.budget_min:,}円"
+                else:
+                    budget_text = f"{job.budget_min:,}〜{job.budget_max:,}円"
+
+            await line_service.push_job_with_proposal(
+                title=job.title[:80],
+                platform=job.platform,
+                score=job.match_score or 0,
+                reason=job.match_reason or "",
+                budget_text=budget_text,
+                job_url=job.url,
+                proposal_text=proposal_text,
+                job_id=job.id,
+            )
+        except Exception as e:
+            logger.error(f"再生成エラー (job_id={job_id}): {e}")
+            await line_service.push_text_message(f"⚠️ 再生成失敗: {job.title[:40]}\n{str(e)[:100]}")
+    finally:
+        db.close()
+
 
 async def _apply_to_job(job_id: int) -> None:
     """提案文を生成してLINEで確認を求める（送信はユーザー承認後）"""

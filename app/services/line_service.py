@@ -273,8 +273,9 @@ async def push_job_with_proposal(
     budget_text: str,
     job_url: str,
     proposal_text: str,
+    job_id: int | None = None,
 ) -> None:
-    """マッチ案件 + 提案文 + URL を1メッセージで送る（webhook不要・コピペ運用）"""
+    """マッチ案件 + 提案文 + URL を送信。後続でアクションボタンFlexも送る"""
     text = (
         f"🎯 新着案件マッチ (スコア {score})\n\n"
         f"【{platform}】{title}\n"
@@ -287,10 +288,52 @@ async def push_job_with_proposal(
         f"━━━━━━━━━━━━\n"
         f"🔗 応募URL\n{job_url}"
     )
-    # LINEテキストの上限は5000文字。超えたら切り詰め
     if len(text) > 4900:
         text = text[:4900] + "\n...(省略)"
-    await push_text_message(text)
+
+    messages: list[dict] = [{"type": "text", "text": text}]
+    if job_id is not None:
+        messages.append(_action_buttons_flex(job_id, title))
+
+    payload = {"to": settings.LINE_USER_ID, "messages": messages}
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{LINE_API_BASE}/message/push",
+            headers=_headers(),
+            json=payload,
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            logger.error(f"LINE push (proposal+buttons) 失敗: {resp.status_code} {resp.text}")
+
+
+def _action_buttons_flex(job_id: int, title: str) -> dict:
+    """応募完了/再生成/スキップ ボタンのFlexメッセージ"""
+    return {
+        "type": "flex",
+        "altText": "案件アクション",
+        "contents": {
+            "type": "bubble",
+            "size": "kilo",
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "sm",
+                "contents": [
+                    {"type": "text", "text": title[:40], "size": "xs", "color": "#888888", "wrap": True},
+                    {"type": "button", "style": "primary", "color": "#10b981", "height": "sm",
+                     "action": {"type": "postback", "label": "✅ 応募完了", "data": f"action=mark_applied&job_id={job_id}",
+                                "displayText": f"応募完了: {title[:20]}"}},
+                    {"type": "button", "style": "secondary", "height": "sm",
+                     "action": {"type": "postback", "label": "🔄 再生成", "data": f"action=regenerate_v2&job_id={job_id}",
+                                "displayText": f"再生成: {title[:20]}"}},
+                    {"type": "button", "style": "secondary", "height": "sm",
+                     "action": {"type": "postback", "label": "⏭ スキップ", "data": f"action=mark_skipped&job_id={job_id}",
+                                "displayText": f"スキップ: {title[:20]}"}},
+                ],
+            },
+        },
+    }
 
 
 async def push_reply_notification(

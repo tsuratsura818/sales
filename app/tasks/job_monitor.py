@@ -175,6 +175,7 @@ async def _monitor_cycle() -> tuple[int, int, int]:
                             budget_text=budget_text,
                             job_url=listing.url,
                             proposal_text=proposal_text,
+                            job_id=listing.id,
                         )
                     except Exception as gen_err:
                         logger.error(f"提案文生成失敗 (job_id={listing.id}): {gen_err}")

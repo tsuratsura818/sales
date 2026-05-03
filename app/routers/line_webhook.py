@@ -50,6 +50,12 @@ async def line_webhook(request: Request):
                 await _handle_confirm_proposal(job_id, reply_token)
             elif action == "regenerate":
                 await _handle_regenerate(job_id, reply_token)
+            elif action == "mark_applied":
+                await _handle_mark_applied(job_id, reply_token)
+            elif action == "mark_skipped":
+                await _handle_mark_skipped(job_id, reply_token)
+            elif action == "regenerate_v2":
+                await _handle_regenerate_v2(job_id, reply_token)
 
         elif event_type == "message":
             msg = event.get("message", {})
@@ -156,6 +162,81 @@ async def _handle_regenerate(job_id: int, reply_token: str) -> None:
         from app.routers.jobs import _apply_to_job
         asyncio.create_task(_apply_to_job(job_id))
 
+    finally:
+        db.close()
+
+
+async def _handle_mark_applied(job_id: int, reply_token: str) -> None:
+    """「応募完了」ボタン: 手動応募後のマーキング（実送信は伴わない）"""
+    from datetime import datetime
+    db = SessionLocal()
+    try:
+        job = db.query(JobListing).filter(JobListing.id == job_id).first()
+        if not job:
+            await line_service.reply_text(reply_token, "案件が見つかりませんでした。")
+            return
+
+        if job.status == "applied":
+            await line_service.reply_text(reply_token, "この案件は既に応募完了マーク済みです。")
+            return
+
+        job.status = "applied"
+        if not job.notified_at:
+            job.notified_at = datetime.now()
+        # JobApplication 側もマーク
+        from app.models.job_application import JobApplication
+        application = db.query(JobApplication).filter(JobApplication.job_listing_id == job_id).first()
+        if application:
+            application.applied_at = datetime.now()
+            application.result_status = "submitted"
+        db.commit()
+
+        await line_service.reply_text(
+            reply_token,
+            f"✅ 応募完了マークしました\n「{job.title[:30]}」"
+        )
+    finally:
+        db.close()
+
+
+async def _handle_mark_skipped(job_id: int, reply_token: str) -> None:
+    """「スキップ」ボタン（v2）"""
+    db = SessionLocal()
+    try:
+        job = db.query(JobListing).filter(JobListing.id == job_id).first()
+        if not job:
+            await line_service.reply_text(reply_token, "案件が見つかりませんでした。")
+            return
+        job.status = "skipped"
+        db.commit()
+        await line_service.reply_text(
+            reply_token,
+            f"⏭ スキップしました\n「{job.title[:30]}」"
+        )
+    finally:
+        db.close()
+
+
+async def _handle_regenerate_v2(job_id: int, reply_token: str) -> None:
+    """「再生成」ボタン（v2）: review状態で提案文だけ再生成して同じ形式で再送信"""
+    db = SessionLocal()
+    try:
+        job = db.query(JobListing).filter(JobListing.id == job_id).first()
+        if not job:
+            await line_service.reply_text(reply_token, "案件が見つかりませんでした。")
+            return
+
+        if job.status == "applied":
+            await line_service.reply_text(reply_token, "この案件は応募済みです。")
+            return
+
+        await line_service.reply_text(
+            reply_token,
+            f"🔄 提案文を再生成中...\n「{job.title[:30]}」"
+        )
+
+        from app.routers.jobs import _regenerate_with_new_format
+        asyncio.create_task(_regenerate_with_new_format(job_id))
     finally:
         db.close()
 
