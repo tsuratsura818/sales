@@ -237,6 +237,114 @@ async def forecast_data(db: Session = Depends(get_db)):
     return _cached("forecast", get_monthly_forecast, db)
 
 
+# ===== 案件取得アナリティクス =====
+
+def _jobs_funnel_data(db: Session) -> dict:
+    """CW/Lancers別のファネル（直近30日）"""
+    from app.models.job_listing import JobListing
+    cutoff = datetime.now() - timedelta(days=30)
+
+    def _platform_funnel(plat: str) -> dict:
+        base = db.query(JobListing).filter(
+            JobListing.created_at >= cutoff, JobListing.platform == plat
+        )
+        detected = base.count()
+        review = base.filter(JobListing.status == "review").count()
+        applied = base.filter(JobListing.status == "applied").count()
+        skipped = base.filter(JobListing.status == "skipped").count()
+        avg_score_row = base.filter(JobListing.match_score.isnot(None)).with_entities(
+            func.avg(JobListing.match_score)
+        ).scalar()
+        return {
+            "detected": detected,
+            "review": review,
+            "applied": applied,
+            "skipped": skipped,
+            "avg_score": round(float(avg_score_row), 1) if avg_score_row else 0,
+        }
+
+    return {
+        "crowdworks": _platform_funnel("crowdworks"),
+        "lancers": _platform_funnel("lancers"),
+        "hikakubiz": _platform_funnel("hikakubiz"),
+        "period": "直近30日",
+    }
+
+
+def _jobs_trend_data(db: Session) -> dict:
+    """日次検知トレンド（直近30日, プラットフォーム別）"""
+    from app.models.job_listing import JobListing
+    cutoff = datetime.now() - timedelta(days=30)
+
+    rows = db.query(
+        func.date(JobListing.created_at).label("d"),
+        JobListing.platform,
+        func.count(JobListing.id).label("c"),
+    ).filter(
+        JobListing.created_at >= cutoff
+    ).group_by("d", JobListing.platform).all()
+
+    # 日付の系列
+    days = [(datetime.now().date() - timedelta(days=i)) for i in range(29, -1, -1)]
+    labels = [d.strftime("%m/%d") for d in days]
+
+    series = {"crowdworks": [0] * 30, "lancers": [0] * 30, "hikakubiz": [0] * 30}
+    day_index = {d: i for i, d in enumerate(days)}
+    for r in rows:
+        d_str = str(r.d)
+        try:
+            d_obj = datetime.strptime(d_str[:10], "%Y-%m-%d").date()
+        except Exception:
+            continue
+        i = day_index.get(d_obj)
+        if i is None:
+            continue
+        series.setdefault(r.platform, [0] * 30)[i] = r.c
+
+    return {"labels": labels, "series": series}
+
+
+def _jobs_by_category_data(db: Session) -> dict:
+    """カテゴリ別検知数 + 平均スコア（直近30日）"""
+    from app.models.job_listing import JobListing
+    cutoff = datetime.now() - timedelta(days=30)
+
+    rows = db.query(
+        JobListing.category,
+        func.count(JobListing.id).label("c"),
+        func.avg(JobListing.match_score).label("avg_score"),
+        func.count(case((JobListing.status == "review", 1))).label("review"),
+    ).filter(
+        JobListing.created_at >= cutoff,
+        JobListing.category.isnot(None),
+    ).group_by(JobListing.category).order_by(func.count(JobListing.id).desc()).limit(15).all()
+
+    return [
+        {
+            "category": r.category or "(none)",
+            "count": r.c,
+            "avg_score": round(float(r.avg_score), 1) if r.avg_score else 0,
+            "review": r.review or 0,
+        }
+        for r in rows
+    ]
+
+
+@router.get("/jobs-funnel")
+async def jobs_funnel(db: Session = Depends(get_db)):
+    return _cached("jobs_funnel", _jobs_funnel_data, db)
+
+
+@router.get("/jobs-trend")
+async def jobs_trend(db: Session = Depends(get_db)):
+    return _cached("jobs_trend", _jobs_trend_data, db)
+
+
+@router.get("/jobs-by-category")
+async def jobs_by_category(db: Session = Depends(get_db)):
+    return _cached("jobs_by_category", _jobs_by_category_data, db)
+
+
 @router.get("/report")
 async def report_data(period: str = Query("weekly"), db: Session = Depends(get_db)):
     """週次/月次レポート"""

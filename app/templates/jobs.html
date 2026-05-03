@@ -44,6 +44,114 @@
     </div>
 </div>
 
+<!-- 案件取得アナリティクス（直近30日） -->
+<div class="card" id="jobs-analytics" style="margin: 16px 0; padding: 16px;">
+    <h2 style="margin-top:0;">📊 案件取得分析（直近30日）</h2>
+    <div id="funnel-summary" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:16px;">
+        <!-- JS で挿入 -->
+    </div>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:16px;">
+        <div>
+            <h3 style="font-size:0.95rem; margin:8px 0;">📈 日次検知トレンド</h3>
+            <canvas id="trendChart" height="120"></canvas>
+        </div>
+        <div>
+            <h3 style="font-size:0.95rem; margin:8px 0;">🥧 カテゴリ別検知</h3>
+            <canvas id="categoryChart" height="120"></canvas>
+        </div>
+    </div>
+    <div>
+        <h3 style="font-size:0.95rem; margin:8px 0;">📂 カテゴリ別パフォーマンス</h3>
+        <table class="data-table" id="categoryTable">
+            <thead>
+                <tr><th>カテゴリ</th><th>検知</th><th>提案文生成</th><th>平均スコア</th></tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+(function(){
+    function platformLabel(p) {
+        return ({crowdworks:'CW', lancers:'Lancers', hikakubiz:'比較ビズ'})[p] || p;
+    }
+    function makeFunnelCard(name, data) {
+        return `<div class="stat-card stat-leads" style="padding:10px;">
+            <div style="font-size:0.8rem; color:#888;">${name}</div>
+            <div style="display:flex; justify-content:space-between; margin-top:6px;">
+                <span>検知</span><strong>${data.detected}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between;">
+                <span>提案文生成</span><strong>${data.review}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between;">
+                <span>応募完了</span><strong>${data.applied}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; border-top:1px solid #eee; margin-top:4px; padding-top:4px;">
+                <span>平均スコア</span><strong>${data.avg_score}</strong>
+            </div>
+        </div>`;
+    }
+
+    async function load() {
+        try {
+            const [funnel, trend, byCat] = await Promise.all([
+                fetch('/api/dashboard/jobs-funnel').then(r=>r.json()),
+                fetch('/api/dashboard/jobs-trend').then(r=>r.json()),
+                fetch('/api/dashboard/jobs-by-category').then(r=>r.json()),
+            ]);
+
+            // ファネルサマリー
+            const html = ['crowdworks','lancers','hikakubiz']
+                .map(p => makeFunnelCard(platformLabel(p), funnel[p] || {detected:0,review:0,applied:0,skipped:0,avg_score:0}))
+                .join('');
+            document.getElementById('funnel-summary').innerHTML = html;
+
+            // トレンドチャート
+            new Chart(document.getElementById('trendChart'), {
+                type: 'line',
+                data: {
+                    labels: trend.labels,
+                    datasets: [
+                        {label:'CW', data: trend.series.crowdworks||[], borderColor:'#4f46e5', tension:0.2, fill:false},
+                        {label:'Lancers', data: trend.series.lancers||[], borderColor:'#10b981', tension:0.2, fill:false},
+                        {label:'比較ビズ', data: trend.series.hikakubiz||[], borderColor:'#f59e0b', tension:0.2, fill:false},
+                    ],
+                },
+                options: {responsive:true, plugins:{legend:{position:'bottom'}}},
+            });
+
+            // カテゴリチャート
+            new Chart(document.getElementById('categoryChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: byCat.map(r=>r.category),
+                    datasets: [{data: byCat.map(r=>r.count), backgroundColor:['#4f46e5','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#a855f7','#06b6d4']}],
+                },
+                options: {responsive:true, plugins:{legend:{position:'bottom', labels:{boxWidth:12}}}},
+            });
+
+            // カテゴリテーブル
+            const tbody = document.querySelector('#categoryTable tbody');
+            tbody.innerHTML = byCat.map(r=>`<tr>
+                <td>${r.category}</td>
+                <td>${r.count}</td>
+                <td>${r.review}</td>
+                <td>${r.avg_score}</td>
+            </tr>`).join('') || '<tr><td colspan="4" style="text-align:center; color:#999;">データなし</td></tr>';
+        } catch(e) {
+            console.error('jobs analytics load error:', e);
+        }
+    }
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(load, 100);
+    } else {
+        document.addEventListener('DOMContentLoaded', load);
+    }
+})();
+</script>
+
 <!-- フィルター -->
 <div class="card">
     <div class="filter-toggle-group">
