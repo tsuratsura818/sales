@@ -65,6 +65,8 @@ async def line_webhook(request: Request):
             elif action == "set_amount":
                 amount_str = data.get("amount", ["0"])[0]
                 await _handle_set_amount(job_id, reply_token, amount_str)
+            elif action == "open_in_browser":
+                await _handle_open_in_browser(job_id, reply_token)
 
         elif event_type == "message":
             msg = event.get("message", {})
@@ -333,6 +335,31 @@ async def _handle_regenerate_v2(job_id: int, reply_token: str) -> None:
 
         from app.routers.jobs import _regenerate_with_new_format
         asyncio.create_task(_regenerate_with_new_format(job_id))
+    finally:
+        db.close()
+
+
+async def _handle_open_in_browser(job_id: int, reply_token: str) -> None:
+    """「🚀 応募ページを開く」: ローカルapply_helperが拾って Chrome を開く"""
+    db = SessionLocal()
+    try:
+        job = db.query(JobListing).filter(JobListing.id == job_id).first()
+        if not job:
+            await line_service.reply_text(reply_token, "案件が見つかりませんでした。")
+            return
+        if job.status == "applied":
+            await line_service.reply_text(reply_token, "この案件は既に応募完了マーク済みです。")
+            return
+
+        job.status = "open_requested"
+        db.commit()
+
+        await line_service.reply_text(
+            reply_token,
+            f"🚀 応募ページを準備中...\n「{job.title[:30]}」\n\n"
+            f"5秒以内にPCのブラウザが起動します。\n"
+            f"提案文はクリップボードにコピー済 → 応募フォームで Ctrl+V してください。"
+        )
     finally:
         db.close()
 

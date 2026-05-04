@@ -344,6 +344,48 @@ async def import_jobs(request: Request, db: Session = Depends(get_db)):
     }
 
 
+# ---------- 半自動応募キュー（apply_helper.py 用） ----------
+
+@router.post("/api/jobs/{job_id}/request-open")
+async def request_open(job_id: int, db: Session = Depends(get_db)):
+    """ユーザーが「🚀 応募ページを開く」を押した。ローカルapply_helperが拾う"""
+    job = db.query(JobListing).filter(JobListing.id == job_id).first()
+    if not job:
+        raise HTTPException(404, "案件が見つかりません")
+    job.status = "open_requested"
+    db.commit()
+    return {"success": True}
+
+
+@router.get("/api/jobs/open-queue")
+async def get_open_queue(db: Session = Depends(get_db)):
+    """ローカルapply_helperが定期取得するキュー"""
+    jobs = db.query(JobListing).filter(JobListing.status == "open_requested").all()
+    result = []
+    for j in jobs:
+        application = db.query(JobApplication).filter(JobApplication.job_listing_id == j.id).first()
+        result.append({
+            "id": j.id,
+            "platform": j.platform,
+            "title": j.title,
+            "url": j.url,
+            "proposal_text": application.proposal_text if application else "",
+        })
+    return result
+
+
+@router.post("/api/jobs/{job_id}/mark-opened")
+async def mark_opened(job_id: int, db: Session = Depends(get_db)):
+    """apply_helperがブラウザ起動完了を報告"""
+    job = db.query(JobListing).filter(JobListing.id == job_id).first()
+    if not job:
+        raise HTTPException(404, "見つかりません")
+    if job.status == "open_requested":
+        job.status = "opened"
+    db.commit()
+    return {"success": True}
+
+
 # ---------- Heartbeat API（ローカル実行バッチの生存確認） ----------
 
 @router.post("/api/heartbeat/{name}")

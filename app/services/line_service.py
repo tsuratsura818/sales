@@ -321,6 +321,9 @@ def _action_buttons_flex(job_id: int, title: str) -> dict:
                 "spacing": "sm",
                 "contents": [
                     {"type": "text", "text": title[:40], "size": "xs", "color": "#888888", "wrap": True},
+                    {"type": "button", "style": "primary", "color": "#f59e0b", "height": "sm",
+                     "action": {"type": "postback", "label": "🚀 応募ページを開く", "data": f"action=open_in_browser&job_id={job_id}",
+                                "displayText": f"応募ページを開く: {title[:18]}"}},
                     {"type": "button", "style": "primary", "color": "#10b981", "height": "sm",
                      "action": {"type": "postback", "label": "✅ 応募完了", "data": f"action=mark_applied&job_id={job_id}",
                                 "displayText": f"応募完了: {title[:20]}"}},

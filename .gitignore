@@ -21,5 +21,6 @@ debug_apply_*.png
 run_hikakubiz_watcher.bat
 run_lancers_local.bat
 run_hikakubiz_weekly.bat
+run_apply_helper.bat
 logs/
 output/
