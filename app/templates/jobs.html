@@ -44,6 +44,42 @@
     </div>
 </div>
 
+<!-- ROI / ファネル（直近30/90日） -->
+<div class="card" id="roi-card" style="margin: 16px 0; padding: 16px;">
+    <h2 style="margin-top:0;">💰 受注ファネル & ROI</h2>
+    <div id="roi-summary" style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+        <div id="roi-30d"><div class="loading-spinner">読み込み中...</div></div>
+        <div id="roi-90d"><div class="loading-spinner">読み込み中...</div></div>
+    </div>
+</div>
+<script>
+(function(){
+    function renderRoi(elId, label, d) {
+        const won_amt = (d.won_amount_total || 0).toLocaleString();
+        const epv = (d.expected_value_per_apply || 0).toLocaleString();
+        document.getElementById(elId).innerHTML = `
+            <h3 style="font-size:0.95rem; margin:8px 0;">${label}</h3>
+            <table class="data-table" style="font-size:0.85rem;">
+                <tr><td>検知</td><td><strong>${d.detected}</strong>件</td></tr>
+                <tr><td>提案文生成</td><td><strong>${d.review}</strong>件 (${d.review_rate}%)</td></tr>
+                <tr><td>応募完了</td><td><strong>${d.applied}</strong>件</td></tr>
+                <tr><td>返信あり</td><td><strong>${d.replied}</strong>件 (${d.reply_rate}%)</td></tr>
+                <tr><td>受注</td><td><strong style="color:#10b981;">${d.won}</strong>件 (${d.win_rate}%)</td></tr>
+                <tr style="background:#f0fdf4;"><td><strong>受注金額合計</strong></td><td><strong>¥${won_amt}</strong></td></tr>
+                <tr><td>応募1件期待値</td><td>¥${epv}</td></tr>
+            </table>
+        `;
+    }
+    fetch('/api/dashboard/jobs-roi')
+        .then(r=>r.json())
+        .then(d => {
+            renderRoi('roi-30d', '直近30日', d.last_30_days);
+            renderRoi('roi-90d', '直近90日', d.last_90_days);
+        })
+        .catch(e => console.error('roi load error:', e));
+})();
+</script>
+
 <!-- 案件取得アナリティクス（直近30日） -->
 <div class="card" id="jobs-analytics" style="margin: 16px 0; padding: 16px;">
     <h2 style="margin-top:0;">📊 案件取得分析（直近30日）</h2>

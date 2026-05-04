@@ -117,6 +117,10 @@ def _migrate_sqlite():
         ("email_logs", "open_count",                "INTEGER DEFAULT 0"),
         ("email_logs", "clicked_at",                "TIMESTAMP"),
         ("email_logs", "click_count",               "INTEGER DEFAULT 0"),
+        # 案件応募ファネル拡張
+        ("job_applications", "replied_at",          "TIMESTAMP"),
+        ("job_applications", "won_at",              "TIMESTAMP"),
+        ("job_applications", "won_amount",          "INTEGER"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
@@ -160,6 +164,10 @@ def _migrate_postgres():
         ("email_logs", "open_count",   "INTEGER DEFAULT 0"),
         ("email_logs", "clicked_at",   "TIMESTAMP"),
         ("email_logs", "click_count",  "INTEGER DEFAULT 0"),
+        # 案件応募ファネル拡張
+        ("job_applications", "replied_at",  "TIMESTAMP"),
+        ("job_applications", "won_at",      "TIMESTAMP"),
+        ("job_applications", "won_amount",  "INTEGER"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:

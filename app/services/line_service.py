@@ -336,6 +336,79 @@ def _action_buttons_flex(job_id: int, title: str) -> dict:
     }
 
 
+async def push_funnel_buttons(job_id: int, title: str) -> None:
+    """応募完了後の追跡用ボタン（返信あり/受注/見送り）。応募完了時に自動送信"""
+    flex = {
+        "type": "flex",
+        "altText": "案件追跡",
+        "contents": {
+            "type": "bubble",
+            "size": "kilo",
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "sm",
+                "contents": [
+                    {"type": "text", "text": "📈 進捗トラッキング", "size": "sm", "weight": "bold"},
+                    {"type": "text", "text": title[:40], "size": "xs", "color": "#888888", "wrap": True},
+                    {"type": "button", "style": "primary", "color": "#3b82f6", "height": "sm",
+                     "action": {"type": "postback", "label": "💬 返信あり", "data": f"action=mark_replied&job_id={job_id}",
+                                "displayText": f"返信あり: {title[:20]}"}},
+                    {"type": "button", "style": "primary", "color": "#10b981", "height": "sm",
+                     "action": {"type": "postback", "label": "🏆 受注確定", "data": f"action=mark_won&job_id={job_id}",
+                                "displayText": f"受注: {title[:20]}"}},
+                    {"type": "button", "style": "secondary", "height": "sm",
+                     "action": {"type": "postback", "label": "❌ 見送り", "data": f"action=mark_lost&job_id={job_id}",
+                                "displayText": f"見送り: {title[:20]}"}},
+                ],
+            },
+        },
+    }
+    payload = {"to": settings.LINE_USER_ID, "messages": [flex]}
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(f"{LINE_API_BASE}/message/push", headers=_headers(), json=payload, timeout=10)
+        if resp.status_code != 200:
+            logger.error(f"LINE funnel buttons push失敗: {resp.status_code} {resp.text}")
+
+
+async def push_amount_quick_reply(job_id: int, title: str) -> None:
+    """受注金額入力用Quick Reply。受注ボタン押下後に送信"""
+    presets = [50000, 100000, 200000, 300000, 500000, 1000000]
+    items = [
+        {
+            "type": "action",
+            "action": {
+                "type": "postback",
+                "label": f"{a//10000}万円",
+                "data": f"action=set_amount&job_id={job_id}&amount={a}",
+                "displayText": f"受注額: {a//10000}万円",
+            },
+        }
+        for a in presets
+    ]
+    items.append({
+        "type": "action",
+        "action": {
+            "type": "postback",
+            "label": "金額入力なし",
+            "data": f"action=set_amount&job_id={job_id}&amount=0",
+            "displayText": "金額情報なし",
+        },
+    })
+    payload = {
+        "to": settings.LINE_USER_ID,
+        "messages": [{
+            "type": "text",
+            "text": f"🏆 受注おめでとうございます！\n「{title[:40]}」\n受注金額を選択してください:",
+            "quickReply": {"items": items},
+        }],
+    }
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(f"{LINE_API_BASE}/message/push", headers=_headers(), json=payload, timeout=10)
+        if resp.status_code != 200:
+            logger.error(f"LINE amount quick reply 失敗: {resp.status_code} {resp.text}")
+
+
 async def push_reply_notification(
     lead_id: int,
     lead_domain: str,

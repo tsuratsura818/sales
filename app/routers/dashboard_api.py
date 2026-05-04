@@ -345,6 +345,57 @@ async def jobs_by_category(db: Session = Depends(get_db)):
     return _cached("jobs_by_category", _jobs_by_category_data, db)
 
 
+def _jobs_roi_data(db: Session) -> dict:
+    """応募→返信→受注のファネル + ROI（直近30/90日）"""
+    from app.models.job_listing import JobListing
+    from app.models.job_application import JobApplication
+
+    def _period(days: int) -> dict:
+        cutoff = datetime.now() - timedelta(days=days)
+        # JobListingベース
+        detected = db.query(func.count(JobListing.id)).filter(JobListing.created_at >= cutoff).scalar() or 0
+        review = db.query(func.count(JobListing.id)).filter(
+            JobListing.created_at >= cutoff, JobListing.status == "review"
+        ).scalar() or 0
+        applied_count = db.query(func.count(JobApplication.id)).filter(
+            JobApplication.applied_at >= cutoff
+        ).scalar() or 0
+        replied_count = db.query(func.count(JobApplication.id)).filter(
+            JobApplication.replied_at >= cutoff
+        ).scalar() or 0
+        won_count = db.query(func.count(JobApplication.id)).filter(
+            JobApplication.won_at >= cutoff
+        ).scalar() or 0
+        won_amount_total = db.query(func.sum(JobApplication.won_amount)).filter(
+            JobApplication.won_at >= cutoff
+        ).scalar() or 0
+
+        return {
+            "detected": detected,
+            "review": review,
+            "applied": applied_count,
+            "replied": replied_count,
+            "won": won_count,
+            "won_amount_total": int(won_amount_total),
+            # 比率
+            "review_rate": round(review / detected * 100, 1) if detected > 0 else 0,
+            "apply_rate": round(applied_count / review * 100, 1) if review > 0 else 0,
+            "reply_rate": round(replied_count / applied_count * 100, 1) if applied_count > 0 else 0,
+            "win_rate": round(won_count / replied_count * 100, 1) if replied_count > 0 else 0,
+            "expected_value_per_apply": int(won_amount_total / applied_count) if applied_count > 0 else 0,
+        }
+
+    return {
+        "last_30_days": _period(30),
+        "last_90_days": _period(90),
+    }
+
+
+@router.get("/jobs-roi")
+async def jobs_roi(db: Session = Depends(get_db)):
+    return _cached("jobs_roi", _jobs_roi_data, db)
+
+
 @router.get("/report")
 async def report_data(period: str = Query("weekly"), db: Session = Depends(get_db)):
     """週次/月次レポート"""

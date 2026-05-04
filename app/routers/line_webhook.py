@@ -56,6 +56,15 @@ async def line_webhook(request: Request):
                 await _handle_mark_skipped(job_id, reply_token)
             elif action == "regenerate_v2":
                 await _handle_regenerate_v2(job_id, reply_token)
+            elif action == "mark_replied":
+                await _handle_mark_replied(job_id, reply_token)
+            elif action == "mark_won":
+                await _handle_mark_won(job_id, reply_token)
+            elif action == "mark_lost":
+                await _handle_mark_lost(job_id, reply_token)
+            elif action == "set_amount":
+                amount_str = data.get("amount", ["0"])[0]
+                await _handle_set_amount(job_id, reply_token, amount_str)
 
         elif event_type == "message":
             msg = event.get("message", {})
@@ -193,8 +202,95 @@ async def _handle_mark_applied(job_id: int, reply_token: str) -> None:
 
         await line_service.reply_text(
             reply_token,
-            f"✅ 応募完了マークしました\n「{job.title[:30]}」"
+            f"✅ 応募完了マークしました\n「{job.title[:30]}」\n返信が来たら下のボタンで追跡してください。"
         )
+        # 追跡ボタンを送信（返信あり/受注/見送り）
+        await line_service.push_funnel_buttons(job_id, job.title)
+    finally:
+        db.close()
+
+
+async def _handle_mark_replied(job_id: int, reply_token: str) -> None:
+    """「返信あり」ボタン"""
+    from datetime import datetime
+    from app.models.job_application import JobApplication
+    db = SessionLocal()
+    try:
+        job = db.query(JobListing).filter(JobListing.id == job_id).first()
+        application = db.query(JobApplication).filter(JobApplication.job_listing_id == job_id).first()
+        if not application:
+            await line_service.reply_text(reply_token, "応募レコードが見つかりません。")
+            return
+        application.replied_at = datetime.now()
+        application.result_status = "replied"
+        db.commit()
+        title = job.title if job else f"job_id={job_id}"
+        await line_service.reply_text(reply_token, f"💬 返信ありを記録しました\n「{title[:30]}」")
+    finally:
+        db.close()
+
+
+async def _handle_mark_won(job_id: int, reply_token: str) -> None:
+    """「受注」ボタン: マーク + 金額入力Quick Replyを送信"""
+    from datetime import datetime
+    from app.models.job_application import JobApplication
+    db = SessionLocal()
+    try:
+        job = db.query(JobListing).filter(JobListing.id == job_id).first()
+        application = db.query(JobApplication).filter(JobApplication.job_listing_id == job_id).first()
+        if not application:
+            await line_service.reply_text(reply_token, "応募レコードが見つかりません。")
+            return
+        application.won_at = datetime.now()
+        application.result_status = "won"
+        # 受注なら返信もあったはず（未マークなら同時にセット）
+        if not application.replied_at:
+            application.replied_at = datetime.now()
+        db.commit()
+        title = job.title if job else f"job_id={job_id}"
+        await line_service.reply_text(reply_token, f"🏆 受注を記録しました\n「{title[:30]}」")
+        await line_service.push_amount_quick_reply(job_id, title)
+    finally:
+        db.close()
+
+
+async def _handle_mark_lost(job_id: int, reply_token: str) -> None:
+    """「見送り」ボタン"""
+    from app.models.job_application import JobApplication
+    db = SessionLocal()
+    try:
+        job = db.query(JobListing).filter(JobListing.id == job_id).first()
+        application = db.query(JobApplication).filter(JobApplication.job_listing_id == job_id).first()
+        if not application:
+            await line_service.reply_text(reply_token, "応募レコードが見つかりません。")
+            return
+        application.result_status = "lost"
+        db.commit()
+        title = job.title if job else f"job_id={job_id}"
+        await line_service.reply_text(reply_token, f"❌ 見送りを記録しました\n「{title[:30]}」")
+    finally:
+        db.close()
+
+
+async def _handle_set_amount(job_id: int, reply_token: str, amount_str: str) -> None:
+    """受注金額の確定"""
+    from app.models.job_application import JobApplication
+    db = SessionLocal()
+    try:
+        try:
+            amount = int(amount_str)
+        except ValueError:
+            amount = 0
+        application = db.query(JobApplication).filter(JobApplication.job_listing_id == job_id).first()
+        if not application:
+            await line_service.reply_text(reply_token, "応募レコードが見つかりません。")
+            return
+        application.won_amount = amount if amount > 0 else None
+        db.commit()
+        if amount > 0:
+            await line_service.reply_text(reply_token, f"💰 受注金額 {amount:,}円を記録しました")
+        else:
+            await line_service.reply_text(reply_token, "金額情報をスキップしました")
     finally:
         db.close()
 

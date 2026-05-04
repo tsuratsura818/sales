@@ -20,7 +20,12 @@ class JobApplication(Base):
     # 応募追跡
     applied_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     result_status: Mapped[str] = mapped_column(String, default="pending")
-    # pending / submitted / accepted / rejected / withdrawn
+    # pending / submitted / replied / won / lost / withdrawn
+
+    # 返信・受注追跡（ファネル可視化用）
+    replied_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    won_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    won_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 受注金額（円）
 
     # エラー追跡
     error_message: Mapped[str | None] = mapped_column(String, nullable=True)

@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./sales.db"
     MAX_CONCURRENT_ANALYSIS: int = 5
     ANALYSIS_TIMEOUT_SEC: int = 15
-    CLAUDE_MODEL: str = "claude-opus-4-6"
+    # Claudeモデル: Sonnet/Haikuは現状最新版を使用。Opusのみ4.7に更新可能（コスト3倍のため通常未使用）
+    CLAUDE_MODEL: str = "claude-opus-4-7"
     CLAUDE_MODEL_EVAL: str = "claude-haiku-4-5-20251001"
     CLAUDE_MODEL_PROPOSAL: str = "claude-sonnet-4-6"
     OUTLOOK_FROM_ADDRESS: str = ""
