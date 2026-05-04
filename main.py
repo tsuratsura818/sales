@@ -21,7 +21,8 @@ from app.tasks.reply_checker import reply_checker
 from app.tasks.bounce_checker import bounce_checker
 from app.tasks.weekly_report_scheduler import weekly_report_scheduler
 from app.tasks.heartbeat_checker import heartbeat_checker
-from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects, today, memos, mail, goals, pipeline, webhook, tracking
+from app.tasks.health_check_scheduler import health_check_scheduler
+from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects, today, memos, mail, goals, pipeline, webhook, tracking, clients
 
 STATUS_JA = {
     # リードステータス
@@ -73,9 +74,10 @@ async def lifespan(app: FastAPI):
     report_task = asyncio.create_task(weekly_report_scheduler())
     bounce_task = asyncio.create_task(bounce_checker())
     heartbeat_task = asyncio.create_task(heartbeat_checker())
+    health_task = asyncio.create_task(health_check_scheduler())
     yield
     # 終了時
-    all_tasks = [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task, reply_task, report_task, bounce_task, heartbeat_task]
+    all_tasks = [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task, reply_task, report_task, bounce_task, heartbeat_task, health_task]
     for task in all_tasks:
         task.cancel()
     for task in all_tasks:
@@ -115,6 +117,7 @@ app.include_router(mail.router)
 app.include_router(goals.router)
 app.include_router(pipeline.router)
 app.include_router(webhook.router)
+app.include_router(clients.router)
 app.include_router(tracking.router)
 
 

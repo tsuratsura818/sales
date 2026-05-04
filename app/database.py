@@ -50,7 +50,7 @@ def get_db():
 
 
 def init_db():
-    from app.models import lead, search_job, email_log, follow_up, competitor, portfolio, job_listing, job_application, monitor_log, monitor_settings, daily_plan, memo, app_settings, goal, pipeline, inbound, pipeline_keyword, suppression, heartbeat  # noqa: F401
+    from app.models import lead, search_job, email_log, follow_up, competitor, portfolio, job_listing, job_application, monitor_log, monitor_settings, daily_plan, memo, app_settings, goal, pipeline, inbound, pipeline_keyword, suppression, heartbeat, client_site  # noqa: F401
     try:
         Base.metadata.create_all(bind=engine)
         if _is_sqlite:

@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}クライアント健康診断{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
+    <div>
+        <h1>🏥 クライアント健康診断</h1>
+        <p>過去のクライアントサイトを月1回自動チェック。問題検出時はLINE通知。</p>
+    </div>
+    <div style="display:flex; gap:8px;">
+        <button class="btn btn-secondary" onclick="openBulkAdd()">📥 一括追加</button>
+        <button class="btn btn-secondary" onclick="openSingleAdd()">➕ 1件追加</button>
+        <button class="btn btn-primary" onclick="checkAll()">🔍 全件今すぐ検査</button>
+    </div>
+</div>
+
+<div class="stats-row">
+    <div class="stat-card stat-leads"><div class="stat-number">{{ counts.total }}</div><div class="stat-label">総数</div></div>
+    <div class="stat-card stat-active"><div class="stat-number">{{ counts.active }}</div><div class="stat-label">アクティブ</div></div>
+    <div class="stat-card" style="background:#fee2e2;"><div class="stat-number">{{ counts.critical }}</div><div class="stat-label">🔴 Critical</div></div>
+    <div class="stat-card" style="background:#fef3c7;"><div class="stat-number">{{ counts.warning }}</div><div class="stat-label">🟡 Warning</div></div>
+    <div class="stat-card" style="background:#d1fae5;"><div class="stat-number">{{ counts.ok }}</div><div class="stat-label">🟢 OK</div></div>
+</div>
+
+<div class="card">
+    {% if sites %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>ステータス</th>
+                <th>名前</th>
+                <th>URL</th>
+                <th>業種</th>
+                <th>最終検査</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in sites %}
+            <tr>
+                <td>
+                    {% if s.last_status == 'critical' %}🔴
+                    {% elif s.last_status == 'warning' %}🟡
+                    {% elif s.last_status == 'ok' %}🟢
+                    {% else %}⚪{% endif %}
+                </td>
+                <td>{{ s.name }}</td>
+                <td><a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.url }}</a></td>
+                <td>{{ s.industry or '—' }}</td>
+                <td>{{ s.last_checked_at.strftime('%Y/%m/%d') if s.last_checked_at else '未実施' }}</td>
+                <td>
+                    <button class="btn btn-secondary" onclick="checkOne({{ s.id }})">検査</button>
+                    <button class="btn btn-secondary" onclick="showResults({{ s.id }})">履歴</button>
+                    <button class="btn btn-secondary" onclick="deleteOne({{ s.id }}, '{{ s.name|e }}')">削除</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="text-align:center; padding:40px; color:#888;">登録されたクライアントサイトがありません。「一括追加」または「1件追加」から登録してください。</p>
+    {% endif %}
+</div>
+
+<!-- 一括追加モーダル -->
+<div id="bulk-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:white; padding:24px; border-radius:8px; max-width:600px; width:90%;">
+        <h2>📥 クライアントを一括追加</h2>
+        <p style="color:#666; font-size:0.9rem;">1行に1サイト。「名前 | URL」または URLのみ。</p>
+        <textarea id="bulk-text" rows="12" style="width:100%; font-family:monospace; padding:8px;" placeholder="株式会社サンプル | https://sample.com&#10;https://example.com&#10;XX商店 | https://xxshop.jp"></textarea>
+        <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+            <button class="btn btn-secondary" onclick="closeBulkAdd()">キャンセル</button>
+            <button class="btn btn-primary" onclick="submitBulk()">追加</button>
+        </div>
+    </div>
+</div>
+
+<!-- 単件追加モーダル -->
+<div id="single-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:white; padding:24px; border-radius:8px; max-width:500px; width:90%;">
+        <h2>➕ クライアントを追加</h2>
+        <label>名前 <input id="s-name" type="text" style="width:100%;"></label>
+        <label>URL <input id="s-url" type="text" style="width:100%;" placeholder="https://example.com"></label>
+        <label>業種 <input id="s-industry" type="text" style="width:100%;" placeholder="飲食 / 不動産 / 医療 等"></label>
+        <label>連絡先メール <input id="s-email" type="email" style="width:100%;"></label>
+        <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+            <button class="btn btn-secondary" onclick="closeSingleAdd()">キャンセル</button>
+            <button class="btn btn-primary" onclick="submitSingle()">追加</button>
+        </div>
+    </div>
+</div>
+
+<!-- 結果履歴モーダル -->
+<div id="result-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:white; padding:24px; border-radius:8px; max-width:700px; width:90%; max-height:80vh; overflow:auto;">
+        <h2>📋 検査履歴</h2>
+        <div id="result-content"></div>
+        <div style="margin-top:12px; text-align:right;">
+            <button class="btn btn-secondary" onclick="document.getElementById('result-modal').style.display='none'">閉じる</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function openBulkAdd(){ document.getElementById('bulk-modal').style.display='flex'; }
+function closeBulkAdd(){ document.getElementById('bulk-modal').style.display='none'; }
+function openSingleAdd(){ document.getElementById('single-modal').style.display='flex'; }
+function closeSingleAdd(){ document.getElementById('single-modal').style.display='none'; }
+
+async function submitBulk(){
+    const text = document.getElementById('bulk-text').value;
+    if (!text.trim()) return alert('入力してください');
+    const r = await fetch('/api/clients/bulk', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text})});
+    const j = await r.json();
+    alert(`追加: ${j.added}件 / スキップ: ${j.skipped}件`);
+    location.reload();
+}
+async function submitSingle(){
+    const name = document.getElementById('s-name').value.trim();
+    const url = document.getElementById('s-url').value.trim();
+    if (!name || !url) return alert('名前とURL必須');
+    const payload = {
+        name, url,
+        industry: document.getElementById('s-industry').value.trim() || null,
+        contact_email: document.getElementById('s-email').value.trim() || null,
+    };
+    const r = await fetch('/api/clients', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    if (!r.ok) { alert('エラー: ' + (await r.text())); return; }
+    location.reload();
+}
+async function checkOne(cid){
+    if (!confirm('このサイトを今すぐ検査しますか？(20-40秒かかります)')) return;
+    const r = await fetch(`/api/clients/${cid}/check`, {method:'POST'});
+    const j = await r.json();
+    alert(`検査完了: ${j.status}\n問題: ${(j.issues||[]).map(i=>i.msg).join('\n') || 'なし'}`);
+    location.reload();
+}
+async function checkAll(){
+    if (!confirm('全アクティブサイトを今すぐ検査しますか？(数分〜数十分かかります)\n結果はLINE通知されます。')) return;
+    await fetch('/api/clients/check-all', {method:'POST'});
+    alert('バックグラウンドで実行中。完了次第LINE通知が届きます。');
+}
+async function deleteOne(cid, name){
+    if (!confirm(`${name} を削除しますか？`)) return;
+    await fetch(`/api/clients/${cid}`, {method:'DELETE'});
+    location.reload();
+}
+async function showResults(cid){
+    const r = await fetch(`/api/clients/${cid}/results`);
+    const rows = await r.json();
+    const html = rows.length === 0 ? '<p>履歴なし</p>' : rows.map(row => `
+        <div style="border:1px solid #eee; padding:12px; margin-bottom:8px; border-radius:6px;">
+            <strong>${row.checked_at?.slice(0,16) || ''}</strong> — ステータス: ${row.status}
+            <br>SSL残: ${row.ssl_days_left || '-'}日 / PageSpeed: モバイル${row.pagespeed_mobile || '-'} / デスクトップ${row.pagespeed_desktop || '-'}
+            <br>CMS: ${row.cms || '-'} ${row.cms_version || ''}
+            ${row.issues?.length ? '<ul>' + row.issues.map(i=>`<li>${i.level}: ${i.msg}</li>`).join('') + '</ul>' : ''}
+        </div>
+    `).join('');
+    document.getElementById('result-content').innerHTML = html;
+    document.getElementById('result-modal').style.display = 'flex';
+}
+</script>
+{% endblock %}
