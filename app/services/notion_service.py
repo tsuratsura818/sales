@@ -12,7 +12,7 @@ NOTION_VERSION = "2022-06-28"
 PROJECT_STATUSES = ["見込み", "提案中", "商談中", "受注", "進行中", "完了", "失注"]
 CONTRACT_TYPES = ["単発", "継続"]
 BILLING_CYCLES = ["月次", "四半期", "年次"]
-TASK_STATUSES = ["未着手", "進行中", "完了"]
+TASK_STATUSES = ["未着手", "進行中", "確認中", "完了"]
 TASK_PRIORITIES = ["高", "中", "低"]
 
 

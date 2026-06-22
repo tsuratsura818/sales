@@ -807,6 +807,7 @@ async function loadTasks(projectId) {
                     <select class="task-status-select" onchange="updateTaskStatus('${t.id}', this.value)">
                         <option value="未着手" ${t.status === '未着手' ? 'selected' : ''}>未着手</option>
                         <option value="進行中" ${t.status === '進行中' ? 'selected' : ''}>進行中</option>
+                        <option value="確認中" ${t.status === '確認中' ? 'selected' : ''}>確認中</option>
                         <option value="完了" ${t.status === '完了' ? 'selected' : ''}>完了</option>
                     </select>
                     ${t.recurring ? '<span class="badge badge-recurring" title="繰り返しタスク">🔄</span>' : ''}
