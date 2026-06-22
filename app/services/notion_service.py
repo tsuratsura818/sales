@@ -1,6 +1,7 @@
 """Notion API クライアント - 案件管理・タスク管理"""
 
 from typing import Optional
+from datetime import datetime, timedelta, timezone
 import httpx
 from app.config import get_settings
 
@@ -429,6 +430,45 @@ async def generate_monthly_tasks(project_id: str, year_month: str) -> list[dict]
             priority=tmpl.get("priority", "中"),
             memo=tmpl.get("memo", ""),
             target_month=year_month,
+        )
+        created.append(task)
+
+    return created
+
+
+# ========== 受注時のオンボーディングタスク自動生成 ==========
+
+# 受注した案件に自動作成する定型タスク（相対期日: 受注日からの日数）
+ONBOARDING_TASK_TEMPLATES: list[dict] = [
+    {"name": "キックオフMTG設定", "priority": "高", "offset_days": 2},
+    {"name": "ヒアリング・要件整理", "priority": "高", "offset_days": 5},
+    {"name": "初稿・たたき台の提出", "priority": "中", "offset_days": 14},
+    {"name": "中間確認・フィードバック反映", "priority": "中", "offset_days": 21},
+    {"name": "最終確認・納品", "priority": "高", "offset_days": 30},
+    {"name": "請求書発行", "priority": "中", "offset_days": 30},
+]
+
+
+async def generate_onboarding_tasks(project_id: str) -> list[dict]:
+    """受注した案件に定型タスクを生成する。
+
+    既にタスクがある案件には作らない（重複・再生成防止）。
+    期日は本日（受注日）からの相対日数で設定する。
+    """
+    existing = await list_tasks(project_id=project_id)
+    if existing:
+        return []
+
+    base = datetime.now(timezone(timedelta(hours=9)))  # JST基準
+    created: list[dict] = []
+    for tmpl in ONBOARDING_TASK_TEMPLATES:
+        due = (base + timedelta(days=tmpl["offset_days"])).strftime("%Y-%m-%d")
+        task = await create_task(
+            name=tmpl["name"],
+            project_id=project_id,
+            status="未着手",
+            priority=tmpl["priority"],
+            due_date=due,
         )
         created.append(task)
 

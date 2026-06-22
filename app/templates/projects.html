@@ -598,6 +598,10 @@ async function handleDrop(e, newStatus) {
             body: JSON.stringify({status: newStatus}),
         });
         if (resp.ok) {
+            const data = await resp.json();
+            if (data.generated_task_count > 0) {
+                alert(`🎉 受注おめでとうございます！\n定型タスク ${data.generated_task_count}件 を自動作成しました（タスク一覧で確認できます）`);
+            }
             location.reload();
         } else {
             const data = await resp.json();
@@ -750,6 +754,10 @@ async function saveProject() {
             body: JSON.stringify(filtered),
         });
         if (resp.ok) {
+            const data = await resp.json();
+            if (data.generated_task_count > 0) {
+                alert(`🎉 受注おめでとうございます！\n定型タスク ${data.generated_task_count}件 を自動作成しました（タスク一覧で確認できます）`);
+            }
             location.reload();
         } else {
             const data = await resp.json();

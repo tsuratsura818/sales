@@ -121,6 +121,9 @@ def _migrate_sqlite():
         ("job_applications", "replied_at",          "TIMESTAMP"),
         ("job_applications", "won_at",              "TIMESTAMP"),
         ("job_applications", "won_amount",          "INTEGER"),
+        # タスク期限リマインド
+        ("app_settings", "task_reminder_enabled",   "BOOLEAN DEFAULT 0"),
+        ("app_settings", "task_reminder_hour_jst",  "INTEGER DEFAULT 8"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
@@ -168,6 +171,9 @@ def _migrate_postgres():
         ("job_applications", "replied_at",  "TIMESTAMP"),
         ("job_applications", "won_at",      "TIMESTAMP"),
         ("job_applications", "won_amount",  "INTEGER"),
+        # タスク期限リマインド
+        ("app_settings", "task_reminder_enabled",  "BOOLEAN DEFAULT FALSE"),
+        ("app_settings", "task_reminder_hour_jst", "INTEGER DEFAULT 8"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:

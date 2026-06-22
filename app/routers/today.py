@@ -49,6 +49,23 @@ async def today_page(request: Request):
         except Exception:
             pass
 
+    # 今日やるべきNotionタスク（当日期日 + 期限切れ、完了は除く）
+    today_tasks: list[dict] = []
+    if notion_status.get("ok"):
+        try:
+            all_tasks = await notion_service.list_tasks()
+            for t in all_tasks:
+                due = t.get("due_date")
+                if not due or t.get("status") == "完了":
+                    continue
+                if due <= today_str:
+                    t = {**t, "overdue": due < today_str}
+                    today_tasks.append(t)
+            # 期限切れを先に、その中で期日昇順
+            today_tasks.sort(key=lambda x: (not x["overdue"], x.get("due_date") or ""))
+        except Exception:
+            today_tasks = []
+
     db = SessionLocal()
     try:
         existing_plan = (
@@ -69,6 +86,8 @@ async def today_page(request: Request):
         app_cfg = _get_app_settings(db)
         daily_plan_enabled = app_cfg.daily_plan_enabled
         daily_plan_hour = app_cfg.daily_plan_hour_jst
+        task_reminder_enabled = getattr(app_cfg, "task_reminder_enabled", False)
+        task_reminder_hour = getattr(app_cfg, "task_reminder_hour_jst", 8)
 
     finally:
         db.close()
@@ -84,7 +103,10 @@ async def today_page(request: Request):
         "generated_at": generated_at,
         "daily_plan_enabled": daily_plan_enabled,
         "daily_plan_hour": daily_plan_hour,
+        "task_reminder_enabled": task_reminder_enabled,
+        "task_reminder_hour": task_reminder_hour,
         "cal_events": cal_events,
+        "today_tasks": today_tasks,
     })
 
 
@@ -234,9 +256,24 @@ async def api_get_settings():
         return {
             "daily_plan_enabled": cfg.daily_plan_enabled,
             "daily_plan_hour": cfg.daily_plan_hour_jst,
+            "task_reminder_enabled": getattr(cfg, "task_reminder_enabled", False),
+            "task_reminder_hour": getattr(cfg, "task_reminder_hour_jst", 8),
         }
     finally:
         db.close()
+
+
+@router.post("/api/today/send-task-reminder")
+async def api_send_task_reminder():
+    """タスク期限リマインドを今すぐLINE送信（テスト用）"""
+    from app.tasks.task_reminder_scheduler import send_task_reminder
+    try:
+        sent = await send_task_reminder()
+        if sent:
+            return {"success": True}
+        return {"success": False, "error": "対象のタスク（今日が期日/期限切れ）がありません"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 @router.patch("/api/today/settings")
@@ -252,11 +289,19 @@ async def api_update_settings(request: Request):
             hour = int(body["daily_plan_hour"])
             if 0 <= hour <= 23:
                 cfg.daily_plan_hour_jst = hour
+        if "task_reminder_enabled" in body:
+            cfg.task_reminder_enabled = bool(body["task_reminder_enabled"])
+        if "task_reminder_hour" in body:
+            hour = int(body["task_reminder_hour"])
+            if 0 <= hour <= 23:
+                cfg.task_reminder_hour_jst = hour
         db.commit()
         return {
             "success": True,
             "daily_plan_enabled": cfg.daily_plan_enabled,
             "daily_plan_hour": cfg.daily_plan_hour_jst,
+            "task_reminder_enabled": cfg.task_reminder_enabled,
+            "task_reminder_hour": cfg.task_reminder_hour_jst,
         }
     finally:
         db.close()

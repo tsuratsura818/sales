@@ -43,6 +43,31 @@
             </select>
         </div>
     </div>
+    <hr style="border:none; border-top:1px solid #eee; margin:14px 0;">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+            <span style="font-weight:600; font-size:0.9rem;">✅ タスク期限リマインド(LINE)</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="taskReminderToggle"
+                       {% if task_reminder_enabled %}checked{% endif %}
+                       onchange="toggleTaskReminder(this.checked)">
+                <span class="toggle-slider"></span>
+            </label>
+            <span id="taskReminderStatus" style="font-size:0.85rem; color:{% if task_reminder_enabled %}#2e7d32{% else %}#999{% endif %};">
+                {{ 'ON' if task_reminder_enabled else 'OFF' }}
+            </span>
+            <button onclick="sendTaskReminderNow()" class="btn btn-secondary" style="font-size:0.78rem; padding:3px 10px;">今すぐ送信テスト</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <label style="font-size:0.85rem; color:#666;">送信時刻:</label>
+            <select id="taskReminderHour" onchange="updateTaskReminderHour(this.value)"
+                    style="padding:4px 8px; border:1px solid #ddd; border-radius:6px; font-size:0.85rem;">
+                {% for h in range(5, 13) %}
+                <option value="{{ h }}" {% if task_reminder_hour == h %}selected{% endif %}>{{ h }}:00</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
 </div>
 
 <style>
@@ -115,6 +140,37 @@
     </div>
     {% else %}
     <p style="color:#999; margin:0; text-align:center; padding:12px;">今日の予定はありません</p>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- 今日のタスク（Notion） -->
+{% if notion_connected %}
+<div class="card" style="margin-bottom:16px;">
+    <h3 style="margin-top:0; display:flex; align-items:center; gap:8px; justify-content:space-between;">
+        <span style="display:flex; align-items:center; gap:8px;">
+            ✅ 今日のタスク
+            <span style="font-size:0.75rem; font-weight:400; color:#888;">期日が今日まで / 期限切れ</span>
+        </span>
+        <a href="/tasks" style="font-size:0.8rem; font-weight:400;">タスク一覧 →</a>
+    </h3>
+    {% if today_tasks %}
+    <div style="display:flex; flex-direction:column; gap:6px;">
+        {% for t in today_tasks %}
+        <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:8px;
+            {% if t.overdue %}background:#fdecea; border-left:3px solid #e74c3c;
+            {% else %}background:#fff8e1; border-left:3px solid #f39c12;{% endif %}">
+            <span style="min-width:78px; font-weight:600; font-size:0.8rem; white-space:nowrap;
+                {% if t.overdue %}color:#e74c3c;{% else %}color:#b8860b;{% endif %}">
+                {% if t.overdue %}⚠ {{ t.due_date }}{% else %}📅 今日{% endif %}
+            </span>
+            {% if t.priority %}<span class="task-priority task-priority-{{ t.priority }}">{{ t.priority }}</span>{% endif %}
+            <span style="flex:1; min-width:0; font-size:0.9rem;">{{ '🔄 ' if t.recurring else '' }}{{ t.name or '（無題）' }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="color:#999; margin:0; text-align:center; padding:12px;">対応が必要なタスクはありません 🎉</p>
     {% endif %}
 </div>
 {% endif %}
@@ -262,6 +318,51 @@ async function updateDailyPlanHour(hour) {
         });
     } catch (e) {
         alert('設定の更新に失敗しました');
+    }
+}
+
+async function toggleTaskReminder(enabled) {
+    const status = document.getElementById('taskReminderStatus');
+    try {
+        const resp = await fetch('/api/today/settings', {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({task_reminder_enabled: enabled}),
+        });
+        const data = await resp.json();
+        if (data.success) {
+            status.textContent = data.task_reminder_enabled ? 'ON' : 'OFF';
+            status.style.color = data.task_reminder_enabled ? '#2e7d32' : '#999';
+        }
+    } catch (e) {
+        document.getElementById('taskReminderToggle').checked = !enabled;
+        alert('設定の更新に失敗しました');
+    }
+}
+
+async function updateTaskReminderHour(hour) {
+    try {
+        await fetch('/api/today/settings', {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({task_reminder_hour: parseInt(hour)}),
+        });
+    } catch (e) {
+        alert('設定の更新に失敗しました');
+    }
+}
+
+async function sendTaskReminderNow() {
+    try {
+        const resp = await fetch('/api/today/send-task-reminder', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            alert('タスクリマインドをLINEに送信しました！');
+        } else {
+            alert(data.error || '送信に失敗しました');
+        }
+    } catch (e) {
+        alert('エラー: ' + e.message);
     }
 }
 </script>

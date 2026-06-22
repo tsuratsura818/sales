@@ -92,6 +92,50 @@
     <div id="taskList"></div>
 </div>
 
+<!-- タスク編集モーダル -->
+<div id="taskEditModal" class="task-modal-overlay" style="display:none;">
+    <div class="task-modal">
+        <h3 style="margin-top:0;">✏️ タスクを編集</h3>
+        <label class="task-modal-label">タスク名</label>
+        <input type="text" id="teName" class="task-modal-input">
+        <label class="task-modal-label">案件</label>
+        <select id="teProject" class="task-modal-input">
+            <option value="">案件なし</option>
+            {% for p in projects %}
+            <option value="{{ p.id }}">{{ p.name or '（無題）' }}</option>
+            {% endfor %}
+        </select>
+        <div style="display:flex; gap:10px;">
+            <div style="flex:1;">
+                <label class="task-modal-label">ステータス</label>
+                <select id="teStatus" class="task-modal-input">
+                    {% for s in statuses %}
+                    <option value="{{ s }}">{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="flex:1;">
+                <label class="task-modal-label">優先度</label>
+                <select id="tePriority" class="task-modal-input">
+                    {% for pr in priorities %}
+                    <option value="{{ pr }}">{{ pr }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="flex:1;">
+                <label class="task-modal-label">期日</label>
+                <input type="date" id="teDue" class="task-modal-input">
+            </div>
+        </div>
+        <label class="task-modal-label">メモ</label>
+        <textarea id="teMemo" class="task-modal-input" rows="3" style="resize:vertical;"></textarea>
+        <div class="task-modal-actions">
+            <button class="btn btn-secondary" onclick="closeTaskEdit()">キャンセル</button>
+            <button class="btn" id="teSubmit" onclick="saveTaskEdit()">保存</button>
+        </div>
+    </div>
+</div>
+
 <!-- 新規案件モーダル -->
 <div id="projectModal" class="task-modal-overlay" style="display:none;">
     <div class="task-modal">
@@ -173,8 +217,9 @@
 .tcard-name.task-done { text-decoration:line-through; color:#999; }
 .tcard-meta { display:flex; gap:8px; flex-wrap:wrap; font-size:11px; color:#888; margin-top:6px; align-items:center; }
 .tcard-project { color:#4a90d9; }
-.tcard-del { background:none; border:none; cursor:pointer; opacity:.5; font-size:13px; padding:0 2px; }
-.tcard-del:hover { opacity:1; }
+.tcard-del, .tcard-edit { background:none; border:none; cursor:pointer; opacity:.5; font-size:13px; padding:0 2px; }
+.tcard-del:hover, .tcard-edit:hover { opacity:1; }
+#taskBoard .tcard-name { cursor:pointer; }
 .kanban-card-empty { padding:16px; text-align:center; color:#bbb; font-size:12px; }
 </style>
 <script>
@@ -286,7 +331,7 @@ function renderList() {
             </select>
             ${t.priority ? `<span class="task-priority task-priority-${t.priority}">${t.priority}</span>` : ''}
             <div class="task-row-main">
-                <div class="task-row-name ${t.status === '完了' ? 'task-done' : ''}">
+                <div class="task-row-name ${t.status === '完了' ? 'task-done' : ''}" onclick="openTaskEdit('${t.id}')" title="クリックで編集" style="cursor:pointer;">
                     ${t.recurring ? '🔄 ' : ''}${escapeHtml(t.name || '（無題）')}
                 </div>
                 <div class="task-row-sub">
@@ -295,6 +340,7 @@ function renderList() {
                     ${t.target_month ? `<span style="color:#8e44ad;">対象 ${t.target_month}</span>` : ''}
                 </div>
             </div>
+            <button class="btn-icon" onclick="openTaskEdit('${t.id}')" title="編集">✏️</button>
             <button class="btn-icon" onclick="deleteTask('${t.id}')" title="削除">🗑</button>
         </div>`;
     }).join('');
@@ -304,6 +350,69 @@ function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => (
         {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
     ));
+}
+
+// ===== タスク編集 =====
+let editingTaskId = null;
+
+function openTaskEdit(id) {
+    const t = allTasks.find(x => x.id === id);
+    if (!t) return;
+    editingTaskId = id;
+    document.getElementById('teName').value = t.name || '';
+    document.getElementById('teProject').value = (t.project_ids && t.project_ids[0]) || '';
+    document.getElementById('teStatus').value = t.status || '未着手';
+    document.getElementById('tePriority').value = t.priority || '中';
+    document.getElementById('teDue').value = t.due_date || '';
+    document.getElementById('teMemo').value = t.memo || '';
+    document.getElementById('taskEditModal').style.display = 'flex';
+    document.getElementById('teName').focus();
+}
+
+function closeTaskEdit() {
+    document.getElementById('taskEditModal').style.display = 'none';
+    editingTaskId = null;
+}
+
+async function saveTaskEdit() {
+    if (!editingTaskId) return;
+    const t = allTasks.find(x => x.id === editingTaskId);
+    if (!t) return;
+    const name = document.getElementById('teName').value.trim();
+    if (!name) { document.getElementById('teName').focus(); return; }
+
+    const newProject = document.getElementById('teProject').value;
+    const payload = {
+        name,
+        status: document.getElementById('teStatus').value,
+        priority: document.getElementById('tePriority').value,
+        due_date: document.getElementById('teDue').value || null,
+        memo: document.getElementById('teMemo').value,
+        project_id: newProject || null,
+    };
+    const btn = document.getElementById('teSubmit');
+    btn.disabled = true; btn.textContent = '保存中…';
+    try {
+        const resp = await fetch(`/api/tasks/${editingTaskId}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+        if (!resp.ok) throw new Error();
+        // ローカル更新
+        t.name = payload.name;
+        t.status = payload.status;
+        t.priority = payload.priority;
+        t.due_date = payload.due_date || null;
+        t.memo = payload.memo;
+        t.project_ids = newProject ? [newProject] : [];
+        closeTaskEdit();
+        render();
+    } catch (err) {
+        alert('保存に失敗しました');
+    } finally {
+        btn.disabled = false; btn.textContent = '保存';
+    }
 }
 
 // ===== ボード（カンバン） =====
@@ -321,8 +430,9 @@ function taskCardHtml(t) {
          ondragstart="handleTaskDragStart(event, '${t.id}')"
          ondragend="handleTaskDragEnd(event)">
         <div class="tcard-top">
-            <span class="tcard-name ${t.status === '完了' ? 'task-done' : ''}">${t.recurring ? '🔄 ' : ''}${escapeHtml(t.name || '（無題）')}</span>
+            <span class="tcard-name ${t.status === '完了' ? 'task-done' : ''}" onclick="openTaskEdit('${t.id}')" title="クリックで編集">${t.recurring ? '🔄 ' : ''}${escapeHtml(t.name || '（無題）')}</span>
             ${t.priority ? `<span class="task-priority task-priority-${t.priority}">${t.priority}</span>` : ''}
+            <button class="tcard-edit" onclick="openTaskEdit('${t.id}')" title="編集">✏️</button>
             <button class="tcard-del" onclick="deleteTask('${t.id}')" title="削除">🗑</button>
         </div>
         <div class="tcard-meta">
@@ -488,8 +598,11 @@ async function createProject() {
 document.getElementById('projectModal').addEventListener('click', e => {
     if (e.target.id === 'projectModal') closeProjectModal();
 });
+document.getElementById('taskEditModal').addEventListener('click', e => {
+    if (e.target.id === 'taskEditModal') closeTaskEdit();
+});
 document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeProjectModal();
+    if (e.key === 'Escape') { closeProjectModal(); closeTaskEdit(); }
 });
 
 async function addTask() {

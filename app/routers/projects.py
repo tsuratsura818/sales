@@ -151,7 +151,19 @@ async def api_update_project(project_id: str, data: ProjectUpdate):
         raise HTTPException(status_code=400, detail="更新内容がありません")
     try:
         project = await notion_service.update_project(project_id, updates)
-        return {"success": True, "project": project}
+        generated_tasks: list[dict] = []
+        # ステータスが「受注」になったら定型タスクを自動生成（既存タスクが無い場合のみ）
+        if updates.get("status") == "受注":
+            try:
+                generated_tasks = await notion_service.generate_onboarding_tasks(project_id)
+            except Exception:
+                generated_tasks = []
+        return {
+            "success": True,
+            "project": project,
+            "generated_tasks": generated_tasks,
+            "generated_task_count": len(generated_tasks),
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

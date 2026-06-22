@@ -16,6 +16,10 @@ class AppSettings(Base):
     daily_plan_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     daily_plan_hour_jst: Mapped[int] = mapped_column(Integer, default=8)
 
+    # タスク期限リマインド（Notionタスクの当日期日/期限切れをLINE通知）
+    task_reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    task_reminder_hour_jst: Mapped[int] = mapped_column(Integer, default=8)
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now()
     )
