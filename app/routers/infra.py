@@ -23,8 +23,21 @@ _DASHBOARD_PATH = _BASE_DIR / "app" / "templates" / "infra_dashboard.html"
 _CREDS_FILE = _BASE_DIR / "infra_credentials.json"
 
 
+def _auth_enabled() -> bool:
+    """Basic 認証が実際に有効か（未設定なら全公開のため機微情報は出さない）。"""
+    return bool(os.environ.get("BASIC_AUTH_USER") and os.environ.get("BASIC_AUTH_PASS"))
+
+
 def _load_credentials() -> list:
-    """機微情報を環境変数 → ローカルファイルの順で読み込む。"""
+    """機微情報を環境変数 → ローカルファイルの順で読み込む。
+
+    Basic 認証が無効（＝アプリが全公開）の場合は、機微情報を一切返さない。
+    本番でクレデンシャルを出すには BASIC_AUTH_USER/PASS の設定が前提。
+    """
+    # 本番(Render)で認証が無いなら絶対に出さない
+    if os.environ.get("RENDER") and not _auth_enabled():
+        return []
+
     raw = os.environ.get("INFRA_CREDENTIALS_JSON", "").strip()
     if raw:
         try:
