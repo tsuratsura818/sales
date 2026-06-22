@@ -103,8 +103,7 @@
         {% if p.status == '見込み' %}{% set ns.prospect = ns.prospect + 1 %}
         {% elif p.status == '提案中' %}{% set ns.proposal = ns.proposal + 1 %}
         {% elif p.status == '商談中' %}{% set ns.meeting = ns.meeting + 1 %}
-        {% elif p.status == '受注' %}{% set ns.won = ns.won + 1 %}
-        {% elif p.status == '進行中' %}{% set ns.active = ns.active + 1 %}
+        {% elif p.status == '案件化' %}{% set ns.active = ns.active + 1 %}
         {% elif p.status == '完了' %}{% set ns.done = ns.done + 1 %}
         {% elif p.status == '失注' %}{% set ns.lost = ns.lost + 1 %}
         {% endif %}
@@ -123,8 +122,8 @@
         <div class="stat-label">商談パイプライン</div>
     </div>
     <div class="stat-card stat-meeting">
-        <div class="stat-number">{{ ns.won + ns.active }}</div>
-        <div class="stat-label">受注・進行中</div>
+        <div class="stat-number">{{ ns.active }}</div>
+        <div class="stat-label">案件化</div>
     </div>
     <div class="stat-card" style="border-top-color:#8e44ad;">
         <div class="stat-number">{{ "{:,}".format(ns.retainer_amount) }}</div>
@@ -634,7 +633,7 @@ async function handleDrop(e, newStatus) {
         if (resp.ok) {
             const data = await resp.json();
             if (data.generated_task_count > 0) {
-                alert(`🎉 受注おめでとうございます！\n定型タスク ${data.generated_task_count}件 を自動作成しました（タスク一覧で確認できます）`);
+                alert(`🎯 案件化しました！\n定型タスク ${data.generated_task_count}件 を自動作成しました（タスク一覧で確認できます）`);
             }
             location.reload();
         } else {
@@ -790,7 +789,7 @@ async function saveProject() {
         if (resp.ok) {
             const data = await resp.json();
             if (data.generated_task_count > 0) {
-                alert(`🎉 受注おめでとうございます！\n定型タスク ${data.generated_task_count}件 を自動作成しました（タスク一覧で確認できます）`);
+                alert(`🎯 案件化しました！\n定型タスク ${data.generated_task_count}件 を自動作成しました（タスク一覧で確認できます）`);
             }
             location.reload();
         } else {
@@ -1007,7 +1006,7 @@ function parseBulkInput() {
     const text = document.getElementById('bulkInput').value.trim();
     if (!text) return [];
 
-    const statusList = ['見込み', '提案中', '商談中', '受注', '進行中', '完了', '失注'];
+    const statusList = ['見込み', '提案中', '商談中', '案件化', '完了', '失注'];
     const contractList = ['単発', '継続'];
     const cycleList = ['月次', '四半期', '年次'];
 

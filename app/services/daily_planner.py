@@ -73,7 +73,7 @@ async def gather_context() -> dict:
             all_projects = await notion_service.list_projects()
             projects = [
                 p for p in all_projects
-                if p.get("status") in ("進行中", "受注", "商談中", "提案中")
+                if p.get("status") in ("案件化", "商談中", "提案中")
             ]
             tasks_todo = await notion_service.list_tasks(status="未着手")
             tasks_wip = await notion_service.list_tasks(status="進行中")
@@ -142,7 +142,7 @@ async def generate_daily_plan(context: dict | None = None) -> dict:
         parts.append("")
 
     if context["projects"]:
-        parts.append("## 進行中の案件")
+        parts.append("## 案件化・商談中の案件")
         for p in context["projects"]:
             amount = f" ({p['amount']:,}円)" if p.get("amount") else ""
             deadline = f" 期限:{p['end_date']}" if p.get("end_date") else ""

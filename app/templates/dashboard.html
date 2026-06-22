@@ -510,8 +510,8 @@ async function loadProjectTaskSummary() {
         const tasks = (await tRes.json()).tasks || [];
         const monthly = mRes.ok ? await mRes.json() : {};
 
-        // 進行中案件（受注 or 進行中）
-        const active = projects.filter(p => ['受注','進行中'].includes(p.status)).length;
+        // 案件化された案件
+        const active = projects.filter(p => p.status === '案件化').length;
         // 見込み案件（見込み/提案中/商談中）
         const pipeline = projects.filter(p => ['見込み','提案中','商談中'].includes(p.status)).length;
 
@@ -534,7 +534,7 @@ async function loadProjectTaskSummary() {
         const retainer = monthly.retainer_revenue || 0;
 
         el.innerHTML = `
-            <div class="pt-stat"><div class="pt-num">${active}</div><div class="pt-lbl">進行中案件</div></div>
+            <div class="pt-stat"><div class="pt-num">${active}</div><div class="pt-lbl">案件化</div></div>
             <div class="pt-stat"><div class="pt-num">${pipeline}</div><div class="pt-lbl">商談中・見込み</div></div>
             <div class="pt-stat"><div class="pt-num">${openTasks}</div><div class="pt-lbl">未完了タスク</div></div>
             <div class="pt-stat"><div class="pt-num" style="color:#f39c12;">${dueThisWeek}</div><div class="pt-lbl">今週締切</div></div>
