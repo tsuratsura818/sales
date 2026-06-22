@@ -58,6 +58,8 @@
 
 <!-- フィルタ -->
 <div class="card task-filter-bar">
+    <input type="text" id="keywordFilter" class="task-add-input" style="flex:0 1 220px; min-width:160px;"
+           placeholder="🔍 タスク名・案件・メモを検索" oninput="render()">
     <div class="report-toggle" id="statusFilter" data-list-only>
         <button class="active" data-status="">全て</button>
         {% for s in statuses %}
@@ -295,6 +297,7 @@ function getFilters() {
         sort: document.getElementById('sortFilter').value,
         overdueOnly: document.getElementById('overdueOnly').checked,
         hideDone: document.getElementById('hideDone').checked,
+        keyword: (document.getElementById('keywordFilter').value || '').trim().toLowerCase(),
     };
 }
 
@@ -313,13 +316,23 @@ function sortTasks(tasks, sort) {
     });
 }
 
-// 案件・期限切れの共通フィルタ（ステータス絞り込みは含めない）
+// 案件・期限切れ・キーワードの共通フィルタ（ステータス絞り込みは含めない）
 function applyCommonFilters(tasks, f) {
     if (f.overdueOnly) tasks = tasks.filter(isOverdue);
     if (f.project === '__none__') {
         tasks = tasks.filter(t => !t.project_ids || t.project_ids.length === 0);
     } else if (f.project) {
         tasks = tasks.filter(t => t.project_ids && t.project_ids.includes(f.project));
+    }
+    if (f.keyword) {
+        tasks = tasks.filter(t => {
+            const hay = [
+                t.name || '',
+                projectName(t),
+                t.memo || '',
+            ].join(' ').toLowerCase();
+            return hay.includes(f.keyword);
+        });
     }
     return tasks;
 }

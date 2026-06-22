@@ -35,6 +35,28 @@
     </div>
 </div>
 
+<style>
+.pt-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(110px,1fr)); gap:10px; }
+.pt-stat { background:#f9fafb; border:1px solid #eceff3; border-radius:8px; padding:12px 8px; text-align:center; }
+.pt-num { font-size:1.4rem; font-weight:700; line-height:1.2; }
+.pt-lbl { font-size:0.72rem; color:#666; margin-top:3px; }
+@media (max-width:480px){ .pt-grid { grid-template-columns:repeat(2,1fr); } }
+</style>
+
+<!-- 案件・タスク サマリー -->
+<div class="dashboard-card" id="project-task-card">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+        <h2 style="margin-bottom: 0;">📁 案件・タスク</h2>
+        <span style="font-size:0.85rem;">
+            <a href="/projects" style="color:#4a90d9; text-decoration:none;">案件 →</a>
+            &nbsp;<a href="/tasks" style="color:#4a90d9; text-decoration:none;">タスク →</a>
+        </span>
+    </div>
+    <div id="pt-summary" class="pt-grid">
+        <div class="loading-spinner">読み込み中...</div>
+    </div>
+</div>
+
 <!-- 目標進捗（今週） -->
 <div class="dashboard-card" id="goal-summary-card">
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
@@ -462,5 +484,67 @@ document.addEventListener('DOMContentLoaded', async function() {
         console.error('ダッシュボードデータ取得エラー:', e);
     }
 });
+
+// ===== 案件・タスク サマリー（Notion） =====
+function ymd(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function fmtYen(n) {
+    if (!n) return '0円';
+    return n >= 10000 ? (n/10000).toFixed(1) + '万円' : n.toLocaleString() + '円';
+}
+
+async function loadProjectTaskSummary() {
+    const el = document.getElementById('pt-summary');
+    try {
+        const [pRes, tRes, mRes] = await Promise.all([
+            fetch('/api/projects'),
+            fetch('/api/tasks'),
+            fetch('/api/projects/monthly-summary'),
+        ]);
+        if (!pRes.ok || !tRes.ok) {
+            el.innerHTML = '<div style="color:#888; padding:8px;">Notion未接続のため表示できません。<a href="/projects">設定 →</a></div>';
+            return;
+        }
+        const projects = (await pRes.json()).projects || [];
+        const tasks = (await tRes.json()).tasks || [];
+        const monthly = mRes.ok ? await mRes.json() : {};
+
+        // 進行中案件（受注 or 進行中）
+        const active = projects.filter(p => ['受注','進行中'].includes(p.status)).length;
+        // 見込み案件（見込み/提案中/商談中）
+        const pipeline = projects.filter(p => ['見込み','提案中','商談中'].includes(p.status)).length;
+
+        // 今週(今日〜日曜)締切タスク・期限切れ（完了除く）
+        const today = new Date(); today.setHours(0,0,0,0);
+        const todayStr = ymd(today);
+        const weekEnd = new Date(today);
+        weekEnd.setDate(weekEnd.getDate() + (7 - (today.getDay() || 7)));  // 今週日曜
+        const weekEndStr = ymd(weekEnd);
+        let dueThisWeek = 0, overdue = 0, openTasks = 0;
+        for (const t of tasks) {
+            if (t.status === '完了') continue;
+            openTasks++;
+            if (!t.due_date) continue;
+            if (t.due_date < todayStr) overdue++;
+            else if (t.due_date <= weekEndStr) dueThisWeek++;
+        }
+
+        const revenue = monthly.total_revenue || 0;
+        const retainer = monthly.retainer_revenue || 0;
+
+        el.innerHTML = `
+            <div class="pt-stat"><div class="pt-num">${active}</div><div class="pt-lbl">進行中案件</div></div>
+            <div class="pt-stat"><div class="pt-num">${pipeline}</div><div class="pt-lbl">商談中・見込み</div></div>
+            <div class="pt-stat"><div class="pt-num">${openTasks}</div><div class="pt-lbl">未完了タスク</div></div>
+            <div class="pt-stat"><div class="pt-num" style="color:#f39c12;">${dueThisWeek}</div><div class="pt-lbl">今週締切</div></div>
+            <div class="pt-stat"><div class="pt-num" style="color:#e74c3c;">${overdue}</div><div class="pt-lbl">期限切れ</div></div>
+            <div class="pt-stat"><div class="pt-num" style="color:#27ae60;">${fmtYen(revenue)}</div><div class="pt-lbl">月次見込み売上<br><span style="font-size:10px;color:#999;">うち継続 ${fmtYen(retainer)}</span></div></div>
+        `;
+    } catch (e) {
+        el.innerHTML = '<div style="color:#888; padding:8px;">読み込みに失敗しました</div>';
+    }
+}
+document.addEventListener('DOMContentLoaded', loadProjectTaskSummary);
 </script>
 {% endblock %}
