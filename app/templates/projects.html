@@ -5,12 +5,12 @@
 <div class="page-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
     <div>
         <h1>📋 案件管理ボード</h1>
-        <p>Notion連携の案件管理。ドラッグ&ドロップでステータスを変更できます。</p>
+        <p>案件化までのパイプライン。右へドラッグし「🎯 受注（案件化）」に入れると案件化＝確定（キックオフ等タスクを自動生成）。</p>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-        <label class="closed-toggle" title="完了・失注の案件を表示/非表示">
+        <label class="closed-toggle" title="案件化後（進行中・完了・失注）を表示/非表示">
             <input type="checkbox" id="showClosedToggle" onchange="toggleClosed(this.checked)">
-            完了・失注も表示
+            案件化後も表示
         </label>
         <a href="/tasks" class="btn btn-secondary">✅ タスク一覧</a>
         <a href="/gantt" class="btn btn-secondary">📊 ガントチャート</a>
@@ -140,7 +140,7 @@
     {% for status in statuses %}
     <div class="kanban-column" data-status="{{ status }}">
         <div class="kanban-column-header">
-            <span class="kanban-column-title">{{ status }}</span>
+            <span class="kanban-column-title">{% if status == '受注' %}🎯 受注（案件化）{% else %}{{ status }}{% endif %}</span>
             <span class="kanban-column-count">
                 {{ projects | selectattr('status', 'equalto', status) | list | length }}
             </span>
@@ -413,11 +413,15 @@
 .extracted-task-item .task-priority {
     font-size: 0.7rem; padding: 1px 6px; border-radius: 3px;
 }
-/* 完了・失注を隠す（既定） */
+/* 案件化後（進行中・完了・失注）を隠す（既定）。受注=案件化を一番右に */
+.hide-closed .kanban-column[data-status="進行中"],
 .hide-closed .kanban-column[data-status="完了"],
 .hide-closed .kanban-column[data-status="失注"],
+.hide-closed .kanban-list-item[data-status="進行中"],
 .hide-closed .kanban-list-item[data-status="完了"],
 .hide-closed .kanban-list-item[data-status="失注"] { display: none; }
+/* 受注（案件化）列を強調 */
+.kanban-column[data-status="受注"] .kanban-column-header { background: #eafaf1; }
 .closed-toggle {
     display: inline-flex; align-items: center; gap: 5px; font-size: 0.82rem;
     color: #555; cursor: pointer; user-select: none; white-space: nowrap;
@@ -629,8 +633,11 @@ async function handleDrop(e, newStatus) {
         });
         if (resp.ok) {
             const data = await resp.json();
-            if (data.generated_task_count > 0) {
-                alert(`🎉 受注おめでとうございます！\n定型タスク ${data.generated_task_count}件 を自動作成しました（タスク一覧で確認できます）`);
+            if (newStatus === '受注') {
+                const extra = data.generated_task_count > 0
+                    ? `\n\n定型タスク ${data.generated_task_count}件 を自動作成しました（タスク一覧で確認）`
+                    : '';
+                alert(`🎯 案件化しました！（受注）${extra}`);
             }
             location.reload();
         } else {
