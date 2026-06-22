@@ -7,7 +7,11 @@
         <h1>✅ タスク一覧</h1>
         <p>全案件のタスクを横断表示。ステータス・優先度・期日で絞り込めます。</p>
     </div>
-    <div style="display:flex; gap:8px;">
+    <div style="display:flex; gap:8px; align-items:center;">
+        <div class="report-toggle" id="viewToggle">
+            <button class="active" data-view="board">🗂 ボード</button>
+            <button data-view="list">📋 リスト</button>
+        </div>
         <a href="/projects" class="btn btn-secondary">📋 カンバン</a>
         <a href="/gantt" class="btn btn-secondary">📊 ガント</a>
     </div>
@@ -37,6 +41,11 @@
             <option value="{{ p.id }}">{{ p.name or '（無題）' }}</option>
             {% endfor %}
         </select>
+        <select id="newTaskStatus" class="task-add-select" title="ステータス">
+            {% for s in statuses %}
+            <option value="{{ s }}" {% if s == '未着手' %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+        </select>
         <select id="newTaskPriority" class="task-add-select" title="優先度">
             {% for pr in priorities %}
             <option value="{{ pr }}" {% if pr == '中' %}selected{% endif %}>{{ pr }}</option>
@@ -49,7 +58,7 @@
 
 <!-- フィルタ -->
 <div class="card task-filter-bar">
-    <div class="report-toggle" id="statusFilter">
+    <div class="report-toggle" id="statusFilter" data-list-only>
         <button class="active" data-status="">全て</button>
         {% for s in statuses %}
         <button data-status="{{ s }}">{{ s }}</button>
@@ -70,13 +79,16 @@
     <label class="task-check-label">
         <input type="checkbox" id="overdueOnly"> 期限切れのみ
     </label>
-    <label class="task-check-label">
+    <label class="task-check-label" data-list-only>
         <input type="checkbox" id="hideDone" checked> 完了を隠す
     </label>
 </div>
 
+<!-- ボード（ドラッグでステータス変更） -->
+<div class="kanban-board" id="taskBoard"></div>
+
 <!-- 一覧 -->
-<div class="card" style="padding:0;">
+<div class="card" id="taskListCard" style="padding:0; display:none;">
     <div id="taskList"></div>
 </div>
 
@@ -150,6 +162,17 @@
 .task-modal-input { width:100%; padding:9px 11px; border:1px solid #ccc; border-radius:6px;
     font-size:14px; box-sizing:border-box; background:#fff; }
 .task-modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
+/* ボード上のタスクカード */
+#taskBoard .kanban-card { cursor:grab; }
+#taskBoard .kanban-card:active { cursor:grabbing; }
+.tcard-top { display:flex; align-items:flex-start; gap:6px; }
+.tcard-name { flex:1; font-size:13px; font-weight:500; word-break:break-word; }
+.tcard-name.task-done { text-decoration:line-through; color:#999; }
+.tcard-meta { display:flex; gap:8px; flex-wrap:wrap; font-size:11px; color:#888; margin-top:6px; align-items:center; }
+.tcard-project { color:#4a90d9; }
+.tcard-del { background:none; border:none; cursor:pointer; opacity:.5; font-size:13px; padding:0 2px; }
+.tcard-del:hover { opacity:1; }
+.kanban-card-empty { padding:16px; text-align:center; color:#bbb; font-size:12px; }
 </style>
 <script>
 const projects = {{ projects | tojson }};
@@ -197,24 +220,12 @@ function getFilters() {
     };
 }
 
-function renderList() {
-    const f = getFilters();
-    let tasks = allTasks.slice();
-
-    if (f.status) tasks = tasks.filter(t => t.status === f.status);
-    if (f.hideDone && !f.status) tasks = tasks.filter(t => t.status !== '完了');
-    if (f.overdueOnly) tasks = tasks.filter(isOverdue);
-    if (f.project === '__none__') {
-        tasks = tasks.filter(t => !t.project_ids || t.project_ids.length === 0);
-    } else if (f.project) {
-        tasks = tasks.filter(t => t.project_ids && t.project_ids.includes(f.project));
-    }
-
-    tasks.sort((a, b) => {
-        if (f.sort === 'priority') {
+function sortTasks(tasks, sort) {
+    return tasks.sort((a, b) => {
+        if (sort === 'priority') {
             return (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9);
         }
-        if (f.sort === 'updated') {
+        if (sort === 'updated') {
             return (b.last_edited_time || '').localeCompare(a.last_edited_time || '');
         }
         // due: 期日あり優先→昇順、期日なしは末尾
@@ -222,6 +233,34 @@ function renderList() {
         const bd = b.due_date || '9999-99-99';
         return ad.localeCompare(bd);
     });
+}
+
+// 案件・期限切れの共通フィルタ（ステータス絞り込みは含めない）
+function applyCommonFilters(tasks, f) {
+    if (f.overdueOnly) tasks = tasks.filter(isOverdue);
+    if (f.project === '__none__') {
+        tasks = tasks.filter(t => !t.project_ids || t.project_ids.length === 0);
+    } else if (f.project) {
+        tasks = tasks.filter(t => t.project_ids && t.project_ids.includes(f.project));
+    }
+    return tasks;
+}
+
+// 表示中ビューを描画
+function render() {
+    renderStats();
+    if (currentView === 'board') renderBoard();
+    else renderList();
+}
+
+function renderList() {
+    const f = getFilters();
+    let tasks = applyCommonFilters(allTasks.slice(), f);
+
+    if (f.status) tasks = tasks.filter(t => t.status === f.status);
+    if (f.hideDone && !f.status) tasks = tasks.filter(t => t.status !== '完了');
+
+    sortTasks(tasks, f.sort);
 
     const container = document.getElementById('taskList');
     if (tasks.length === 0) {
@@ -262,6 +301,111 @@ function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => (
         {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
     ));
+}
+
+// ===== ボード（カンバン） =====
+const BOARD_STATUSES = ['未着手', '進行中', '完了'];
+let draggedTaskId = null;
+
+function taskCardHtml(t) {
+    const pname = projectName(t);
+    const overdue = isOverdue(t);
+    const dueLabel = t.due_date
+        ? `<span class="task-due ${overdue ? 'task-due-overdue' : ''}">${overdue ? '⚠ ' : '📅 '}${t.due_date}</span>`
+        : '';
+    return `
+    <div class="kanban-card" draggable="true" data-task-id="${t.id}"
+         ondragstart="handleTaskDragStart(event, '${t.id}')"
+         ondragend="handleTaskDragEnd(event)">
+        <div class="tcard-top">
+            <span class="tcard-name ${t.status === '完了' ? 'task-done' : ''}">${t.recurring ? '🔄 ' : ''}${escapeHtml(t.name || '（無題）')}</span>
+            ${t.priority ? `<span class="task-priority task-priority-${t.priority}">${t.priority}</span>` : ''}
+            <button class="tcard-del" onclick="deleteTask('${t.id}')" title="削除">🗑</button>
+        </div>
+        <div class="tcard-meta">
+            ${pname ? `<span class="tcard-project">📁 ${escapeHtml(pname)}</span>` : ''}
+            ${dueLabel}
+            ${t.target_month ? `<span style="color:#8e44ad;">対象 ${t.target_month}</span>` : ''}
+        </div>
+    </div>`;
+}
+
+function renderBoard() {
+    const f = getFilters();
+    let tasks = applyCommonFilters(allTasks.slice(), f);
+    sortTasks(tasks, f.sort);
+
+    const board = document.getElementById('taskBoard');
+    board.innerHTML = BOARD_STATUSES.map(status => {
+        const colTasks = tasks.filter(t => t.status === status);
+        const cards = colTasks.length
+            ? colTasks.map(taskCardHtml).join('')
+            : '<div class="kanban-card-empty">ここにドロップ</div>';
+        return `
+        <div class="kanban-column" data-status="${status}">
+            <div class="kanban-column-header">
+                <span class="kanban-column-title">${status}</span>
+                <span class="kanban-column-count">${colTasks.length}</span>
+            </div>
+            <div class="kanban-cards" data-status="${status}"
+                 ondragover="event.preventDefault(); this.classList.add('kanban-drop-target')"
+                 ondragleave="this.classList.remove('kanban-drop-target')"
+                 ondrop="handleTaskDrop(event, '${status}')">
+                ${cards}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function handleTaskDragStart(e, id) {
+    draggedTaskId = id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.target.classList.add('kanban-card-dragging');
+}
+
+function handleTaskDragEnd(e) {
+    e.target.classList.remove('kanban-card-dragging');
+}
+
+async function handleTaskDrop(e, newStatus) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('kanban-drop-target');
+    const id = draggedTaskId;
+    draggedTaskId = null;
+    if (!id) return;
+
+    const t = allTasks.find(x => x.id === id);
+    if (!t || t.status === newStatus) return;
+
+    const prev = t.status;
+    t.status = newStatus;  // 楽観的更新
+    render();
+    try {
+        const resp = await fetch(`/api/tasks/${id}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({status: newStatus}),
+        });
+        if (!resp.ok) throw new Error();
+    } catch (err) {
+        t.status = prev;  // ロールバック
+        render();
+        alert('ステータス更新に失敗しました');
+    }
+}
+
+// ===== ビュー切替 =====
+let currentView = 'board';
+
+function applyView() {
+    document.getElementById('taskBoard').style.display = currentView === 'board' ? 'flex' : 'none';
+    document.getElementById('taskListCard').style.display = currentView === 'list' ? 'block' : 'none';
+    // ボード時はステータス絞込・完了非表示は無効（列＝ステータスのため）
+    document.querySelectorAll('[data-list-only]').forEach(el => {
+        el.style.display = currentView === 'list' ? '' : 'none';
+    });
+    document.querySelectorAll('#viewToggle button').forEach(b =>
+        b.classList.toggle('active', b.dataset.view === currentView));
 }
 
 // ===== 新規案件作成 =====
@@ -355,6 +499,7 @@ async function addTask() {
             body: JSON.stringify({
                 name,
                 project_id: document.getElementById('newTaskProject').value || null,
+                status: document.getElementById('newTaskStatus').value,
                 priority: document.getElementById('newTaskPriority').value,
                 due_date: document.getElementById('newTaskDue').value || null,
             }),
@@ -364,8 +509,8 @@ async function addTask() {
             allTasks.unshift(data.task);
             document.getElementById('newTaskName').value = '';
             document.getElementById('newTaskDue').value = '';
-            renderStats();
-            renderList();
+            document.getElementById('newTaskStatus').value = '未着手';
+            render();
         } else {
             alert('タスク追加に失敗しました');
         }
@@ -383,8 +528,7 @@ async function updateTaskStatus(taskId, newStatus) {
         });
         const t = allTasks.find(x => x.id === taskId);
         if (t) t.status = newStatus;
-        renderStats();
-        renderList();
+        render();
     } catch (err) {
         alert('更新に失敗しました');
     }
@@ -396,28 +540,36 @@ async function deleteTask(taskId) {
         await fetch(`/api/tasks/${taskId}`, {method: 'DELETE'});
         const i = allTasks.findIndex(x => x.id === taskId);
         if (i >= 0) allTasks.splice(i, 1);
-        renderStats();
-        renderList();
+        render();
     } catch (err) {
         alert('削除に失敗しました');
     }
 }
+
+// ビュー切替
+document.querySelectorAll('#viewToggle button').forEach(btn => {
+    btn.addEventListener('click', () => {
+        currentView = btn.dataset.view;
+        applyView();
+        render();
+    });
+});
 
 // フィルタ操作
 document.querySelectorAll('#statusFilter button').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('#statusFilter button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        renderList();
+        render();
     });
 });
 ['projectFilter', 'sortFilter'].forEach(id =>
-    document.getElementById(id).addEventListener('change', renderList));
+    document.getElementById(id).addEventListener('change', render));
 ['overdueOnly', 'hideDone'].forEach(id =>
-    document.getElementById(id).addEventListener('change', renderList));
+    document.getElementById(id).addEventListener('change', render));
 
-renderStats();
-renderList();
+applyView();
+render();
 </script>
 {% endif %}
 {% endblock %}
