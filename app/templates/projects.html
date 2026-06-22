@@ -107,7 +107,7 @@
         {% elif p.status == '失注' %}{% set ns.lost = ns.lost + 1 %}
         {% endif %}
         {% if p.amount %}{% set ns.total_amount = ns.total_amount + p.amount %}{% endif %}
-        {% if p.contract_type == '継続' and p.amount %}
+        {% if p.status == '案件化' and p.billing_cycle == '月次' and p.amount %}
             {% set ns.retainer_amount = ns.retainer_amount + p.amount %}
             {% set ns.retainer_count = ns.retainer_count + 1 %}
         {% endif %}
