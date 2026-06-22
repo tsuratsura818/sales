@@ -47,11 +47,12 @@
 {% set clients_with_count = [] %}
 <div class="client-filter-bar" id="clientFilterBar">
     <span class="client-filter-label">👤 クライアント</span>
-    <div class="client-chips" id="clientChips">
+    <div class="client-chips hide-closed" id="clientChips">
         {% for c in client_names %}
         {% if c and c|trim %}
         {% set count = projects | selectattr('client', 'equalto', c) | list | length %}
-        <button class="client-chip" data-client="{{ c }}" onclick="filterByClient(this, '{{ c | e }}')">
+        {% set active_count = projects | selectattr('client', 'equalto', c) | rejectattr('status', 'in', ['完了', '失注']) | list | length %}
+        <button class="client-chip {% if active_count == 0 %}client-chip-closed{% endif %}" data-client="{{ c }}" onclick="filterByClient(this, '{{ c | e }}')">
             {{ c }} <span class="client-chip-count">{{ count }}</span>
         </button>
         {% endif %}
@@ -418,6 +419,9 @@
 .hide-closed .kanban-column[data-status="失注"],
 .hide-closed .kanban-list-item[data-status="完了"],
 .hide-closed .kanban-list-item[data-status="失注"] { display: none; }
+/* 完了・失注だけのクライアントはチップから隠す（既定） */
+.hide-closed.client-chips .client-chip-closed,
+.hide-closed .client-chip-closed { display: none; }
 .closed-toggle {
     display: inline-flex; align-items: center; gap: 5px; font-size: 0.82rem;
     color: #555; cursor: pointer; user-select: none; white-space: nowrap;
@@ -477,7 +481,7 @@ let activeClientFilter = null;
 
 // ========== 完了・失注の表示切替 ==========
 function toggleClosed(show) {
-    document.querySelectorAll('#kanbanBoard, #kanbanListView').forEach(el => {
+    document.querySelectorAll('#kanbanBoard, #kanbanListView, #clientChips').forEach(el => {
         el.classList.toggle('hide-closed', !show);
     });
     try { localStorage.setItem('projShowClosed', show ? '1' : '0'); } catch (e) {}
