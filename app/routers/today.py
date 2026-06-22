@@ -51,6 +51,7 @@ async def today_page(request: Request):
 
     # 今日やるべきNotionタスク（当日期日 + 期限切れ、完了は除く）
     today_tasks: list[dict] = []
+    today_projects: list[dict] = []
     if notion_status.get("ok"):
         try:
             all_tasks = await notion_service.list_tasks()
@@ -65,6 +66,20 @@ async def today_page(request: Request):
             today_tasks.sort(key=lambda x: (not x["overdue"], x.get("due_date") or ""))
         except Exception:
             today_tasks = []
+
+        # 納期が近い/過ぎた案件（今日〜3日以内 or 超過、完了/失注は除く）
+        try:
+            soon_str = (datetime.now(JST) + timedelta(days=3)).strftime("%Y-%m-%d")
+            projects = await notion_service.list_projects()
+            for p in projects:
+                end = p.get("end_date")
+                if not end or p.get("status") in ("完了", "失注"):
+                    continue
+                if end <= soon_str:
+                    today_projects.append({**p, "overdue": end < today_str})
+            today_projects.sort(key=lambda x: (not x["overdue"], x.get("end_date") or ""))
+        except Exception:
+            today_projects = []
 
     db = SessionLocal()
     try:
@@ -107,6 +122,7 @@ async def today_page(request: Request):
         "task_reminder_hour": task_reminder_hour,
         "cal_events": cal_events,
         "today_tasks": today_tasks,
+        "today_projects": today_projects,
     })
 
 
