@@ -37,7 +37,7 @@
         <select id="newTaskProject" class="task-add-select" title="案件" onchange="onProjectSelectChange(this)">
             <option value="">案件なし</option>
             <option value="__new__">＋ 新規案件を作成…</option>
-            {% for p in projects %}
+            {% for p in projects if p.status not in ['完了', '失注'] %}
             <option value="{{ p.id }}">{{ p.name or '（無題）' }}</option>
             {% endfor %}
         </select>
@@ -69,7 +69,7 @@
     <select id="projectFilter" class="task-add-select">
         <option value="">全案件</option>
         <option value="__none__">案件なし</option>
-        {% for p in projects %}
+        {% for p in projects if p.status not in ['完了', '失注'] %}
         <option value="{{ p.id }}">{{ p.name or '（無題）' }}</option>
         {% endfor %}
     </select>
@@ -103,7 +103,7 @@
         <label class="task-modal-label">案件</label>
         <select id="teProject" class="task-modal-input">
             <option value="">案件なし</option>
-            {% for p in projects %}
+            {% for p in projects if p.status not in ['完了', '失注'] %}
             <option value="{{ p.id }}">{{ p.name or '（無題）' }}</option>
             {% endfor %}
         </select>

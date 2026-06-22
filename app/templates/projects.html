@@ -7,7 +7,11 @@
         <h1>📋 案件管理ボード</h1>
         <p>Notion連携の案件管理。ドラッグ&ドロップでステータスを変更できます。</p>
     </div>
-    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <label class="closed-toggle" title="完了・失注の案件を表示/非表示">
+            <input type="checkbox" id="showClosedToggle" onchange="toggleClosed(this.checked)">
+            完了・失注も表示
+        </label>
         <a href="/tasks" class="btn btn-secondary">✅ タスク一覧</a>
         <a href="/gantt" class="btn btn-secondary">📊 ガントチャート</a>
         <button class="btn btn-secondary" onclick="showBulkModal()">📥 一括登録</button>
@@ -132,7 +136,7 @@
 </div>
 
 <!-- カンバンボード -->
-<div class="kanban-board" id="kanbanBoard">
+<div class="kanban-board hide-closed" id="kanbanBoard">
     {% for status in statuses %}
     <div class="kanban-column" data-status="{{ status }}">
         <div class="kanban-column-header">
@@ -172,9 +176,9 @@
 </div>
 
 <!-- モバイル用リストビュー -->
-<div class="kanban-list-view" id="kanbanListView">
+<div class="kanban-list-view hide-closed" id="kanbanListView">
     {% for p in projects %}
-    <div class="kanban-list-item" data-contract="{{ p.contract_type or '単発' }}"
+    <div class="kanban-list-item" data-contract="{{ p.contract_type or '単発' }}" data-status="{{ p.status }}"
          data-client="{{ (p.client or '') | e }}" data-memo="{{ (p.memo or '') | e }}"
          onclick="showDetailModal('{{ p.id }}')">
         <div class="kanban-list-info">
@@ -409,6 +413,16 @@
 .extracted-task-item .task-priority {
     font-size: 0.7rem; padding: 1px 6px; border-radius: 3px;
 }
+/* 完了・失注を隠す（既定） */
+.hide-closed .kanban-column[data-status="完了"],
+.hide-closed .kanban-column[data-status="失注"],
+.hide-closed .kanban-list-item[data-status="完了"],
+.hide-closed .kanban-list-item[data-status="失注"] { display: none; }
+.closed-toggle {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 0.82rem;
+    color: #555; cursor: pointer; user-select: none; white-space: nowrap;
+}
+.closed-toggle input { margin: 0; }
 </style>
 
 <!-- 一括登録モーダル -->
@@ -460,6 +474,22 @@ let currentProjectId = null;
 let currentProjectData = null;
 let draggedId = null;
 let activeClientFilter = null;
+
+// ========== 完了・失注の表示切替 ==========
+function toggleClosed(show) {
+    document.querySelectorAll('#kanbanBoard, #kanbanListView').forEach(el => {
+        el.classList.toggle('hide-closed', !show);
+    });
+    try { localStorage.setItem('projShowClosed', show ? '1' : '0'); } catch (e) {}
+}
+(function restoreClosedToggle() {
+    let show = false;
+    try { show = localStorage.getItem('projShowClosed') === '1'; } catch (e) {}
+    document.addEventListener('DOMContentLoaded', () => {
+        const cb = document.getElementById('showClosedToggle');
+        if (cb) { cb.checked = show; toggleClosed(show); }
+    });
+})();
 
 // ========== タブUI ==========
 

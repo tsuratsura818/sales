@@ -468,7 +468,8 @@ async function linkManually() {
     if (allProjects.length === 0) {
         const resp = await fetch('/api/projects');
         const data = await resp.json();
-        allProjects = data.projects || [];
+        // 完了・失注は一覧から除外（紐付け対象にしない）
+        allProjects = (data.projects || []).filter(p => !['完了', '失注'].includes(p.status));
     }
 
     renderProjects(allProjects);
