@@ -225,6 +225,9 @@
 #taskBoard .kanban-column[data-status="進行中"] { border-top-color:#4a90d9; }
 #taskBoard .kanban-column[data-status="進行中"] .kanban-column-title { color:#2f6db3; }
 #taskBoard .kanban-column[data-status="進行中"] .kanban-column-count { background:#dbeafe; color:#2f6db3; }
+#taskBoard .kanban-column[data-status="外注対応"] { border-top-color:#8e44ad; }
+#taskBoard .kanban-column[data-status="外注対応"] .kanban-column-title { color:#7d3c98; }
+#taskBoard .kanban-column[data-status="外注対応"] .kanban-column-count { background:#ecdcf5; color:#7d3c98; }
 #taskBoard .kanban-column[data-status="確認中"] { border-top-color:#f39c12; }
 #taskBoard .kanban-column[data-status="確認中"] .kanban-column-title { color:#c87f0a; }
 #taskBoard .kanban-column[data-status="確認中"] .kanban-column-count { background:#fdecc8; color:#c87f0a; }
@@ -268,7 +271,7 @@ function isOverdue(t) {
 }
 
 function renderStats() {
-    const counts = { '未着手': 0, '進行中': 0, '確認中': 0, '完了': 0 };
+    const counts = { '未着手': 0, '進行中': 0, '外注対応': 0, '確認中': 0, '完了': 0 };
     let overdue = 0;
     allTasks.forEach(t => {
         if (counts[t.status] !== undefined) counts[t.status]++;
@@ -278,6 +281,7 @@ function renderStats() {
         <div class="task-stat"><div class="num">${allTasks.length}</div><div class="lbl">総タスク</div></div>
         <div class="task-stat"><div class="num">${counts['未着手']}</div><div class="lbl">未着手</div></div>
         <div class="task-stat"><div class="num">${counts['進行中']}</div><div class="lbl">進行中</div></div>
+        <div class="task-stat"><div class="num">${counts['外注対応']}</div><div class="lbl">外注対応</div></div>
         <div class="task-stat"><div class="num">${counts['確認中']}</div><div class="lbl">確認中</div></div>
         <div class="task-stat"><div class="num">${counts['完了']}</div><div class="lbl">完了</div></div>
         <div class="task-stat overdue"><div class="num">${overdue}</div><div class="lbl">期限切れ</div></div>
@@ -353,6 +357,7 @@ function renderList() {
             <select class="task-status-select" onchange="updateTaskStatus('${t.id}', this.value)">
                 <option value="未着手" ${t.status === '未着手' ? 'selected' : ''}>未着手</option>
                 <option value="進行中" ${t.status === '進行中' ? 'selected' : ''}>進行中</option>
+                <option value="外注対応" ${t.status === '外注対応' ? 'selected' : ''}>外注対応</option>
                 <option value="確認中" ${t.status === '確認中' ? 'selected' : ''}>確認中</option>
                 <option value="完了" ${t.status === '完了' ? 'selected' : ''}>完了</option>
             </select>
@@ -443,7 +448,7 @@ async function saveTaskEdit() {
 }
 
 // ===== ボード（カンバン） =====
-const BOARD_STATUSES = ['未着手', '進行中', '確認中', '完了'];
+const BOARD_STATUSES = ['未着手', '進行中', '外注対応', '確認中', '完了'];
 let draggedTaskId = null;
 
 function taskCardHtml(t) {
