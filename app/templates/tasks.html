@@ -162,6 +162,9 @@
 .task-modal-input { width:100%; padding:9px 11px; border:1px solid #ccc; border-radius:6px;
     font-size:14px; box-sizing:border-box; background:#fff; }
 .task-modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
+/* 3列を全幅で等分 */
+#taskBoard { display:flex; gap:16px; width:100%; }
+#taskBoard .kanban-column { flex:1 1 0; min-width:0; width:auto; max-width:none; }
 /* ボード上のタスクカード */
 #taskBoard .kanban-card { cursor:grab; }
 #taskBoard .kanban-card:active { cursor:grabbing; }
