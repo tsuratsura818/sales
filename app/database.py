@@ -124,6 +124,9 @@ def _migrate_sqlite():
         # タスク期限リマインド
         ("app_settings", "task_reminder_enabled",   "BOOLEAN DEFAULT 0"),
         ("app_settings", "task_reminder_hour_jst",  "INTEGER DEFAULT 8"),
+        # メモ: ピン留め・タグ
+        ("memos", "pinned", "INTEGER DEFAULT 0"),
+        ("memos", "tags",   "TEXT DEFAULT ''"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
@@ -174,6 +177,9 @@ def _migrate_postgres():
         # タスク期限リマインド
         ("app_settings", "task_reminder_enabled",  "BOOLEAN DEFAULT FALSE"),
         ("app_settings", "task_reminder_hour_jst", "INTEGER DEFAULT 8"),
+        # メモ: ピン留め・タグ
+        ("memos", "pinned", "INTEGER DEFAULT 0"),
+        ("memos", "tags",   "TEXT DEFAULT ''"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:

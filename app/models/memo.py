@@ -17,5 +17,7 @@ class Memo(Base):
         String(20), nullable=False, default="pending"
     )  # pending / classified / unlinked / manual
     synced_to_notion = Column(Integer, nullable=False, default=0)  # 0=未同期, 1=同期済み
+    pinned = Column(Integer, nullable=False, default=0)  # 0=通常, 1=ピン留め
+    tags = Column(Text, nullable=False, default="")  # カンマ区切りタグ
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

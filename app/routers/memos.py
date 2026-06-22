@@ -31,7 +31,7 @@ def _get_templates():
 
 @router.get("/memos", response_class=HTMLResponse)
 async def memos_page(request: Request, db: Session = Depends(get_db)):
-    memos = db.query(Memo).order_by(desc(Memo.updated_at)).all()
+    memos = db.query(Memo).order_by(desc(Memo.pinned), desc(Memo.updated_at)).all()
     return _get_templates().TemplateResponse(request, "memos.html", {"memos": memos})
 
 
@@ -45,6 +45,8 @@ class MemoCreate(BaseModel):
 class MemoUpdate(BaseModel):
     content: Optional[str] = None
     title: Optional[str] = None
+    pinned: Optional[bool] = None
+    tags: Optional[str] = None
 
 
 class MemoLink(BaseModel):
@@ -57,8 +59,8 @@ async def api_list_memos(
     filter: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    """メモ一覧API (filter: all/linked/unlinked)"""
-    query = db.query(Memo).order_by(desc(Memo.updated_at))
+    """メモ一覧API (filter: all/linked/unlinked)。ピン留めを上位に表示"""
+    query = db.query(Memo).order_by(desc(Memo.pinned), desc(Memo.updated_at))
     if filter == "linked":
         query = query.filter(Memo.notion_project_id.isnot(None))
     elif filter == "unlinked":
@@ -75,6 +77,8 @@ async def api_list_memos(
                 "notion_project_name": m.notion_project_name,
                 "classification_status": m.classification_status,
                 "synced_to_notion": m.synced_to_notion,
+                "pinned": bool(m.pinned),
+                "tags": m.tags or "",
                 "created_at": m.created_at.isoformat() if m.created_at else None,
                 "updated_at": m.updated_at.isoformat() if m.updated_at else None,
             }
@@ -132,6 +136,7 @@ async def api_update_memo(memo_id: int, data: MemoUpdate, db: Session = Depends(
     if not memo:
         raise HTTPException(status_code=404, detail="メモが見つかりません")
 
+    content_changed = data.content is not None
     if data.content is not None:
         memo.content = data.content
         # タイトル自動更新
@@ -139,8 +144,20 @@ async def api_update_memo(memo_id: int, data: MemoUpdate, db: Session = Depends(
             memo.title = data.content.split("\n")[0][:100] or "無題"
     if data.title is not None:
         memo.title = data.title
+    if data.pinned is not None:
+        memo.pinned = 1 if data.pinned else 0
+    if data.tags is not None:
+        # 正規化: カンマ区切り、前後空白除去、空要素・重複を除去
+        seen: list[str] = []
+        for tag in data.tags.replace("、", ",").split(","):
+            tag = tag.strip()
+            if tag and tag not in seen:
+                seen.append(tag)
+        memo.tags = ",".join(seen)
 
-    memo.updated_at = datetime.now(timezone.utc)
+    # 本文/タイトル変更時のみ updated_at を更新（ピン・タグだけの操作で並びを乱さない）
+    if content_changed or data.title is not None:
+        memo.updated_at = datetime.now(timezone.utc)
     db.commit()
 
     return {"success": True}

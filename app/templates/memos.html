@@ -39,12 +39,16 @@
         <!-- 左: メモ一覧 -->
         <div class="memo-sidebar">
             <div class="memo-search">
-                <input type="text" id="searchInput" placeholder="メモを検索..." oninput="searchMemos(this.value)">
+                <input type="text" id="searchInput" placeholder="🔍 タイトル・本文・案件・タグを検索..." oninput="applyMemoFilters()">
             </div>
+            <div class="memo-tagbar" id="memoTagbar"></div>
             <div class="memo-list" id="memoList">
                 {% for memo in memos %}
-                <div class="memo-item" data-id="{{ memo.id }}" onclick="selectMemo({{ memo.id }})">
-                    <div class="memo-item-title">{{ memo.title or '無題' }}</div>
+                <div class="memo-item{% if memo.pinned %} memo-pinned{% endif %}" data-id="{{ memo.id }}"
+                     data-content="{{ (memo.content or '')|e }}" data-tags="{{ memo.tags or '' }}"
+                     data-project="{{ memo.notion_project_name or '' }}" data-pinned="{{ memo.pinned }}"
+                     onclick="selectMemo({{ memo.id }})">
+                    <div class="memo-item-title">{% if memo.pinned %}<span class="pin-mark">📌</span>{% endif %}{{ memo.title or '無題' }}</div>
                     <div class="memo-item-meta">
                         {% if memo.notion_project_name %}
                         <span class="memo-badge badge-linked">{{ memo.notion_project_name }}</span>
@@ -53,6 +57,7 @@
                         {% else %}
                         <span class="memo-badge badge-unlinked">未分類</span>
                         {% endif %}
+                        {% if memo.tags %}{% for tag in memo.tags.split(',') %}<span class="memo-tag">{{ tag }}</span>{% endfor %}{% endif %}
                     </div>
                     <div class="memo-item-date">
                         {{ memo.updated_at.strftime('%m/%d %H:%M') if memo.updated_at else '' }}
@@ -74,6 +79,9 @@
                 <div class="memo-editor-toolbar">
                     <div class="memo-editor-project" id="projectBadge"></div>
                     <div class="memo-editor-actions">
+                        <button class="btn btn-sm" id="pinBtn" onclick="togglePin()" title="ピン留め">📌 ピン</button>
+                        <button class="btn btn-sm" id="previewBtn" onclick="togglePreview()" title="Markdownプレビュー切替">👁 プレビュー</button>
+                        <button class="btn btn-sm" onclick="memoToTasks()" title="メモ内容からタスクを抽出して登録">✅ タスク化</button>
                         <button class="btn btn-sm" id="recAppendBtn" onclick="toggleRecording('append', 'mic')" title="マイクで録音してこのメモに追記">🎙️ マイク</button>
                         <button class="btn btn-sm" id="recTabAppendBtn" onclick="toggleRecording('append', 'tab')" title="タブ音声+マイクで録音して追記">🖥️ タブ+マイク</button>
                         <button class="btn btn-sm" onclick="document.getElementById('audioUploadAppend').click()" title="音声ファイルをアップロードして追記">📁</button>
@@ -85,9 +93,29 @@
                         <button class="btn btn-sm btn-danger" onclick="deleteMemo()">🗑️</button>
                     </div>
                 </div>
+                <div class="memo-tag-input-row">
+                    <span style="font-size:12px;color:#888;">🏷️ タグ:</span>
+                    <input type="text" id="memoTagsInput" placeholder="カンマ区切りで入力 (例: 重要,要返信)" onchange="saveTags()">
+                </div>
                 <textarea id="memoTextarea" placeholder="メモを入力..." oninput="onMemoInput()"></textarea>
+                <div id="memoPreview" class="memo-preview" style="display:none;"></div>
                 <div class="memo-editor-status" id="editorStatus"></div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- メモ→タスク化モーダル -->
+<div class="modal-overlay" id="taskizeModal" style="display:none;" onclick="if(event.target===this)closeTaskizeModal()">
+    <div class="modal-content" style="max-width:560px;">
+        <h3>✅ メモからタスクを作成</h3>
+        <div id="taskizeProject" style="font-size:13px;color:#666;margin-bottom:8px;"></div>
+        <div id="taskizeBody">
+            <div class="memo-empty">AIがタスクを抽出中...</div>
+        </div>
+        <div style="text-align:right;margin-top:12px;">
+            <button class="btn btn-sm" onclick="closeTaskizeModal()">キャンセル</button>
+            <button class="btn btn-sm btn-primary" id="taskizeCreateBtn" onclick="createTasksFromMemo()" style="display:none;">選択したタスクを作成</button>
         </div>
     </div>
 </div>
@@ -258,6 +286,36 @@
 .project-option-name { font-weight: 600; font-size: 0.9rem; }
 .project-option-client { font-size: 0.8rem; color: #666; }
 
+/* タグ・ピン・プレビュー */
+.pin-mark { margin-right: 4px; }
+.memo-pinned { background: #fffdf3; }
+.memo-tag { display:inline-block; font-size: 10px; background:#eef2f7; color:#5a6b7b;
+    padding: 1px 7px; border-radius: 10px; margin: 2px 2px 0 0; }
+.memo-tagbar { display:flex; flex-wrap:wrap; gap:6px; padding: 8px 12px; border-bottom:1px solid #eee; }
+.memo-tag-chip { font-size:11px; background:#eef2f7; color:#5a6b7b; padding:2px 10px;
+    border-radius:12px; cursor:pointer; user-select:none; }
+.memo-tag-chip:hover { background:#dde6ef; }
+.memo-tag-chip.active { background:#1976d2; color:#fff; }
+.memo-tag-input-row { display:flex; align-items:center; gap:8px; padding:8px 16px 0; }
+.memo-tag-input-row input { flex:1; border:1px solid #ddd; border-radius:6px; padding:5px 10px; font-size:13px; }
+.memo-preview { flex:1; overflow:auto; padding:16px 20px; line-height:1.8; }
+.memo-preview h1,.memo-preview h2,.memo-preview h3,.memo-preview h4 { margin:14px 0 8px; }
+.memo-preview h1 { font-size:1.5rem; border-bottom:1px solid #eee; padding-bottom:4px; }
+.memo-preview h2 { font-size:1.25rem; }
+.memo-preview h3 { font-size:1.1rem; }
+.memo-preview p { margin:6px 0; }
+.memo-preview ul,.memo-preview ol { margin:6px 0 6px 22px; }
+.memo-preview li { margin:2px 0; }
+.memo-preview code { background:#f4f4f4; padding:1px 5px; border-radius:4px; font-size:0.9em; }
+.memo-preview blockquote { border-left:3px solid #ccc; margin:6px 0; padding:2px 12px; color:#666; }
+.memo-preview hr { border:none; border-top:1px solid #ddd; margin:12px 0; }
+.memo-preview .md-tasklist { list-style:none; margin-left:6px; }
+/* タスク化モーダル */
+.taskize-item { display:flex; align-items:center; gap:8px; padding:7px 4px; border-bottom:1px solid #f0f0f0; }
+.taskize-name { flex:1; font-size:14px; }
+.taskize-prio { padding:3px 6px; border:1px solid #ccc; border-radius:5px; font-size:13px; }
+#taskizeBody { max-height:340px; overflow:auto; }
+
 /* レスポンシブ */
 @media (max-width: 768px) {
     .memo-app { margin: -16px -12px 0; }
@@ -286,8 +344,10 @@
 {% block scripts %}
 <script>
 let currentMemoId = null;
+let currentMemo = null;
 let saveTimer = null;
 let allProjects = [];
+let previewMode = false;
 
 // メモ選択
 async function selectMemo(id) {
@@ -305,10 +365,22 @@ async function selectMemo(id) {
     const memo = data.memos.find(m => m.id === id);
 
     if (memo) {
+        currentMemo = memo;
         document.getElementById('memoTextarea').value = memo.content;
+        document.getElementById('memoTagsInput').value = memo.tags || '';
         updateProjectBadge(memo);
         updateStatus(memo);
+        updatePinButton(memo.pinned);
+        // プレビュー中ならエディタ表示に戻す
+        if (previewMode) togglePreview();
     }
+}
+
+function updatePinButton(pinned) {
+    const btn = document.getElementById('pinBtn');
+    if (!btn) return;
+    btn.textContent = pinned ? '📌 ピン解除' : '📌 ピン';
+    btn.classList.toggle('btn-primary', !!pinned);
 }
 
 // プロジェクトバッジ更新
@@ -480,15 +552,207 @@ async function deleteMemo() {
     location.reload();
 }
 
-// 検索フィルター
-function searchMemos(query) {
-    const q = query.toLowerCase();
+// ========== 検索・タグフィルタ ==========
+let activeTag = null;
+
+function buildTagbar() {
+    const tagbar = document.getElementById('memoTagbar');
+    if (!tagbar) return;
+    const tagSet = new Set();
     document.querySelectorAll('.memo-item').forEach(el => {
-        const title = el.querySelector('.memo-item-title').textContent.toLowerCase();
-        const badge = el.querySelector('.memo-badge');
-        const badgeText = badge ? badge.textContent.toLowerCase() : '';
-        el.style.display = (title.includes(q) || badgeText.includes(q)) ? '' : 'none';
+        (el.dataset.tags || '').split(',').forEach(t => { t = t.trim(); if (t) tagSet.add(t); });
     });
+    if (tagSet.size === 0) { tagbar.innerHTML = ''; tagbar.style.display = 'none'; return; }
+    tagbar.style.display = 'flex';
+    const chips = [...tagSet].sort().map(t =>
+        `<span class="memo-tag-chip${activeTag === t ? ' active' : ''}" onclick="toggleTagFilter('${t.replace(/'/g, "\\'")}')">${t}</span>`
+    ).join('');
+    tagbar.innerHTML = chips;
+}
+
+function toggleTagFilter(tag) {
+    activeTag = (activeTag === tag) ? null : tag;
+    buildTagbar();
+    applyMemoFilters();
+}
+
+// 検索（タイトル・本文・案件・タグ）＋ タグフィルタ
+function applyMemoFilters() {
+    const q = (document.getElementById('searchInput').value || '').toLowerCase();
+    document.querySelectorAll('.memo-item').forEach(el => {
+        const title = (el.querySelector('.memo-item-title')?.textContent || '').toLowerCase();
+        const content = (el.dataset.content || '').toLowerCase();
+        const project = (el.dataset.project || '').toLowerCase();
+        const tags = (el.dataset.tags || '').toLowerCase();
+        const matchText = !q || title.includes(q) || content.includes(q) || project.includes(q) || tags.includes(q);
+        const matchTag = !activeTag || (el.dataset.tags || '').split(',').map(t => t.trim()).includes(activeTag);
+        el.style.display = (matchText && matchTag) ? '' : 'none';
+    });
+}
+
+// ========== ピン留め ==========
+async function togglePin() {
+    if (!currentMemo) return;
+    const newPinned = !currentMemo.pinned;
+    await fetch(`/api/memos/${currentMemoId}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({pinned: newPinned}),
+    });
+    location.reload();
+}
+
+// ========== タグ保存 ==========
+async function saveTags() {
+    if (!currentMemoId) return;
+    const tags = document.getElementById('memoTagsInput').value;
+    await fetch(`/api/memos/${currentMemoId}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({tags}),
+    });
+    location.reload();
+}
+
+// ========== Markdownプレビュー ==========
+function togglePreview() {
+    previewMode = !previewMode;
+    const ta = document.getElementById('memoTextarea');
+    const pv = document.getElementById('memoPreview');
+    const btn = document.getElementById('previewBtn');
+    if (previewMode) {
+        pv.innerHTML = renderMarkdown(ta.value);
+        ta.style.display = 'none';
+        pv.style.display = 'block';
+        btn.textContent = '✏️ 編集';
+        btn.classList.add('btn-primary');
+    } else {
+        ta.style.display = '';
+        pv.style.display = 'none';
+        btn.textContent = '👁 プレビュー';
+        btn.classList.remove('btn-primary');
+    }
+}
+
+// 軽量Markdownレンダラ（見出し/箇条書き/番号/太字/斜体/コード/リンク/引用/水平線）
+function renderMarkdown(src) {
+    const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const inline = s => esc(s)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+        .replace(/(^|[^"=])(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+    const lines = (src || '').split('\n');
+    let html = '', listType = null;
+    const closeList = () => { if (listType) { html += `</${listType}>`; listType = null; } };
+    for (let raw of lines) {
+        const line = raw.trimEnd();
+        let m;
+        if (/^\s*#{1,6}\s+/.test(line)) {
+            closeList();
+            const lvl = line.match(/^\s*(#{1,6})/)[1].length;
+            html += `<h${lvl}>${inline(line.replace(/^\s*#{1,6}\s+/, ''))}</h${lvl}>`;
+        } else if (/^\s*>\s?/.test(line)) {
+            closeList();
+            html += `<blockquote>${inline(line.replace(/^\s*>\s?/, ''))}</blockquote>`;
+        } else if (/^\s*([-*]\s+\[[ xX]\])\s+/.test(line)) {
+            if (listType !== 'ul') { closeList(); html += '<ul class="md-tasklist">'; listType = 'ul'; }
+            const checked = /\[[xX]\]/.test(line);
+            html += `<li><input type="checkbox" disabled ${checked ? 'checked' : ''}> ${inline(line.replace(/^\s*[-*]\s+\[[ xX]\]\s+/, ''))}</li>`;
+        } else if (/^\s*[-*+]\s+/.test(line)) {
+            if (listType !== 'ul') { closeList(); html += '<ul>'; listType = 'ul'; }
+            html += `<li>${inline(line.replace(/^\s*[-*+]\s+/, ''))}</li>`;
+        } else if ((m = line.match(/^\s*\d+\.\s+(.*)/))) {
+            if (listType !== 'ol') { closeList(); html += '<ol>'; listType = 'ol'; }
+            html += `<li>${inline(m[1])}</li>`;
+        } else if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) {
+            closeList(); html += '<hr>';
+        } else if (line.trim() === '') {
+            closeList();
+        } else {
+            closeList();
+            html += `<p>${inline(line)}</p>`;
+        }
+    }
+    closeList();
+    return html;
+}
+
+// ========== メモ → タスク化 ==========
+let taskizeCandidates = [];
+async function memoToTasks() {
+    if (!currentMemoId) return;
+    await saveMemo();
+    const content = document.getElementById('memoTextarea').value.trim();
+    if (!content) { alert('メモが空です'); return; }
+
+    document.getElementById('taskizeModal').style.display = 'flex';
+    document.getElementById('taskizeBody').innerHTML = '<div class="memo-empty">AIがタスクを抽出中...</div>';
+    document.getElementById('taskizeCreateBtn').style.display = 'none';
+
+    const pj = currentMemo && currentMemo.notion_project_name;
+    document.getElementById('taskizeProject').innerHTML = pj
+        ? `登録先案件: <strong>📁 ${pj}</strong>`
+        : '⚠️ この案件は未分類です。タスクは案件なしで作成されます（後で紐付け可）。';
+
+    try {
+        const resp = await fetch('/api/projects/extract-tasks', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({memo: content}),
+        });
+        const data = await resp.json();
+        taskizeCandidates = data.tasks || [];
+        if (taskizeCandidates.length === 0) {
+            document.getElementById('taskizeBody').innerHTML = '<div class="memo-empty">抽出できるタスクが見つかりませんでした</div>';
+            return;
+        }
+        document.getElementById('taskizeBody').innerHTML = taskizeCandidates.map((t, i) => {
+            const prio = t.priority || '中';
+            return `<label class="taskize-item">
+                <input type="checkbox" checked data-idx="${i}">
+                <span class="taskize-name">${(t.name || '').replace(/</g, '&lt;')}</span>
+                <select data-prio="${i}" class="taskize-prio">
+                    <option ${prio === '高' ? 'selected' : ''}>高</option>
+                    <option ${prio === '中' ? 'selected' : ''}>中</option>
+                    <option ${prio === '低' ? 'selected' : ''}>低</option>
+                </select>
+            </label>`;
+        }).join('');
+        document.getElementById('taskizeCreateBtn').style.display = '';
+    } catch (e) {
+        document.getElementById('taskizeBody').innerHTML = '<div class="memo-empty">抽出に失敗しました</div>';
+    }
+}
+
+async function createTasksFromMemo() {
+    const projectId = currentMemo && currentMemo.notion_project_id;
+    const checks = [...document.querySelectorAll('#taskizeBody input[type=checkbox]:checked')];
+    if (checks.length === 0) { alert('タスクを選択してください'); return; }
+    const btn = document.getElementById('taskizeCreateBtn');
+    btn.disabled = true; btn.textContent = '作成中...';
+    let created = 0;
+    for (const cb of checks) {
+        const idx = cb.dataset.idx;
+        const name = taskizeCandidates[idx].name;
+        const prio = document.querySelector(`select[data-prio="${idx}"]`).value;
+        try {
+            const r = await fetch('/api/tasks', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name, priority: prio, project_id: projectId || null}),
+            });
+            if (r.ok) created++;
+        } catch (e) {}
+    }
+    btn.disabled = false; btn.textContent = '選択したタスクを作成';
+    closeTaskizeModal();
+    alert(`${created}件のタスクを作成しました（タスク一覧で確認できます）`);
+}
+
+function closeTaskizeModal() {
+    document.getElementById('taskizeModal').style.display = 'none';
 }
 
 // ========== 録音機能 ==========
@@ -881,6 +1145,7 @@ async function filterMemos(value) {
         return;
     }
 
+    const escAttr = s => (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
     list.innerHTML = data.memos.map(m => {
         let badge = '';
         if (m.notion_project_name) {
@@ -890,15 +1155,25 @@ async function filterMemos(value) {
         } else {
             badge = '<span class="memo-badge badge-unlinked">未分類</span>';
         }
+        const tags = (m.tags || '').split(',').filter(Boolean).map(t => `<span class="memo-tag">${t}</span>`).join('');
+        const pin = m.pinned ? '<span class="pin-mark">📌</span>' : '';
         const date = m.updated_at ? new Date(m.updated_at).toLocaleString('ja-JP', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
         return `
-            <div class="memo-item" data-id="${m.id}" onclick="selectMemo(${m.id})">
-                <div class="memo-item-title">${m.title || '無題'}</div>
-                <div class="memo-item-meta">${badge}</div>
+            <div class="memo-item${m.pinned ? ' memo-pinned' : ''}" data-id="${m.id}"
+                 data-content="${escAttr(m.content)}" data-tags="${escAttr(m.tags)}"
+                 data-project="${escAttr(m.notion_project_name)}" data-pinned="${m.pinned ? 1 : 0}"
+                 onclick="selectMemo(${m.id})">
+                <div class="memo-item-title">${pin}${m.title || '無題'}</div>
+                <div class="memo-item-meta">${badge}${tags}</div>
                 <div class="memo-item-date">${date}</div>
             </div>
         `;
     }).join('');
+    buildTagbar();
+    applyMemoFilters();
 }
+
+// 初期化
+document.addEventListener('DOMContentLoaded', buildTagbar);
 </script>
 {% endblock %}
