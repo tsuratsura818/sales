@@ -141,6 +141,40 @@ async def api_list_projects(status: Optional[str] = Query(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# 注意: 固定パスのGETは /api/projects/{project_id} より前に定義すること
+# （後に置くと {project_id} に先取りされ "monthly-summary" 等がNotion問い合わせされ500になる）
+@router.get("/api/projects/monthly-summary")
+async def api_monthly_summary(month: Optional[str] = Query(None)):
+    """月別の継続案件サマリー"""
+    try:
+        projects = await notion_service.list_projects()
+        retainer = [p for p in projects if p.get("contract_type") == "継続"]
+        onetime = [p for p in projects if p.get("contract_type") != "継続"]
+
+        retainer_revenue = sum(p.get("amount") or 0 for p in retainer)
+        onetime_revenue = sum(p.get("amount") or 0 for p in onetime)
+
+        return {
+            "retainer_count": len(retainer),
+            "retainer_revenue": retainer_revenue,
+            "onetime_count": len(onetime),
+            "onetime_revenue": onetime_revenue,
+            "total_revenue": retainer_revenue + onetime_revenue,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/projects/archived")
+async def api_list_archived():
+    """アーカイブ済み案件一覧API"""
+    try:
+        projects = await notion_service.list_archived_projects()
+        return {"projects": projects}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/api/projects/{project_id}")
 async def api_get_project(project_id: str):
     """案件詳細API"""
@@ -420,28 +454,6 @@ async def api_generate_monthly_tasks(project_id: str, data: GenerateTasksRequest
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/projects/monthly-summary")
-async def api_monthly_summary(month: Optional[str] = Query(None)):
-    """月別の継続案件サマリー"""
-    try:
-        projects = await notion_service.list_projects()
-        retainer = [p for p in projects if p.get("contract_type") == "継続"]
-        onetime = [p for p in projects if p.get("contract_type") != "継続"]
-
-        retainer_revenue = sum(p.get("amount") or 0 for p in retainer)
-        onetime_revenue = sum(p.get("amount") or 0 for p in onetime)
-
-        return {
-            "retainer_count": len(retainer),
-            "retainer_revenue": retainer_revenue,
-            "onetime_count": len(onetime),
-            "onetime_revenue": onetime_revenue,
-            "total_revenue": retainer_revenue + onetime_revenue,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 # ========== リード→案件化 ==========
 
 class BulkProjectCreate(BaseModel):
@@ -520,16 +532,6 @@ async def archive_page(request: Request):
         "projects": archived,
         "statuses": notion_service.PROJECT_STATUSES,
     })
-
-
-@router.get("/api/projects/archived")
-async def api_list_archived():
-    """アーカイブ済み案件一覧API"""
-    try:
-        projects = await notion_service.list_archived_projects()
-        return {"projects": projects}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/api/projects/{project_id}/unarchive")
