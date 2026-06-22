@@ -793,7 +793,8 @@ async function saveProject() {
     }
 
     try {
-        const resp = await fetch(`/api/projects/${currentProjectId}`, {
+        // 詳細保存ではタスク自動生成を抑制（案件化への変更はドラッグ操作で行う想定）
+        const resp = await fetch(`/api/projects/${currentProjectId}?suppress_tasks=1`, {
             method: 'PATCH',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(filtered),

@@ -208,8 +208,8 @@ async def api_create_project(data: ProjectCreate):
 
 
 @router.patch("/api/projects/{project_id}")
-async def api_update_project(project_id: str, data: ProjectUpdate):
-    """案件更新API"""
+async def api_update_project(project_id: str, data: ProjectUpdate, suppress_tasks: bool = Query(False)):
+    """案件更新API（suppress_tasks=True で案件化時のタスク自動生成を抑制）"""
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="更新内容がありません")
@@ -217,7 +217,8 @@ async def api_update_project(project_id: str, data: ProjectUpdate):
         project = await notion_service.update_project(project_id, updates)
         generated_tasks: list[dict] = []
         # ステータスが「案件化」になったら定型タスクを自動生成（既存タスクが無い場合のみ）
-        if updates.get("status") == "案件化":
+        # 詳細モーダルからの保存(suppress_tasks=True)では生成しない
+        if updates.get("status") == "案件化" and not suppress_tasks:
             try:
                 generated_tasks = await notion_service.generate_onboarding_tasks(project_id)
             except Exception:
