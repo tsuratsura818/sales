@@ -44,7 +44,7 @@
                         <select class="form-control" style="display:inline; width:auto; font-size:0.8rem; padding:4px 8px;"
                                 id="restore-status-{{ p.id }}">
                             {% for s in statuses %}
-                            <option value="{{ s }}" {% if s == '見込み' %}selected{% endif %}>{{ s }}</option>
+                            <option value="{{ s }}" {% if s == '提案前' %}selected{% endif %}>{{ s }}</option>
                             {% endfor %}
                         </select>
                         <button class="btn btn-sm btn-primary" onclick="restoreProject('{{ p.id }}')" style="margin-left:4px;">

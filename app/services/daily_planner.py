@@ -73,7 +73,7 @@ async def gather_context() -> dict:
             all_projects = await notion_service.list_projects()
             projects = [
                 p for p in all_projects
-                if p.get("status") in ("案件化", "商談中", "提案中")
+                if p.get("status") in ("案件化", "商談中", "提案前")
             ]
             tasks_todo = await notion_service.list_tasks(status="未着手")
             tasks_wip = await notion_service.list_tasks(status="進行中")

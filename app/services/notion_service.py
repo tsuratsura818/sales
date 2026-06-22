@@ -9,7 +9,7 @@ NOTION_API_BASE = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
 
 # 案件ステータス定義
-PROJECT_STATUSES = ["見込み", "提案中", "商談中", "案件化", "完了", "失注"]
+PROJECT_STATUSES = ["提案前", "商談中", "案件化", "完了", "失注"]
 CONTRACT_TYPES = ["単発", "継続"]
 BILLING_CYCLES = ["月次", "四半期", "年次"]
 TASK_STATUSES = ["未着手", "進行中", "外注対応", "確認中", "完了"]
@@ -138,7 +138,7 @@ async def get_project(project_id: str) -> dict:
 
 async def create_project(
     name: str,
-    status: str = "見込み",
+    status: str = "提案前",
     client_name: str = "",
     amount: int | None = None,
     start_date: str | None = None,

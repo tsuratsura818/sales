@@ -106,7 +106,7 @@ async def gantt_page(request: Request):
 
 class ProjectCreate(BaseModel):
     name: str
-    status: str = "見込み"
+    status: str = "提案前"
     client: str = ""
     amount: Optional[int] = None
     start_date: Optional[str] = None
@@ -507,7 +507,7 @@ async def api_lead_to_project(lead_id: int, data: LeadToProjectRequest):
     try:
         project = await notion_service.create_project(
             name=data.name,
-            status="見込み",
+            status="提案前",
             client_name=data.client,
             amount=data.amount,
             url=data.url,

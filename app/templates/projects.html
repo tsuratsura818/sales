@@ -4,8 +4,8 @@
 {% block content %}
 <div class="page-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
     <div>
-        <h1>📋 案件管理ボード</h1>
-        <p>Notion連携の案件管理。ドラッグ&ドロップでステータスを変更できます。</p>
+        <h1>📋 案件化パイプライン</h1>
+        <p>案件化までを管理。提案前 → 商談中 → 案件化 の順に右へドラッグ。一番右「案件化」がゴールです。</p>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
         <label class="closed-toggle" title="完了・失注の案件を表示/非表示">
@@ -100,8 +100,7 @@
 <div class="stats-row">
     {% set ns = namespace(prospect=0, proposal=0, meeting=0, won=0, active=0, done=0, lost=0, total_amount=0, retainer_amount=0, retainer_count=0) %}
     {% for p in projects %}
-        {% if p.status == '見込み' %}{% set ns.prospect = ns.prospect + 1 %}
-        {% elif p.status == '提案中' %}{% set ns.proposal = ns.proposal + 1 %}
+        {% if p.status == '提案前' %}{% set ns.prospect = ns.prospect + 1 %}
         {% elif p.status == '商談中' %}{% set ns.meeting = ns.meeting + 1 %}
         {% elif p.status == '案件化' %}{% set ns.active = ns.active + 1 %}
         {% elif p.status == '完了' %}{% set ns.done = ns.done + 1 %}
@@ -215,7 +214,7 @@
                     <label>ステータス</label>
                     <select id="addStatus" class="form-control">
                         {% for s in statuses %}
-                        <option value="{{ s }}" {% if s == '見込み' %}selected{% endif %}>{{ s }}</option>
+                        <option value="{{ s }}" {% if s == '提案前' %}selected{% endif %}>{{ s }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -421,6 +420,19 @@
 /* 完了・失注だけのクライアントはチップから隠す（既定） */
 .hide-closed.client-chips .client-chip-closed,
 .hide-closed .client-chip-closed { display: none; }
+/* 案件化は量が増えるので約3列分の幅を確保し、カードを複数列グリッドで表示 */
+.kanban-column[data-status="案件化"] { flex: 0 0 660px; max-width: 90vw; }
+.kanban-column[data-status="案件化"] .kanban-column-header { background: #eafaf1; }
+.kanban-column[data-status="案件化"] .kanban-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+    gap: 8px;
+    align-content: start;
+}
+@media (max-width: 768px) {
+    .kanban-column[data-status="案件化"] { flex: 0 0 280px; }
+    .kanban-column[data-status="案件化"] .kanban-cards { grid-template-columns: 1fr; }
+}
 .closed-toggle {
     display: inline-flex; align-items: center; gap: 5px; font-size: 0.82rem;
     color: #555; cursor: pointer; user-select: none; white-space: nowrap;
@@ -722,7 +734,7 @@ async function showDetailModal(projectId) {
         document.getElementById('detailTitle').textContent = p.name || '案件詳細';
         document.getElementById('editName').value = p.name || '';
         document.getElementById('editClient').value = p.client || '';
-        document.getElementById('editStatus').value = p.status || '見込み';
+        document.getElementById('editStatus').value = p.status || '提案前';
         document.getElementById('editAmount').value = p.amount || '';
         document.getElementById('editUrl').value = p.url || '';
         document.getElementById('editStartDate').value = p.start_date || '';
@@ -1006,7 +1018,7 @@ function parseBulkInput() {
     const text = document.getElementById('bulkInput').value.trim();
     if (!text) return [];
 
-    const statusList = ['見込み', '提案中', '商談中', '案件化', '完了', '失注'];
+    const statusList = ['提案前', '商談中', '案件化', '完了', '失注'];
     const contractList = ['単発', '継続'];
     const cycleList = ['月次', '四半期', '年次'];
 
@@ -1015,7 +1027,7 @@ function parseBulkInput() {
         const name = parts[0] || '';
         const client = parts[1] || '';
         const amount = parts[2] ? parseInt(parts[2].replace(/[^0-9]/g, '')) || null : null;
-        const status = (parts[3] && statusList.includes(parts[3])) ? parts[3] : '見込み';
+        const status = (parts[3] && statusList.includes(parts[3])) ? parts[3] : '提案前';
         const contractType = (parts[4] && contractList.includes(parts[4])) ? parts[4] : '単発';
         const billingCycle = (parts[5] && cycleList.includes(parts[5])) ? parts[5] : '';
 

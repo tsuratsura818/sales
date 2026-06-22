@@ -40,8 +40,7 @@
 <!-- 凡例 -->
 <div class="card" style="display:flex; gap:20px; flex-wrap:wrap; align-items:center;">
     <span style="font-weight:600; font-size:13px;">凡例:</span>
-    <span class="gantt-legend"><span class="gantt-legend-bar" style="background:#4a90d9;"></span> 見込み</span>
-    <span class="gantt-legend"><span class="gantt-legend-bar" style="background:#f39c12;"></span> 提案中</span>
+    <span class="gantt-legend"><span class="gantt-legend-bar" style="background:#4a90d9;"></span> 提案前</span>
     <span class="gantt-legend"><span class="gantt-legend-bar" style="background:#e67e22;"></span> 商談中</span>
     <span class="gantt-legend"><span class="gantt-legend-bar" style="background:#27ae60;"></span> 案件化</span>
     <span class="gantt-legend"><span class="gantt-legend-bar" style="background:#95a5a6;"></span> 完了</span>
@@ -57,8 +56,7 @@
 {% if connected and projects %}
 <script>
 const STATUS_COLORS = {
-    '見込み': '#4a90d9',
-    '提案中': '#f39c12',
+    '提案前': '#4a90d9',
     '商談中': '#e67e22',
     '案件化': '#27ae60',
     '完了': '#95a5a6',
