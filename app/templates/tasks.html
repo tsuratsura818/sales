@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% block title %}タスク一覧{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+    <div>
+        <h1>✅ タスク一覧</h1>
+        <p>全案件のタスクを横断表示。ステータス・優先度・期日で絞り込めます。</p>
+    </div>
+    <div style="display:flex; gap:8px;">
+        <a href="/projects" class="btn btn-secondary">📋 カンバン</a>
+        <a href="/gantt" class="btn btn-secondary">📊 ガント</a>
+    </div>
+</div>
+
+{% if not connected %}
+<div class="card">
+    <div class="alert alert-warning">
+        ⚠️ Notion未接続: {{ error or 'NOTION_API_KEY を設定してください' }}
+        <br><a href="/projects">→ セットアップ手順を見る</a>
+    </div>
+</div>
+{% else %}
+
+<!-- 集計カード -->
+<div class="task-stats" id="taskStats"></div>
+
+<!-- クイック追加 -->
+<div class="card">
+    <div class="task-add-row">
+        <input type="text" id="newTaskName" placeholder="タスク名を入力..." class="task-add-input"
+               onkeydown="if(event.key==='Enter')addTask()">
+        <select id="newTaskProject" class="task-add-select" title="案件">
+            <option value="">案件なし</option>
+            {% for p in projects %}
+            <option value="{{ p.id }}">{{ p.name or '（無題）' }}</option>
+            {% endfor %}
+        </select>
+        <select id="newTaskPriority" class="task-add-select" title="優先度">
+            {% for pr in priorities %}
+            <option value="{{ pr }}" {% if pr == '中' %}selected{% endif %}>{{ pr }}</option>
+            {% endfor %}
+        </select>
+        <input type="date" id="newTaskDue" class="task-add-date" title="期日">
+        <button class="btn" onclick="addTask()">＋ 追加</button>
+    </div>
+</div>
+
+<!-- フィルタ -->
+<div class="card task-filter-bar">
+    <div class="report-toggle" id="statusFilter">
+        <button class="active" data-status="">全て</button>
+        {% for s in statuses %}
+        <button data-status="{{ s }}">{{ s }}</button>
+        {% endfor %}
+    </div>
+    <select id="projectFilter" class="task-add-select">
+        <option value="">全案件</option>
+        <option value="__none__">案件なし</option>
+        {% for p in projects %}
+        <option value="{{ p.id }}">{{ p.name or '（無題）' }}</option>
+        {% endfor %}
+    </select>
+    <select id="sortFilter" class="task-add-select">
+        <option value="due">期日が近い順</option>
+        <option value="priority">優先度順</option>
+        <option value="updated">更新が新しい順</option>
+    </select>
+    <label class="task-check-label">
+        <input type="checkbox" id="overdueOnly"> 期限切れのみ
+    </label>
+    <label class="task-check-label">
+        <input type="checkbox" id="hideDone" checked> 完了を隠す
+    </label>
+</div>
+
+<!-- 一覧 -->
+<div class="card" style="padding:0;">
+    <div id="taskList"></div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if connected %}
+<style>
+.task-stats { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+.task-stat { flex:1; min-width:120px; background:#fff; border:1px solid #e5e7eb; border-radius:8px;
+    padding:14px 16px; text-align:center; }
+.task-stat .num { font-size:24px; font-weight:700; line-height:1.2; }
+.task-stat .lbl { font-size:12px; color:#666; margin-top:2px; }
+.task-stat.overdue .num { color:#e74c3c; }
+.task-add-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.task-add-input { flex:1; min-width:200px; padding:8px 10px; border:1px solid #ccc; border-radius:6px; font-size:14px; }
+.task-add-select, .task-add-date { padding:8px 10px; border:1px solid #ccc; border-radius:6px; font-size:14px; background:#fff; }
+.task-filter-bar { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+.task-check-label { font-size:13px; display:flex; align-items:center; gap:5px; cursor:pointer; }
+.task-row { display:flex; align-items:center; gap:10px; padding:10px 16px; border-bottom:1px solid #f0f0f0; }
+.task-row:last-child { border-bottom:none; }
+.task-row:hover { background:#fafafa; }
+.task-row-main { flex:1; min-width:0; }
+.task-row-name { font-size:14px; font-weight:500; }
+.task-row-name.task-done { text-decoration:line-through; color:#999; }
+.task-row-sub { font-size:12px; color:#888; margin-top:2px; display:flex; gap:10px; flex-wrap:wrap; }
+.task-row-project { color:#4a90d9; }
+.task-due-overdue { color:#e74c3c; font-weight:600; }
+.task-group-header { padding:8px 16px; background:#f7f8fa; font-size:12px; font-weight:700; color:#555;
+    border-bottom:1px solid #eee; }
+.task-empty { padding:32px; text-align:center; color:#888; }
+</style>
+<script>
+const projects = {{ projects | tojson }};
+const allTasks = {{ tasks | tojson }};
+const projectMap = {};
+projects.forEach(p => { projectMap[p.id] = p.name || '（無題）'; });
+
+const PRIORITY_ORDER = { '高': 0, '中': 1, '低': 2 };
+const todayStr = new Date().toISOString().slice(0, 10);
+
+function projectName(t) {
+    if (t.project_ids && t.project_ids.length) {
+        return t.project_ids.map(id => projectMap[id]).filter(Boolean).join(', ');
+    }
+    return '';
+}
+
+function isOverdue(t) {
+    return t.due_date && t.due_date < todayStr && t.status !== '完了';
+}
+
+function renderStats() {
+    const counts = { '未着手': 0, '進行中': 0, '完了': 0 };
+    let overdue = 0;
+    allTasks.forEach(t => {
+        if (counts[t.status] !== undefined) counts[t.status]++;
+        if (isOverdue(t)) overdue++;
+    });
+    document.getElementById('taskStats').innerHTML = `
+        <div class="task-stat"><div class="num">${allTasks.length}</div><div class="lbl">総タスク</div></div>
+        <div class="task-stat"><div class="num">${counts['未着手']}</div><div class="lbl">未着手</div></div>
+        <div class="task-stat"><div class="num">${counts['進行中']}</div><div class="lbl">進行中</div></div>
+        <div class="task-stat"><div class="num">${counts['完了']}</div><div class="lbl">完了</div></div>
+        <div class="task-stat overdue"><div class="num">${overdue}</div><div class="lbl">期限切れ</div></div>
+    `;
+}
+
+function getFilters() {
+    return {
+        status: document.querySelector('#statusFilter .active').dataset.status,
+        project: document.getElementById('projectFilter').value,
+        sort: document.getElementById('sortFilter').value,
+        overdueOnly: document.getElementById('overdueOnly').checked,
+        hideDone: document.getElementById('hideDone').checked,
+    };
+}
+
+function renderList() {
+    const f = getFilters();
+    let tasks = allTasks.slice();
+
+    if (f.status) tasks = tasks.filter(t => t.status === f.status);
+    if (f.hideDone && !f.status) tasks = tasks.filter(t => t.status !== '完了');
+    if (f.overdueOnly) tasks = tasks.filter(isOverdue);
+    if (f.project === '__none__') {
+        tasks = tasks.filter(t => !t.project_ids || t.project_ids.length === 0);
+    } else if (f.project) {
+        tasks = tasks.filter(t => t.project_ids && t.project_ids.includes(f.project));
+    }
+
+    tasks.sort((a, b) => {
+        if (f.sort === 'priority') {
+            return (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9);
+        }
+        if (f.sort === 'updated') {
+            return (b.last_edited_time || '').localeCompare(a.last_edited_time || '');
+        }
+        // due: 期日あり優先→昇順、期日なしは末尾
+        const ad = a.due_date || '9999-99-99';
+        const bd = b.due_date || '9999-99-99';
+        return ad.localeCompare(bd);
+    });
+
+    const container = document.getElementById('taskList');
+    if (tasks.length === 0) {
+        container.innerHTML = '<div class="task-empty">該当するタスクがありません</div>';
+        return;
+    }
+
+    container.innerHTML = tasks.map(t => {
+        const pname = projectName(t);
+        const overdue = isOverdue(t);
+        const dueLabel = t.due_date
+            ? `<span class="task-due ${overdue ? 'task-due-overdue' : ''}">${overdue ? '⚠ ' : '📅 '}${t.due_date}</span>`
+            : '';
+        return `
+        <div class="task-row" data-task-id="${t.id}">
+            <select class="task-status-select" onchange="updateTaskStatus('${t.id}', this.value)">
+                <option value="未着手" ${t.status === '未着手' ? 'selected' : ''}>未着手</option>
+                <option value="進行中" ${t.status === '進行中' ? 'selected' : ''}>進行中</option>
+                <option value="完了" ${t.status === '完了' ? 'selected' : ''}>完了</option>
+            </select>
+            ${t.priority ? `<span class="task-priority task-priority-${t.priority}">${t.priority}</span>` : ''}
+            <div class="task-row-main">
+                <div class="task-row-name ${t.status === '完了' ? 'task-done' : ''}">
+                    ${t.recurring ? '🔄 ' : ''}${escapeHtml(t.name || '（無題）')}
+                </div>
+                <div class="task-row-sub">
+                    ${pname ? `<span class="task-row-project">📁 ${escapeHtml(pname)}</span>` : ''}
+                    ${dueLabel}
+                    ${t.target_month ? `<span style="color:#8e44ad;">対象 ${t.target_month}</span>` : ''}
+                </div>
+            </div>
+            <button class="btn-icon" onclick="deleteTask('${t.id}')" title="削除">🗑</button>
+        </div>`;
+    }).join('');
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => (
+        {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+    ));
+}
+
+async function addTask() {
+    const name = document.getElementById('newTaskName').value.trim();
+    if (!name) return;
+    try {
+        const resp = await fetch('/api/tasks', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name,
+                project_id: document.getElementById('newTaskProject').value || null,
+                priority: document.getElementById('newTaskPriority').value,
+                due_date: document.getElementById('newTaskDue').value || null,
+            }),
+        });
+        const data = await resp.json();
+        if (resp.ok && data.task) {
+            allTasks.unshift(data.task);
+            document.getElementById('newTaskName').value = '';
+            document.getElementById('newTaskDue').value = '';
+            renderStats();
+            renderList();
+        } else {
+            alert('タスク追加に失敗しました');
+        }
+    } catch (err) {
+        alert('タスク追加に失敗しました');
+    }
+}
+
+async function updateTaskStatus(taskId, newStatus) {
+    try {
+        await fetch(`/api/tasks/${taskId}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({status: newStatus}),
+        });
+        const t = allTasks.find(x => x.id === taskId);
+        if (t) t.status = newStatus;
+        renderStats();
+        renderList();
+    } catch (err) {
+        alert('更新に失敗しました');
+    }
+}
+
+async function deleteTask(taskId) {
+    if (!confirm('このタスクを削除しますか？')) return;
+    try {
+        await fetch(`/api/tasks/${taskId}`, {method: 'DELETE'});
+        const i = allTasks.findIndex(x => x.id === taskId);
+        if (i >= 0) allTasks.splice(i, 1);
+        renderStats();
+        renderList();
+    } catch (err) {
+        alert('削除に失敗しました');
+    }
+}
+
+// フィルタ操作
+document.querySelectorAll('#statusFilter button').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('#statusFilter button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderList();
+    });
+});
+['projectFilter', 'sortFilter'].forEach(id =>
+    document.getElementById(id).addEventListener('change', renderList));
+['overdueOnly', 'hideDone'].forEach(id =>
+    document.getElementById(id).addEventListener('change', renderList));
+
+renderStats();
+renderList();
+</script>
+{% endif %}
+{% endblock %}

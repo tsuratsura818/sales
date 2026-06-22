@@ -34,6 +34,25 @@ async def projects_page(request: Request):
     })
 
 
+@router.get("/tasks", response_class=HTMLResponse)
+async def tasks_page(request: Request):
+    """タスク一覧ページ（全案件横断）"""
+    conn = await notion_service.check_connection()
+    projects = []
+    tasks = []
+    if conn["ok"]:
+        projects = await notion_service.list_projects()
+        tasks = await notion_service.list_tasks()
+    return _get_templates().TemplateResponse(request, "tasks.html", {
+        "projects": projects,
+        "tasks": tasks,
+        "statuses": notion_service.TASK_STATUSES,
+        "priorities": notion_service.TASK_PRIORITIES,
+        "connected": conn["ok"],
+        "error": conn.get("error"),
+    })
+
+
 @router.get("/gantt", response_class=HTMLResponse)
 async def gantt_page(request: Request):
     """ガントチャートページ"""
