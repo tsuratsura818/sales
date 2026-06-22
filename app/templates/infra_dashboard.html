@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSURATSURA Project Dashboard</title>
+<style>
+:root {
+  --bg: #0a0a0a;
+  --card: #141414;
+  --card-hover: #1a1a1a;
+  --border: #262626;
+  --text: #ededed;
+  --text-muted: #888;
+  --accent: #3b82f6;
+  --green: #22c55e;
+  --yellow: #eab308;
+  --red: #ef4444;
+  --purple: #a855f7;
+  --orange: #f97316;
+  --cyan: #06b6d4;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.header {
+  border-bottom: 1px solid var(--border);
+  padding: 16px 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  background: rgba(10,10,10,0.95);
+  backdrop-filter: blur(12px);
+  z-index: 100;
+}
+.header h1 { font-size: 18px; font-weight: 600; }
+
+.main { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
+
+/* Cost Cards */
+.cost-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 32px;
+}
+.cost-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+.cost-card .label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.cost-card .value { font-size: 24px; font-weight: 700; }
+.cost-card .sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.cost-card.total { border-color: var(--accent); background: linear-gradient(135deg, rgba(59,130,246,0.08), transparent); }
+
+/* Section */
+.section { margin-bottom: 36px; }
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.section-title { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.section-icon {
+  width: 28px; height: 28px; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: #fff;
+}
+
+/* Badge */
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-weight: 500;
+}
+.b-green { background: rgba(34,197,94,0.15); color: var(--green); }
+.b-yellow { background: rgba(234,179,8,0.15); color: var(--yellow); }
+.b-red { background: rgba(239,68,68,0.15); color: var(--red); }
+.b-blue { background: rgba(59,130,246,0.15); color: var(--accent); }
+.b-purple { background: rgba(168,85,247,0.15); color: var(--purple); }
+.b-orange { background: rgba(249,115,22,0.15); color: var(--orange); }
+.b-cyan { background: rgba(6,182,212,0.15); color: var(--cyan); }
+.b-gray { background: rgba(136,136,136,0.12); color: var(--text-muted); }
+
+/* Table */
+.table-wrap {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-x: auto;
+}
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+td {
+  padding: 10px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,0.02); }
+.mono { font-family: 'SF Mono','Consolas',monospace; font-size: 11px; color: var(--text-muted); }
+.dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px;
+}
+.dot-green { background: var(--green); box-shadow: 0 0 6px rgba(34,197,94,0.4); }
+.dot-yellow { background: var(--yellow); }
+.dot-gray { background: #555; }
+
+/* Tabs */
+.tabs { display: flex; gap: 2px; margin-bottom: 24px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.tab {
+  padding: 10px 16px; font-size: 13px; color: var(--text-muted);
+  cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Links row */
+.links { display: flex; gap: 6px; flex-wrap: wrap; }
+.link-btn {
+  font-size: 11px; padding: 3px 8px; border-radius: 4px;
+  background: rgba(59,130,246,0.1); color: var(--accent); border: 1px solid rgba(59,130,246,0.2);
+}
+
+/* Editable cost */
+.cost-input {
+  width: 70px; padding: 4px 6px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text); font-size: 12px; text-align: right;
+}
+.cost-input:focus { border-color: var(--accent); outline: none; }
+
+/* Note */
+.note { background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.15); border-radius: 8px; padding: 12px 16px; font-size: 13px; margin-bottom: 20px; color: var(--accent); }
+.note-warn { background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.15); color: var(--red); }
+
+/* Credentials */
+.cred-val {
+  font-family: 'SF Mono','Consolas',monospace;
+  font-size: 12px;
+  background: var(--bg);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  display: inline-block;
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  cursor: pointer;
+  user-select: all;
+}
+.cred-hidden { color: transparent; text-shadow: 0 0 8px rgba(255,255,255,0.4); }
+.cred-toggle {
+  font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer;
+  background: var(--border); border: none; color: var(--text-muted); margin-left: 4px;
+}
+.cred-toggle:hover { background: #444; color: var(--text); }
+.cred-copy {
+  font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer;
+  background: rgba(59,130,246,0.15); border: none; color: var(--accent); margin-left: 2px;
+}
+.cred-copy:hover { background: rgba(59,130,246,0.25); }
+.cred-group { margin-bottom: 24px; }
+.cred-group-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; padding-left: 4px; }
+
+@media (max-width: 768px) {
+  .header { padding: 12px 16px; }
+  .main { padding: 16px; }
+  .cost-grid { grid-template-columns: 1fr 1fr; }
+  th, td { padding: 6px 8px; font-size: 12px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>TSURATSURA Project Dashboard</h1>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <span style="font-size:12px;color:var(--text-muted)">Updated: 2026-04-08</span>
+    <a href="/dashboard" style="font-size:13px;color:var(--accent);">← SellBuddy</a>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- Monthly Cost Summary -->
+  <div class="cost-grid" id="costGrid"></div>
+
+  <div class="note">
+    Shopify各ストアの月額コストは下の表で直接入力できます（ブラウザに自動保存）。
+    Vercel・Supabaseのコストは各ダッシュボードで確認してください。
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('overview')">Overview</div>
+    <div class="tab" onclick="switchTab('vercel')">Vercel</div>
+    <div class="tab" onclick="switchTab('supabase')">Supabase</div>
+    <div class="tab" onclick="switchTab('shopify')">Shopify</div>
+    <div class="tab" onclick="switchTab('other')">Other</div>
+    <div class="tab" onclick="switchTab('costs')">Cost Tracker</div>
+    <div class="tab" onclick="switchTab('creds')">Credentials</div>
+  </div>
+
+  <!-- Overview -->
+  <div class="panel active" id="panel-overview">
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">All Projects</div>
+        <span class="badge b-blue" id="totalCount"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Project</th><th>Hosting</th><th>DB</th><th>Services</th><th>Status</th><th>Links</th>
+          </tr></thead>
+          <tbody id="overviewTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vercel -->
+  <div class="panel" id="panel-vercel">
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-icon" style="background:#000;border:1px solid #333;">V</span>
+          Vercel Projects
+        </div>
+        <a href="https://vercel.com/tsuratsura818s-projects" target="_blank" class="link-btn">Open Dashboard</a>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Project</th><th>URL</th><th>Framework</th><th>Repo</th><th>Features</th>
+          </tr></thead>
+          <tbody id="vercelTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Supabase -->
+  <div class="panel" id="panel-supabase">
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-icon" style="background:#1c7c54;">S</span>
+          Supabase Projects
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Project</th><th>Account</th><th>Project ID</th><th>Region</th><th>Plan</th><th>Dashboard</th>
+          </tr></thead>
+          <tbody id="supabaseTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Shopify -->
+  <div class="panel" id="panel-shopify">
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-icon" style="background:#5e8e3e;">S</span>
+          Shopify Stores
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Store</th><th>Domain</th><th>Theme</th><th>Monthly Cost</th><th>Admin</th>
+          </tr></thead>
+          <tbody id="shopifyTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Other -->
+  <div class="panel" id="panel-other">
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Other Services</div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Service</th><th>Used By</th><th>Plan</th><th>Monthly Cost</th><th>Dashboard</th>
+          </tr></thead>
+          <tbody id="otherTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cost Tracker -->
+  <div class="panel" id="panel-costs">
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Monthly Cost Tracker</div>
+      </div>
+      <div class="note">各サービスの月額コストを入力してください。入力するとブラウザに自動保存され、サマリーに反映されます。</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Service</th><th>Project</th><th>Monthly ($)</th><th>Notes</th>
+          </tr></thead>
+          <tbody id="costTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Credentials -->
+  <div class="panel" id="panel-creds">
+    <div class="section">
+      <div class="note note-warn">
+        このページはローカルファイルです。パスワードはこのHTMLファイル内に直接記載されています。<br>
+        このファイルを共有・アップロードしないでください。
+      </div>
+      <div style="margin-bottom:16px;">
+        <button class="cred-toggle" onclick="toggleAllCreds()" id="toggleAllBtn">All Show</button>
+      </div>
+      <div id="credsContent"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ===== DATA =====
+const PROJECTS = [
+  {
+    name: 'いとをかし Tsumugi',
+    hosting: 'Vercel', db: 'Supabase',
+    services: ['Shopify','IG API','X API','Claude API','DALL-E','LINE'],
+    status: 'active',
+    vercel: { url: 'Vercel auto-deploy', framework: 'Next.js 16', repo: 'tsuratsura818/itowocashi-tsumugi', branch: 'main', crons: 8 },
+    supabase: { account: 'tsuratsura818', projectId: '-', region: 'Tokyo' },
+    shopify: { domain: 'tsuratsurawasyoki.myshopify.com', theme: 'Dawn v15.4.1', themeId: '137640804561' },
+    links: { vercel: 'https://vercel.com/tsuratsura818s-projects', shopify: 'https://tsuratsurawasyoki.myshopify.com/admin' }
+  },
+  {
+    name: 'コマパラ',
+    hosting: 'Vercel', db: 'Supabase',
+    services: ['NextAuth','Prisma','Vercel Blob','Redis'],
+    status: 'active',
+    vercel: { url: 'Vercel auto-deploy', framework: 'Next.js 14', repo: 'tsuratsura818/komapara', branch: 'master', crons: 1 },
+    supabase: { account: 'tsuratsura818', projectId: '-', region: 'Tokyo' },
+    links: {}
+  },
+  {
+    name: 'SellBuddy',
+    hosting: 'Render', db: 'Supabase',
+    services: ['Claude API','Gmail IMAP','SerpAPI','UptimeRobot'],
+    status: 'active',
+    render: { url: 'https://sales-6g78.onrender.com', serviceId: 'srv-d6j97lvkijhs739d8u80' },
+    supabase: { account: 'sales@tsuratsura.com', projectId: '(new)', region: 'Tokyo' },
+    links: { render: 'https://dashboard.render.com' }
+  },
+  {
+    name: 'WebCraft',
+    hosting: 'Vercel', db: '-',
+    services: ['Claude API'],
+    status: 'active',
+    vercel: { url: 'https://webcraft-rosy.vercel.app', framework: 'Next.js 16', repo: 'tsuratsura818/webcraft', branch: 'master', crons: 0 },
+    links: {}
+  },
+  {
+    name: 'Pivolink (Redirect)',
+    hosting: 'Vercel', db: 'Supabase',
+    services: ['Stripe','Firebase','X API','Capacitor'],
+    status: 'active',
+    vercel: { url: 'https://redirect-brown-six.vercel.app', framework: 'Next.js 16', repo: 'tsuratsura818/redirect', branch: 'master', crons: 1 },
+    supabase: { account: '(unknown)', projectId: 'kqsjflnwuqgzzmdejgil', region: 'Tokyo' },
+    links: {}
+  },
+  {
+    name: 'WOLFGANG EC',
+    hosting: 'Vercel', db: '-',
+    services: ['Shopify Storefront'],
+    status: 'active',
+    vercel: { url: 'https://wolfgang-five.vercel.app', framework: 'Next.js', repo: 'tsuratsura818/wolfgang', branch: '-', crons: 0 },
+    shopify: { domain: 'forest-of-wolf.myshopify.com', theme: 'Custom', themeId: '148966342839' },
+    links: { shopify: 'https://forest-of-wolf.myshopify.com/admin' }
+  },
+  {
+    name: 'WOLFGANG Tsumugi',
+    hosting: 'Vercel', db: 'Supabase',
+    services: ['Shopify','Claude API'],
+    status: 'active',
+    vercel: { url: 'https://wolfgang-tsumugi.vercel.app', framework: 'Next.js', repo: 'tsuratsura818/wolfgang-tsumugi', branch: '-', crons: 0 },
+    supabase: { account: '(unknown)', projectId: 'wdvfqqrqemtngpdyxajn', region: '-' },
+    links: {}
+  },
+  {
+    name: 'BannerForge Pro',
+    hosting: 'Vercel', db: 'Supabase',
+    services: ['Gemini API'],
+    status: 'active',
+    vercel: { url: 'https://bannerforge-pro.vercel.app', framework: 'Next.js', repo: 'tsuratsura818/bannerforge-pro', branch: 'master', crons: 0 },
+    supabase: { account: 'info@forest-of-wolf.com', projectId: 'ixasvsnbdoqsmnmnzbgk', region: '-' },
+    links: {}
+  },
+  {
+    name: 'MailForge',
+    hosting: 'Vercel', db: 'Supabase',
+    services: ['Claude API','SMTP (Xserver)'],
+    status: 'active',
+    vercel: { url: 'https://mailforge-five.vercel.app', framework: 'Next.js', repo: 'tsuratsura818/mailforge', branch: 'master', crons: 0 },
+    supabase: { account: 'contact@iren-design.com', projectId: 'xpukjjmstticsubrxuit', region: '-' },
+    links: {}
+  },
+  {
+    name: 'PRESSLAB',
+    hosting: 'Vercel', db: 'Supabase',
+    services: ['Claude API','Stripe'],
+    status: 'active',
+    vercel: { url: 'https://presslabfinal.vercel.app', framework: 'Next.js', repo: 'tsuratsura818/presslab', branch: 'master', crons: 0 },
+    supabase: { account: '(unknown)', projectId: 'unldctofmtysixpqupvd', region: '-' },
+    links: {}
+  },
+  {
+    name: 'オオカミの森ポータル',
+    hosting: 'Vercel', db: 'Supabase',
+    services: ['Shopify','Google OAuth'],
+    status: 'active',
+    vercel: { url: 'https://ookami-portal.vercel.app', framework: 'Next.js 16', repo: 'tsuratsura818/ookami-portal', branch: '-', crons: 0 },
+    supabase: { account: 'info@forest-of-wolf.com', projectId: 'whriixslkfopakzuyrpr', region: '-' },
+    shopify: { domain: 'forest-of-wolf.myshopify.com', theme: '-', themeId: '148966342839' },
+    links: {}
+  },
+  {
+    name: 'ジビエレザー',
+    hosting: '-', db: 'Supabase (Multi)',
+    services: ['Shopify','Tsumugi マルチテナント'],
+    status: 'active',
+    supabase: { account: '(unknown)', projectId: 'vllyqlexmbgmlpgqzvwh', region: '-' },
+    shopify: { domain: 'xn-ick2ae2iqf2d.myshopify.com', theme: 'Dawn', themeId: '162773106777' },
+    links: { shopify: 'https://xn-ick2ae2iqf2d.myshopify.com/admin' }
+  },
+  {
+    name: 'アオン',
+    hosting: '-', db: '-',
+    services: ['Shopify'],
+    status: 'active',
+    shopify: { domain: 'crywolves.myshopify.com', theme: 'TSURAテーマ', themeId: '185846137115' },
+    links: { shopify: 'https://crywolves.myshopify.com/admin' }
+  },
+  {
+    name: '無花果とマシンガン',
+    hosting: '-', db: '-',
+    services: ['Shopify'],
+    status: 'active',
+    shopify: { domain: 'xn-o9j8g6a9k5db9509g95pee0b.myshopify.com', theme: 'TSURAテーマ', themeId: '186488160555' },
+    links: { shopify: 'https://xn-o9j8g6a9k5db9509g95pee0b.myshopify.com/admin' }
+  },
+  {
+    name: '日本オオカミ協会EC',
+    hosting: '-', db: '-',
+    services: ['Shopify'],
+    status: 'active',
+    shopify: { domain: 'xn-kckad2sv49k55altp4ydki0r4b16cz8w861bne0a.myshopify.com', theme: 'TSURAテーマ v3.2', themeId: '139242995771' },
+    links: {}
+  },
+  {
+    name: 'TSURAテーマ開発',
+    hosting: '-', db: '-',
+    services: ['Shopify (Dev)'],
+    status: 'dev',
+    shopify: { domain: 'xn-ddk5bve5105aeq6a.myshopify.com', theme: 'TSURAテーマ v3.2', themeId: '155033305320' },
+    links: {}
+  },
+  {
+    name: 'CleanCare',
+    hosting: 'XSERVER', db: 'MySQL',
+    services: ['WordPress','AIOSEO'],
+    status: 'active',
+    links: { site: 'https://clean-care.jp/', admin: 'https://clean-care.jp/login_2024' }
+  },
+  {
+    name: 'SolSniper',
+    hosting: 'Local', db: '-',
+    services: ['Helius RPC','Jupiter','Pump.fun'],
+    status: 'local',
+    links: {}
+  },
+  {
+    name: '経理ツール',
+    hosting: 'Local', db: '-',
+    services: ['Gmail API','Shopify API','Google Calendar'],
+    status: 'local',
+    links: {}
+  },
+  {
+    name: 'IG Follower Tool',
+    hosting: 'Local', db: '-',
+    services: ['Playwright'],
+    status: 'local',
+    links: {}
+  },
+];
+
+// Cost tracker items
+const COST_ITEMS = [
+  { id: 'vercel_pro', service: 'Vercel', project: 'Pro Plan (Base)', defaultCost: 20, note: '$20/月固定' },
+  { id: 'vercel_usage', service: 'Vercel', project: 'Usage (Build Minutes等)', defaultCost: 0, note: '前月: $36.66' },
+  { id: 'sb_tsumugi', service: 'Supabase', project: 'Tsumugi', defaultCost: 25, note: 'Pro $25/月' },
+  { id: 'sb_komapara', service: 'Supabase', project: 'コマパラ', defaultCost: 0, note: 'Free?' },
+  { id: 'sb_sellbuddy', service: 'Supabase', project: 'SellBuddy', defaultCost: 0, note: '' },
+  { id: 'sb_pivolink', service: 'Supabase', project: 'Pivolink', defaultCost: 0, note: '' },
+  { id: 'sb_wolfgang', service: 'Supabase', project: 'WOLFGANG Tsumugi', defaultCost: 0, note: '' },
+  { id: 'sb_gibier', service: 'Supabase', project: 'ジビエレザー', defaultCost: 0, note: '' },
+  { id: 'sb_bannerforge', service: 'Supabase', project: 'BannerForge', defaultCost: 0, note: '' },
+  { id: 'sb_mailforge', service: 'Supabase', project: 'MailForge', defaultCost: 0, note: '' },
+  { id: 'sb_presslab', service: 'Supabase', project: 'PRESSLAB', defaultCost: 0, note: '' },
+  { id: 'sb_ookami', service: 'Supabase', project: 'オオカミの森ポータル', defaultCost: 0, note: '' },
+  { id: 'shopify_itowocashi', service: 'Shopify', project: 'いとをかし', defaultCost: 0, note: '' },
+  { id: 'shopify_wolfgang', service: 'Shopify', project: 'WOLFGANG', defaultCost: 0, note: '' },
+  { id: 'shopify_aon', service: 'Shopify', project: 'アオン', defaultCost: 0, note: '' },
+  { id: 'shopify_gibier', service: 'Shopify', project: 'ジビエレザー', defaultCost: 0, note: '' },
+  { id: 'shopify_jikumashi', service: 'Shopify', project: '無花果とマシンガン', defaultCost: 0, note: '' },
+  { id: 'shopify_japanwolf', service: 'Shopify', project: '日本オオカミ協会', defaultCost: 0, note: '' },
+  { id: 'shopify_tsura', service: 'Shopify', project: 'TSURAテーマ(Dev)', defaultCost: 0, note: '開発ストア=無料?' },
+  { id: 'render', service: 'Render', project: 'SellBuddy', defaultCost: 0, note: '' },
+  { id: 'xserver', service: 'XSERVER', project: 'CleanCare', defaultCost: 0, note: '' },
+  { id: 'anthropic', service: 'Anthropic API', project: 'Claude API (Shared)', defaultCost: 0, note: '' },
+  { id: 'domain', service: 'Domain', project: '各種ドメイン', defaultCost: 0, note: '' },
+];
+
+// ===== Load/Save Costs =====
+function loadCosts() {
+  try {
+    const saved = localStorage.getItem('tsura_costs');
+    return saved ? JSON.parse(saved) : {};
+  } catch(e) { return {}; }
+}
+function saveCosts(costs) {
+  localStorage.setItem('tsura_costs', JSON.stringify(costs));
+}
+
+// ===== Render Functions =====
+function statusHtml(s) {
+  if (s === 'active') return '<span class="dot dot-green"></span>Live';
+  if (s === 'local') return '<span class="dot dot-gray"></span>Local';
+  if (s === 'dev') return '<span class="dot dot-yellow"></span>Dev';
+  return '<span class="dot dot-gray"></span>' + s;
+}
+
+function badgeHtml(text, color) {
+  return `<span class="badge b-${color}">${text}</span>`;
+}
+
+function renderOverview() {
+  const liveCount = PROJECTS.filter(p => p.status === 'active').length;
+  document.getElementById('totalCount').textContent = `${PROJECTS.length} projects (${liveCount} live)`;
+
+  document.getElementById('overviewTable').innerHTML = PROJECTS.map(p => {
+    const svcs = p.services.map(s => badgeHtml(s, 'gray')).join(' ');
+    const links = [];
+    if (p.links?.vercel) links.push(`<a href="${p.links.vercel}" target="_blank" class="link-btn">Vercel</a>`);
+    if (p.links?.shopify) links.push(`<a href="${p.links.shopify}" target="_blank" class="link-btn">Shopify</a>`);
+    if (p.links?.render) links.push(`<a href="${p.links.render}" target="_blank" class="link-btn">Render</a>`);
+    if (p.links?.site) links.push(`<a href="${p.links.site}" target="_blank" class="link-btn">Site</a>`);
+    if (p.links?.admin) links.push(`<a href="${p.links.admin}" target="_blank" class="link-btn">Admin</a>`);
+    return `<tr>
+      <td><strong>${p.name}</strong></td>
+      <td>${badgeHtml(p.hosting, p.hosting === 'Vercel' ? 'blue' : p.hosting === 'Render' ? 'purple' : p.hosting === 'Local' ? 'gray' : 'orange')}</td>
+      <td>${p.db === '-' ? '-' : badgeHtml(p.db, 'green')}</td>
+      <td>${svcs}</td>
+      <td>${statusHtml(p.status)}</td>
+      <td><div class="links">${links.join('')}</div></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderVercel() {
+  const vercelProjects = PROJECTS.filter(p => p.vercel);
+  document.getElementById('vercelTable').innerHTML = vercelProjects.map(p => {
+    const v = p.vercel;
+    return `<tr>
+      <td><strong>${p.name}</strong>${v.crons > 0 ? ' ' + badgeHtml(`${v.crons} crons`, 'cyan') : ''}</td>
+      <td class="mono">${v.url}</td>
+      <td>${v.framework}</td>
+      <td class="mono">${v.repo}<br>${badgeHtml(v.branch, 'gray')}</td>
+      <td>${p.services.map(s => badgeHtml(s, 'gray')).join(' ')}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSupabase() {
+  const sbProjects = PROJECTS.filter(p => p.supabase);
+  document.getElementById('supabaseTable').innerHTML = sbProjects.map(p => {
+    const s = p.supabase;
+    const dashUrl = s.projectId && s.projectId !== '-'
+      ? `https://supabase.com/dashboard/project/${s.projectId}`
+      : 'https://supabase.com/dashboard';
+    return `<tr>
+      <td><strong>${p.name}</strong></td>
+      <td class="mono">${s.account}</td>
+      <td class="mono">${s.projectId}</td>
+      <td>${s.region}</td>
+      <td>${badgeHtml('Pro?', 'green')}</td>
+      <td><a href="${dashUrl}" target="_blank" class="link-btn">Open</a></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderShopify() {
+  const shopifyProjects = PROJECTS.filter(p => p.shopify);
+  const costs = loadCosts();
+  document.getElementById('shopifyTable').innerHTML = shopifyProjects.map(p => {
+    const s = p.shopify;
+    const costKey = 'shopify_' + p.name.replace(/[^a-zA-Z]/g, '').toLowerCase().substring(0, 10);
+    const adminUrl = `https://${s.domain}/admin`;
+    return `<tr>
+      <td><strong>${p.name}</strong></td>
+      <td class="mono">${s.domain}</td>
+      <td>${s.theme} <span class="mono">${s.themeId}</span></td>
+      <td>-</td>
+      <td><a href="${adminUrl}" target="_blank" class="link-btn">Admin</a></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderOther() {
+  const others = [
+    { service: 'Render', project: 'SellBuddy', plan: 'Web Service', url: 'https://dashboard.render.com', notes: 'Docker auto-deploy' },
+    { service: 'Anthropic API', project: 'Shared (全プロジェクト)', plan: 'Usage-based', url: 'https://console.anthropic.com/', notes: 'Claude API' },
+    { service: 'XSERVER', project: 'CleanCare (WordPress)', plan: 'Hosting', url: '', notes: 'clean-care.jp' },
+    { service: 'Helius RPC', project: 'SolSniper', plan: 'Free', url: '', notes: 'Solana RPC' },
+    { service: 'Meta / IG API', project: 'Tsumugi', plan: 'Free', url: 'https://developers.facebook.com/', notes: 'IG自動投稿 (Token更新: 2026-05-04)' },
+    { service: 'Google Search Console', project: 'Tsumugi', plan: 'Free', url: 'https://search.google.com/search-console', notes: 'SEO計測' },
+    { service: 'Stripe', project: 'Pivolink / PRESSLAB', plan: 'Transaction fee', url: 'https://dashboard.stripe.com/', notes: '決済' },
+    { service: 'Firebase', project: 'Pivolink', plan: 'Free (Spark)', url: 'https://console.firebase.google.com/', notes: 'Push通知' },
+    { service: 'UptimeRobot', project: 'SellBuddy', plan: 'Free', url: 'https://uptimerobot.com/', notes: '5分ping' },
+    { service: 'Gemini API', project: 'BannerForge', plan: 'Free?', url: '', notes: '画像生成' },
+  ];
+  document.getElementById('otherTable').innerHTML = others.map(o => `<tr>
+    <td><strong>${o.service}</strong></td>
+    <td>${o.project}</td>
+    <td>${badgeHtml(o.plan, 'gray')}</td>
+    <td>-</td>
+    <td>${o.url ? `<a href="${o.url}" target="_blank" class="link-btn">Open</a>` : '-'} <span style="color:var(--text-muted);font-size:11px;">${o.notes}</span></td>
+  </tr>`).join('');
+}
+
+function renderCostTracker() {
+  const costs = loadCosts();
+  document.getElementById('costTable').innerHTML = COST_ITEMS.map(item => {
+    const val = costs[item.id] != null ? costs[item.id] : item.defaultCost;
+    return `<tr>
+      <td><strong>${item.service}</strong></td>
+      <td>${item.project}</td>
+      <td>$<input type="number" class="cost-input" value="${val}" data-id="${item.id}" onchange="updateCost(this)"></td>
+      <td style="color:var(--text-muted);font-size:12px;">${item.note}</td>
+    </tr>`;
+  }).join('');
+  updateCostSummary();
+}
+
+function updateCost(el) {
+  const costs = loadCosts();
+  costs[el.dataset.id] = parseFloat(el.value) || 0;
+  saveCosts(costs);
+  updateCostSummary();
+}
+
+function updateCostSummary() {
+  const costs = loadCosts();
+  let vercelTotal = 0, supabaseTotal = 0, shopifyTotal = 0, otherTotal = 0;
+
+  COST_ITEMS.forEach(item => {
+    const val = costs[item.id] != null ? costs[item.id] : item.defaultCost;
+    if (item.service === 'Vercel') vercelTotal += val;
+    else if (item.service === 'Supabase') supabaseTotal += val;
+    else if (item.service === 'Shopify') shopifyTotal += val;
+    else otherTotal += val;
+  });
+
+  const total = vercelTotal + supabaseTotal + shopifyTotal + otherTotal;
+
+  document.getElementById('costGrid').innerHTML = `
+    <div class="cost-card total">
+      <div class="label">Monthly Total</div>
+      <div class="value">$${total.toFixed(0)}</div>
+      <div class="sub">All services</div>
+    </div>
+    <div class="cost-card">
+      <div class="label">Vercel</div>
+      <div class="value" style="color:var(--accent)">$${vercelTotal.toFixed(0)}</div>
+      <div class="sub">${PROJECTS.filter(p=>p.vercel).length} projects</div>
+    </div>
+    <div class="cost-card">
+      <div class="label">Supabase</div>
+      <div class="value" style="color:var(--green)">$${supabaseTotal.toFixed(0)}</div>
+      <div class="sub">${PROJECTS.filter(p=>p.supabase).length} projects</div>
+    </div>
+    <div class="cost-card">
+      <div class="label">Shopify</div>
+      <div class="value" style="color:var(--purple)">$${shopifyTotal.toFixed(0)}</div>
+      <div class="sub">${PROJECTS.filter(p=>p.shopify).length} stores</div>
+    </div>
+    <div class="cost-card">
+      <div class="label">Other</div>
+      <div class="value" style="color:var(--orange)">$${otherTotal.toFixed(0)}</div>
+      <div class="sub">Render, API, Domain...</div>
+    </div>
+  `;
+}
+
+// ===== Credentials Data =====
+// 機微情報は Git に含めない。サーバー側(infra.py)が window.__INFRA_CREDS__ に注入する。
+const CREDENTIALS = (window.__INFRA_CREDS__ || []);
+
+// ===== Credentials Rendering =====
+let allCredsVisible = false;
+
+function credHtml(value, idx) {
+  return `<span class="cred-val cred-hidden" id="cred-${idx}">${value}</span>
+    <button class="cred-toggle" onclick="toggleCred(${idx})">Show</button>
+    <button class="cred-copy" onclick="copyCred(${idx})">Copy</button>`;
+}
+
+function toggleCred(idx) {
+  const el = document.getElementById(`cred-${idx}`);
+  const btn = el.nextElementSibling;
+  if (el.classList.contains('cred-hidden')) {
+    el.classList.remove('cred-hidden');
+    btn.textContent = 'Hide';
+  } else {
+    el.classList.add('cred-hidden');
+    btn.textContent = 'Show';
+  }
+}
+
+function toggleAllCreds() {
+  allCredsVisible = !allCredsVisible;
+  document.querySelectorAll('.cred-val').forEach(el => {
+    if (allCredsVisible) el.classList.remove('cred-hidden');
+    else el.classList.add('cred-hidden');
+  });
+  document.querySelectorAll('.cred-toggle').forEach(btn => {
+    if (btn.id === 'toggleAllBtn') btn.textContent = allCredsVisible ? 'All Hide' : 'All Show';
+    else btn.textContent = allCredsVisible ? 'Hide' : 'Show';
+  });
+}
+
+function copyCred(idx) {
+  const el = document.getElementById(`cred-${idx}`);
+  navigator.clipboard.writeText(el.textContent).then(() => {
+    const btn = el.nextElementSibling.nextElementSibling;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1500);
+  });
+}
+
+function renderCredentials() {
+  let idx = 0;
+  document.getElementById('credsContent').innerHTML = CREDENTIALS.map(group => {
+    const rows = group.items.map(item => {
+      const html = `<tr>
+        <td style="white-space:nowrap;"><strong>${item.label}</strong></td>
+        <td>${credHtml(item.value, idx)}</td>
+        <td style="color:var(--text-muted);font-size:11px;">${item.note}</td>
+      </tr>`;
+      idx++;
+      return html;
+    }).join('');
+    return `<div class="cred-group">
+      <div class="cred-group-title">${group.group}</div>
+      <div class="table-wrap"><table>${rows}</table></div>
+    </div>`;
+  }).join('');
+}
+
+// ===== Tabs =====
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById(`panel-${name}`).classList.add('active');
+}
+
+// ===== Init =====
+renderOverview();
+renderVercel();
+renderSupabase();
+renderShopify();
+renderOther();
+renderCostTracker();
+renderCredentials();
+</script>
+</body>
+</html>

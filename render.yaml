@@ -23,5 +23,7 @@ services:
         sync: false
       - key: NOTION_TASK_DB_ID
         sync: false
+      - key: INFRA_CREDENTIALS_JSON
+        sync: false
       - key: RENDER_EXTERNAL_URL
         value: https://sales-6g78.onrender.com

@@ -22,7 +22,7 @@ from app.tasks.bounce_checker import bounce_checker
 from app.tasks.weekly_report_scheduler import weekly_report_scheduler
 from app.tasks.heartbeat_checker import heartbeat_checker
 from app.tasks.health_check_scheduler import health_check_scheduler
-from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects, today, memos, mail, goals, pipeline, webhook, tracking, clients
+from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects, today, memos, mail, goals, pipeline, webhook, tracking, clients, infra
 
 STATUS_JA = {
     # リードステータス
@@ -119,6 +119,7 @@ app.include_router(pipeline.router)
 app.include_router(webhook.router)
 app.include_router(clients.router)
 app.include_router(tracking.router)
+app.include_router(infra.router)
 
 
 @app.get("/health")

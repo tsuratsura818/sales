@@ -24,3 +24,6 @@ run_hikakubiz_weekly.bat
 run_apply_helper.bat
 logs/
 output/
+
+# 開発基盤ダッシュボードの機微情報（Git管理外）
+infra_credentials.json
