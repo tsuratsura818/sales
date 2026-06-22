@@ -206,9 +206,34 @@
 .task-modal-input { width:100%; padding:9px 11px; border:1px solid #ccc; border-radius:6px;
     font-size:14px; box-sizing:border-box; background:#fff; }
 .task-modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
-/* 3列を全幅で等分 */
+/* 4列を全幅で等分 */
 #taskBoard { display:flex; gap:16px; width:100%; }
-#taskBoard .kanban-column { flex:1 1 0; min-width:0; width:auto; max-width:none; }
+#taskBoard .kanban-column {
+    flex:1 1 0; min-width:0; width:auto; max-width:none;
+    background:#eef1f5; border:1.5px solid #c4ccd6; border-radius:10px;
+    box-shadow:0 2px 6px rgba(0,0,0,.07); overflow:hidden;
+    border-top-width:4px;
+}
+#taskBoard .kanban-column-header {
+    background:#fff; border-bottom:1px solid #e2e6ec;
+    padding:10px 14px; font-weight:700;
+}
+#taskBoard .kanban-column-count { background:#e2e6ec; color:#555; }
+/* ステータス別アクセント（上枠・見出し色・カウント） */
+#taskBoard .kanban-column[data-status="未着手"] { border-top-color:#95a5a6; }
+#taskBoard .kanban-column[data-status="未着手"] .kanban-column-title { color:#5d6b74; }
+#taskBoard .kanban-column[data-status="進行中"] { border-top-color:#4a90d9; }
+#taskBoard .kanban-column[data-status="進行中"] .kanban-column-title { color:#2f6db3; }
+#taskBoard .kanban-column[data-status="進行中"] .kanban-column-count { background:#dbeafe; color:#2f6db3; }
+#taskBoard .kanban-column[data-status="確認中"] { border-top-color:#f39c12; }
+#taskBoard .kanban-column[data-status="確認中"] .kanban-column-title { color:#c87f0a; }
+#taskBoard .kanban-column[data-status="確認中"] .kanban-column-count { background:#fdecc8; color:#c87f0a; }
+#taskBoard .kanban-column[data-status="完了"] { border-top-color:#27ae60; }
+#taskBoard .kanban-column[data-status="完了"] .kanban-column-title { color:#1e8449; }
+#taskBoard .kanban-column[data-status="完了"] .kanban-column-count { background:#d4f3df; color:#1e8449; }
+/* ドロップ可能エリアの最小高さ + ホバー時のハイライト */
+#taskBoard .kanban-cards { min-height:120px; padding:10px; }
+#taskBoard .kanban-cards.kanban-drop-target { background:rgba(74,144,217,.10); outline:2px dashed #4a90d9; outline-offset:-4px; }
 /* ボード上のタスクカード */
 #taskBoard .kanban-card { cursor:grab; }
 #taskBoard .kanban-card:active { cursor:grabbing; }
