@@ -1,13 +1,25 @@
 """案件管理ルーター（Notion連携）"""
 
-from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+import urllib.parse
+
+from fastapi import APIRouter, HTTPException, Query, Request, UploadFile, File
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 from typing import Optional
 
 from app.services import notion_service
+from app.database import SessionLocal
+from app.models.task_attachment import TaskAttachment
 
 router = APIRouter(tags=["projects"])
+
+# 添付ファイル制約
+MAX_ATTACH_SIZE = 15 * 1024 * 1024  # 15MB
+ALLOWED_ATTACH_TYPES = {
+    "application/pdf",
+    "image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml",
+}
+ALLOWED_ATTACH_EXTS = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 
 
 def _get_templates():
@@ -43,6 +55,24 @@ async def tasks_page(request: Request):
     if conn["ok"]:
         projects = await notion_service.list_projects()
         tasks = await notion_service.list_tasks()
+        # 各タスクの添付ファイル件数を付与（📎バッジ用）
+        try:
+            from sqlalchemy import func
+            db = SessionLocal()
+            try:
+                rows = (
+                    db.query(TaskAttachment.task_id, func.count(TaskAttachment.id))
+                    .group_by(TaskAttachment.task_id)
+                    .all()
+                )
+                counts = {tid: c for tid, c in rows}
+            finally:
+                db.close()
+            for t in tasks:
+                t["attachment_count"] = counts.get(t["id"], 0)
+        except Exception:
+            for t in tasks:
+                t["attachment_count"] = 0
     return _get_templates().TemplateResponse(request, "tasks.html", {
         "projects": projects,
         "tasks": tasks,
@@ -268,6 +298,107 @@ async def api_delete_task(task_id: str):
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== タスク添付ファイル ==========
+
+def _attachment_dict(row: TaskAttachment) -> dict:
+    return {
+        "id": row.id,
+        "task_id": row.task_id,
+        "filename": row.filename,
+        "content_type": row.content_type,
+        "size": row.size,
+        "is_image": (row.content_type or "").startswith("image/"),
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@router.get("/api/tasks/{task_id}/attachments")
+async def api_list_attachments(task_id: str):
+    """タスクの添付ファイル一覧"""
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(TaskAttachment)
+            .filter(TaskAttachment.task_id == task_id)
+            .order_by(TaskAttachment.created_at)
+            .all()
+        )
+        return {"attachments": [_attachment_dict(r) for r in rows]}
+    finally:
+        db.close()
+
+
+@router.post("/api/tasks/{task_id}/attachments")
+async def api_upload_attachment(task_id: str, file: UploadFile = File(...)):
+    """タスクにファイル(PDF/画像)を添付"""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="空のファイルです")
+    if len(data) > MAX_ATTACH_SIZE:
+        raise HTTPException(status_code=413, detail="ファイルが大きすぎます（最大15MB）")
+
+    filename = file.filename or "file"
+    ct = (file.content_type or "").lower()
+    ext = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
+    if ct not in ALLOWED_ATTACH_TYPES and ext not in ALLOWED_ATTACH_EXTS:
+        raise HTTPException(status_code=415, detail="PDFまたは画像ファイルのみ添付できます")
+    if not ct or ct == "application/octet-stream":
+        # 拡張子から推定
+        ct = {
+            ".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp",
+            ".svg": "image/svg+xml",
+        }.get(ext, "application/octet-stream")
+
+    db = SessionLocal()
+    try:
+        row = TaskAttachment(
+            task_id=task_id, filename=filename[:300], content_type=ct[:150],
+            size=len(data), data=data,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return {"success": True, "attachment": _attachment_dict(row)}
+    finally:
+        db.close()
+
+
+@router.get("/api/attachments/{att_id}")
+async def api_get_attachment(att_id: int, download: bool = Query(False)):
+    """添付ファイルの中身を返す（表示 or ダウンロード）"""
+    db = SessionLocal()
+    try:
+        row = db.query(TaskAttachment).filter(TaskAttachment.id == att_id).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="ファイルが見つかりません")
+        disp = "attachment" if download else "inline"
+        # RFC5987 で日本語ファイル名に対応
+        quoted = urllib.parse.quote(row.filename or "file")
+        headers = {
+            "Content-Disposition": f"{disp}; filename*=UTF-8''{quoted}",
+            "Cache-Control": "private, max-age=3600",
+        }
+        return Response(content=row.data, media_type=row.content_type or "application/octet-stream", headers=headers)
+    finally:
+        db.close()
+
+
+@router.delete("/api/attachments/{att_id}")
+async def api_delete_attachment(att_id: int):
+    """添付ファイルを削除"""
+    db = SessionLocal()
+    try:
+        row = db.query(TaskAttachment).filter(TaskAttachment.id == att_id).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="ファイルが見つかりません")
+        db.delete(row)
+        db.commit()
+        return {"success": True}
+    finally:
+        db.close()
 
 
 # ========== 繰り返しタスク生成 ==========

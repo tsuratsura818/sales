@@ -131,6 +131,12 @@
         </div>
         <label class="task-modal-label">メモ</label>
         <textarea id="teMemo" class="task-modal-input" rows="3" style="resize:vertical;"></textarea>
+        <label class="task-modal-label">📎 関連ファイル（PDF・画像 / 最大15MB）</label>
+        <div id="teAttachments" class="te-attach-list"></div>
+        <div class="te-attach-add">
+            <input type="file" id="teFileInput" accept="application/pdf,image/*" style="display:none;" onchange="uploadAttachment(this)">
+            <button type="button" class="btn btn-secondary" id="teUploadBtn" onclick="document.getElementById('teFileInput').click()">＋ ファイルを追加</button>
+        </div>
         <div class="task-modal-actions">
             <button class="btn btn-secondary" onclick="closeTaskEdit()">キャンセル</button>
             <button class="btn" id="teSubmit" onclick="saveTaskEdit()">保存</button>
@@ -251,6 +257,18 @@
 .tcard-del:hover, .tcard-edit:hover { opacity:1; }
 #taskBoard .tcard-name { cursor:pointer; }
 .kanban-card-empty { padding:16px; text-align:center; color:#bbb; font-size:12px; }
+/* 添付ファイル */
+.te-attach-list { display:flex; flex-direction:column; gap:5px; margin-bottom:8px; }
+.te-attach-item { display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid #eceff3;
+    border-radius:6px; background:#fafbfc; font-size:13px; }
+.te-attach-item .te-attach-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.te-attach-item a.te-attach-open { color:#4a90d9; text-decoration:none; white-space:nowrap; }
+.te-attach-thumb { width:28px; height:28px; object-fit:cover; border-radius:4px; flex-shrink:0; }
+.te-attach-size { color:#999; font-size:11px; white-space:nowrap; }
+.te-attach-empty { color:#aaa; font-size:12px; padding:2px 0; }
+.te-attach-del { background:none; border:none; cursor:pointer; opacity:.5; font-size:13px; }
+.te-attach-del:hover { opacity:1; }
+.tcard-clip { font-size:11px; color:#888; margin-left:4px; }
 </style>
 <script>
 const projects = {{ projects | tojson }};
@@ -382,6 +400,7 @@ function renderList() {
                 <div class="task-row-sub">
                     ${pname ? `<span class="task-row-project">📁 ${escapeHtml(pname)}</span>` : ''}
                     ${dueLabel}
+                    ${t.attachment_count ? `<span class="tcard-clip">📎 ${t.attachment_count}</span>` : ''}
                     ${t.target_month ? `<span style="color:#8e44ad;">対象 ${t.target_month}</span>` : ''}
                 </div>
             </div>
@@ -412,6 +431,89 @@ function openTaskEdit(id) {
     document.getElementById('teMemo').value = t.memo || '';
     document.getElementById('taskEditModal').style.display = 'flex';
     document.getElementById('teName').focus();
+    loadAttachments(id);
+}
+
+// ===== 添付ファイル =====
+function fmtBytes(n) {
+    if (n < 1024) return n + 'B';
+    if (n < 1024*1024) return (n/1024).toFixed(0) + 'KB';
+    return (n/1024/1024).toFixed(1) + 'MB';
+}
+
+async function loadAttachments(taskId) {
+    const box = document.getElementById('teAttachments');
+    box.innerHTML = '<div class="te-attach-empty">読み込み中...</div>';
+    try {
+        const resp = await fetch(`/api/tasks/${taskId}/attachments`);
+        const data = await resp.json();
+        renderAttachments(data.attachments || []);
+    } catch (e) {
+        box.innerHTML = '<div class="te-attach-empty">読み込みに失敗しました</div>';
+    }
+}
+
+function renderAttachments(list) {
+    const box = document.getElementById('teAttachments');
+    if (!list.length) {
+        box.innerHTML = '<div class="te-attach-empty">まだファイルはありません</div>';
+        return;
+    }
+    box.innerHTML = list.map(a => {
+        const url = `/api/attachments/${a.id}`;
+        const icon = a.is_image
+            ? `<img class="te-attach-thumb" src="${url}" alt="">`
+            : `<span style="font-size:18px;">📄</span>`;
+        return `<div class="te-attach-item" data-att-id="${a.id}">
+            ${icon}
+            <span class="te-attach-name" title="${escapeHtml(a.filename)}">${escapeHtml(a.filename)}</span>
+            <span class="te-attach-size">${fmtBytes(a.size)}</span>
+            <a class="te-attach-open" href="${url}" target="_blank" rel="noopener">表示</a>
+            <a class="te-attach-open" href="${url}?download=true">⬇</a>
+            <button class="te-attach-del" onclick="deleteAttachment(${a.id})" title="削除">🗑</button>
+        </div>`;
+    }).join('');
+}
+
+async function uploadAttachment(input) {
+    if (!editingTaskId || !input.files || !input.files[0]) return;
+    const file = input.files[0];
+    if (file.size > 15 * 1024 * 1024) { alert('ファイルが大きすぎます（最大15MB）'); input.value = ''; return; }
+    const btn = document.getElementById('teUploadBtn');
+    btn.disabled = true; btn.textContent = 'アップロード中...';
+    try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const resp = await fetch(`/api/tasks/${editingTaskId}/attachments`, { method: 'POST', body: fd });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || 'アップロード失敗');
+        }
+        await loadAttachments(editingTaskId);
+        bumpAttachmentCount(editingTaskId, 1);
+    } catch (e) {
+        alert(e.message || 'アップロードに失敗しました');
+    } finally {
+        btn.disabled = false; btn.textContent = '＋ ファイルを追加';
+        input.value = '';
+    }
+}
+
+async function deleteAttachment(attId) {
+    if (!confirm('このファイルを削除しますか？')) return;
+    try {
+        await fetch(`/api/attachments/${attId}`, { method: 'DELETE' });
+        await loadAttachments(editingTaskId);
+        bumpAttachmentCount(editingTaskId, -1);
+    } catch (e) {
+        alert('削除に失敗しました');
+    }
+}
+
+// カードの📎件数をローカル更新
+function bumpAttachmentCount(taskId, delta) {
+    const t = allTasks.find(x => x.id === taskId);
+    if (t) { t.attachment_count = Math.max(0, (t.attachment_count || 0) + delta); render(); }
 }
 
 function closeTaskEdit() {
@@ -483,6 +585,7 @@ function taskCardHtml(t) {
         <div class="tcard-meta">
             ${pname ? `<span class="tcard-project">📁 ${escapeHtml(pname)}</span>` : ''}
             ${dueLabel}
+            ${t.attachment_count ? `<span class="tcard-clip">📎 ${t.attachment_count}</span>` : ''}
             ${t.target_month ? `<span style="color:#8e44ad;">対象 ${t.target_month}</span>` : ''}
         </div>
     </div>`;
