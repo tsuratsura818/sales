@@ -48,6 +48,8 @@ async def tasks_page(request: Request):
         "tasks": tasks,
         "statuses": notion_service.TASK_STATUSES,
         "priorities": notion_service.TASK_PRIORITIES,
+        "project_statuses": notion_service.PROJECT_STATUSES,
+        "contract_types": notion_service.CONTRACT_TYPES,
         "connected": conn["ok"],
         "error": conn.get("error"),
     })

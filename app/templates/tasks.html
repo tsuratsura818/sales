@@ -30,8 +30,9 @@
     <div class="task-add-row">
         <input type="text" id="newTaskName" placeholder="タスク名を入力..." class="task-add-input"
                onkeydown="if(event.key==='Enter')addTask()">
-        <select id="newTaskProject" class="task-add-select" title="案件">
+        <select id="newTaskProject" class="task-add-select" title="案件" onchange="onProjectSelectChange(this)">
             <option value="">案件なし</option>
+            <option value="__new__">＋ 新規案件を作成…</option>
             {% for p in projects %}
             <option value="{{ p.id }}">{{ p.name or '（無題）' }}</option>
             {% endfor %}
@@ -79,6 +80,39 @@
     <div id="taskList"></div>
 </div>
 
+<!-- 新規案件モーダル -->
+<div id="projectModal" class="task-modal-overlay" style="display:none;">
+    <div class="task-modal">
+        <h3 style="margin-top:0;">📁 新規案件を作成</h3>
+        <label class="task-modal-label">案件名 <span style="color:#e74c3c;">*</span></label>
+        <input type="text" id="pmName" class="task-modal-input" placeholder="例: 〇〇様 サイト制作">
+        <label class="task-modal-label">クライアント</label>
+        <input type="text" id="pmClient" class="task-modal-input" placeholder="クライアント名（任意）">
+        <div style="display:flex; gap:10px;">
+            <div style="flex:1;">
+                <label class="task-modal-label">ステータス</label>
+                <select id="pmStatus" class="task-modal-input">
+                    {% for s in project_statuses %}
+                    <option value="{{ s }}" {% if s == '見込み' %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="flex:1;">
+                <label class="task-modal-label">契約タイプ</label>
+                <select id="pmContract" class="task-modal-input">
+                    {% for c in contract_types %}
+                    <option value="{{ c }}">{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="task-modal-actions">
+            <button class="btn btn-secondary" onclick="closeProjectModal()">キャンセル</button>
+            <button class="btn" id="pmSubmit" onclick="createProject()">作成して選択</button>
+        </div>
+    </div>
+</div>
+
 {% endif %}
 {% endblock %}
 
@@ -108,6 +142,14 @@
 .task-group-header { padding:8px 16px; background:#f7f8fa; font-size:12px; font-weight:700; color:#555;
     border-bottom:1px solid #eee; }
 .task-empty { padding:32px; text-align:center; color:#888; }
+.task-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000;
+    display:flex; align-items:center; justify-content:center; padding:16px; }
+.task-modal { background:#fff; border-radius:10px; padding:24px; width:100%; max-width:440px;
+    box-shadow:0 10px 40px rgba(0,0,0,.2); }
+.task-modal-label { display:block; font-size:12px; font-weight:600; color:#555; margin:12px 0 4px; }
+.task-modal-input { width:100%; padding:9px 11px; border:1px solid #ccc; border-radius:6px;
+    font-size:14px; box-sizing:border-box; background:#fff; }
+.task-modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
 </style>
 <script>
 const projects = {{ projects | tojson }};
@@ -221,6 +263,87 @@ function escapeHtml(s) {
         {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
     ));
 }
+
+// ===== 新規案件作成 =====
+let projectSelectPrev = '';
+
+function onProjectSelectChange(sel) {
+    if (sel.value === '__new__') {
+        openProjectModal();
+        sel.value = projectSelectPrev;  // モーダル中は元の選択に戻す
+    } else {
+        projectSelectPrev = sel.value;
+    }
+}
+
+function openProjectModal() {
+    document.getElementById('pmName').value = '';
+    document.getElementById('pmClient').value = '';
+    document.getElementById('pmStatus').value = '見込み';
+    const ct = document.getElementById('pmContract');
+    if (ct.options.length) ct.selectedIndex = 0;
+    document.getElementById('projectModal').style.display = 'flex';
+    document.getElementById('pmName').focus();
+}
+
+function closeProjectModal() {
+    document.getElementById('projectModal').style.display = 'none';
+}
+
+function addProjectOption(p) {
+    projectMap[p.id] = p.name || '（無題）';
+    ['newTaskProject', 'projectFilter'].forEach(id => {
+        const sel = document.getElementById(id);
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name || '（無題）';
+        sel.appendChild(opt);
+    });
+}
+
+async function createProject() {
+    const name = document.getElementById('pmName').value.trim();
+    if (!name) { document.getElementById('pmName').focus(); return; }
+    const btn = document.getElementById('pmSubmit');
+    btn.disabled = true; btn.textContent = '作成中…';
+    try {
+        const resp = await fetch('/api/projects', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name,
+                client: document.getElementById('pmClient').value.trim(),
+                status: document.getElementById('pmStatus').value,
+                contract_type: document.getElementById('pmContract').value,
+            }),
+        });
+        const data = await resp.json();
+        if (resp.ok && data.project) {
+            projects.push(data.project);
+            addProjectOption(data.project);
+            // タスク追加欄で新規案件を選択状態に
+            const sel = document.getElementById('newTaskProject');
+            sel.value = data.project.id;
+            projectSelectPrev = data.project.id;
+            closeProjectModal();
+            document.getElementById('newTaskName').focus();
+        } else {
+            alert('案件作成に失敗しました');
+        }
+    } catch (err) {
+        alert('案件作成に失敗しました');
+    } finally {
+        btn.disabled = false; btn.textContent = '作成して選択';
+    }
+}
+
+// 背景クリック / Escで閉じる
+document.getElementById('projectModal').addEventListener('click', e => {
+    if (e.target.id === 'projectModal') closeProjectModal();
+});
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeProjectModal();
+});
 
 async function addTask() {
     const name = document.getElementById('newTaskName').value.trim();
