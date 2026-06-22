@@ -25,5 +25,9 @@ services:
         sync: false
       - key: INFRA_CREDENTIALS_JSON
         sync: false
+      - key: BASIC_AUTH_USER
+        sync: false
+      - key: BASIC_AUTH_PASS
+        sync: false
       - key: RENDER_EXTERNAL_URL
         value: https://sales-6g78.onrender.com
