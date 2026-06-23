@@ -4,7 +4,7 @@
 {% block content %}
 <h2>📨 メール配信</h2>
 
-<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:24px;">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px;">
   <div class="card" style="text-align:center;padding:18px 12px;">
     <div style="font-size:24px;font-weight:bold;">{{ total_contacts }}</div>
     <div style="color:#666;font-size:12px;">コンタクト</div>
@@ -31,7 +31,7 @@
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">
   <div class="card" style="padding:20px;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
       <h3 style="margin:0;">キャンペーン</h3>

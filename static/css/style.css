@@ -2101,6 +2101,25 @@ textarea.form-control { resize: vertical; font-family: inherit; }
 
     .detail-grid { grid-template-columns: 1fr; }
     .dashboard-grid { grid-template-columns: 1fr; }
+
+    /* === 横はみ出し対策（共通） === */
+    /* .stats-row は display:flex のままだと grid 指定が効かないため grid 化 */
+    .stats-row { display: grid; }
+    /* 入力・セレクトが内容（長い案件名など）で横に伸びるのを抑制 */
+    select,
+    input[type="text"], input[type="date"], input[type="number"],
+    input[type="email"], input[type="search"], textarea {
+        max-width: 100%; box-sizing: border-box;
+    }
+    .task-add-input { min-width: 0; }
+    .task-add-select, .task-add-date { min-width: 0; max-width: 100%; }
+    /* テーブルは枠内で横スクロール */
+    .table-wrap, .table-responsive, .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { max-width: 100%; }
+    /* 未ラップのテーブルもスマホで横スクロール可能に */
+    table.table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+    /* インラインの固定多カラムグリッドをスマホで2カラムに */
+    .grid-6, .grid-5, .grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
 }
 
 /* スマホ（480px以下） */
