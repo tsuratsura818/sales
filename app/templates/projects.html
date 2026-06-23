@@ -381,7 +381,7 @@
         <div class="modal-footer" id="detailActions" style="display:none;">
             <button class="btn btn-secondary" style="margin-right:auto;" onclick="archiveProject()">📦 アーカイブ</button>
             <button class="btn btn-secondary" onclick="closeDetailModal()">キャンセル</button>
-            <button class="btn btn-primary" onclick="saveProject()">保存</button>
+            <button class="btn btn-primary" id="saveProjectBtn" onclick="saveProject()">保存</button>
         </div>
     </div>
 </div>
@@ -787,30 +787,36 @@ async function saveProject() {
         billing_cycle: contractType === '継続' ? document.getElementById('editBillingCycle').value : '',
     };
 
-    const filtered = {};
+    // 文字列項目は空文字も送って「クリア」できるようにする。数値・日付は未入力なら除外。
+    const payload = {};
     for (const [k, v] of Object.entries(body)) {
-        if (v !== null && v !== '') filtered[k] = v;
+        if (k === 'amount' || k === 'start_date' || k === 'end_date') {
+            if (v !== null && v !== '') payload[k] = v;
+        } else {
+            payload[k] = v;  // name/status/client/url/memo/contract_type/billing_cycle（空文字でクリア可）
+        }
     }
 
+    const btn = document.getElementById('saveProjectBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '保存中...'; }
     try {
         // 詳細保存ではタスク自動生成を抑制（案件化への変更はドラッグ操作で行う想定）
         const resp = await fetch(`/api/projects/${currentProjectId}?suppress_tasks=1`, {
             method: 'PATCH',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(filtered),
+            body: JSON.stringify(payload),
         });
         if (resp.ok) {
-            const data = await resp.json();
-            if (data.generated_task_count > 0) {
-                alert(`🎯 案件化しました！\n定型タスク ${data.generated_task_count}件 を自動作成しました（タスク一覧で確認できます）`);
-            }
-            location.reload();
+            // キャッシュを避けて確実に最新を表示
+            window.location.href = '/projects?saved=' + Date.now();
         } else {
-            const data = await resp.json();
+            const data = await resp.json().catch(() => ({}));
             alert(data.detail || '保存に失敗しました');
+            if (btn) { btn.disabled = false; btn.textContent = '保存'; }
         }
     } catch (err) {
         alert('通信エラー: ' + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = '保存'; }
     }
 }
 

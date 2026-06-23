@@ -36,7 +36,7 @@ async def projects_page(request: Request):
     projects = []
     if conn["ok"]:
         projects = await notion_service.list_projects()
-    return _get_templates().TemplateResponse(request, "projects.html", {
+    resp = _get_templates().TemplateResponse(request, "projects.html", {
         "projects": projects,
         "statuses": notion_service.PROJECT_STATUSES,
         "contract_types": notion_service.CONTRACT_TYPES,
@@ -44,6 +44,9 @@ async def projects_page(request: Request):
         "connected": conn["ok"],
         "error": conn.get("error"),
     })
+    # 保存直後に古い内容が表示されないようキャッシュ無効化
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @router.get("/tasks", response_class=HTMLResponse)
