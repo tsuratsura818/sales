@@ -124,6 +124,11 @@ def _migrate_sqlite():
         # タスク期限リマインド
         ("app_settings", "task_reminder_enabled",   "BOOLEAN DEFAULT 0"),
         ("app_settings", "task_reminder_hour_jst",  "INTEGER DEFAULT 8"),
+        # 進行中タスクの残リマインド
+        ("app_settings", "wip_reminder_enabled",    "BOOLEAN DEFAULT 0"),
+        ("app_settings", "wip_reminder_hour_jst",   "INTEGER DEFAULT 9"),
+        ("app_settings", "wip_reminder_minute_jst", "INTEGER DEFAULT 5"),
+        ("app_settings", "wip_reminder_last_sent",  "TEXT"),
         # メモ: ピン留め・タグ
         ("memos", "pinned", "INTEGER DEFAULT 0"),
         ("memos", "tags",   "TEXT DEFAULT ''"),
@@ -177,6 +182,11 @@ def _migrate_postgres():
         # タスク期限リマインド
         ("app_settings", "task_reminder_enabled",  "BOOLEAN DEFAULT FALSE"),
         ("app_settings", "task_reminder_hour_jst", "INTEGER DEFAULT 8"),
+        # 進行中タスクの残リマインド
+        ("app_settings", "wip_reminder_enabled",    "BOOLEAN DEFAULT FALSE"),
+        ("app_settings", "wip_reminder_hour_jst",   "INTEGER DEFAULT 9"),
+        ("app_settings", "wip_reminder_minute_jst", "INTEGER DEFAULT 5"),
+        ("app_settings", "wip_reminder_last_sent",  "TEXT"),
         # メモ: ピン留め・タグ
         ("memos", "pinned", "INTEGER DEFAULT 0"),
         ("memos", "tags",   "TEXT DEFAULT ''"),

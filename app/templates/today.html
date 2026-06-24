@@ -68,6 +68,38 @@
             </select>
         </div>
     </div>
+    <hr style="border:none; border-top:1px solid #eee; margin:14px 0;">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+            <span style="font-weight:600; font-size:0.9rem;">🔔 進行中タスクの残リマインド(LINE)</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="wipReminderToggle"
+                       {% if wip_reminder_enabled %}checked{% endif %}
+                       onchange="toggleWipReminder(this.checked)">
+                <span class="toggle-slider"></span>
+            </label>
+            <span id="wipReminderStatus" style="font-size:0.85rem; color:{% if wip_reminder_enabled %}#2e7d32{% else %}#999{% endif %};">
+                {{ 'ON' if wip_reminder_enabled else 'OFF' }}
+            </span>
+            <button onclick="sendWipReminderNow()" class="btn btn-secondary" style="font-size:0.78rem; padding:3px 10px;">今すぐ送信テスト</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <label style="font-size:0.85rem; color:#666;">送信時刻:</label>
+            <select id="wipReminderHour" onchange="updateWipReminderTime()"
+                    style="padding:4px 6px; border:1px solid #ddd; border-radius:6px; font-size:0.85rem;">
+                {% for h in range(5, 23) %}
+                <option value="{{ h }}" {% if wip_reminder_hour == h %}selected{% endif %}>{{ '%02d'|format(h) }}</option>
+                {% endfor %}
+            </select>
+            <span style="color:#999;">:</span>
+            <select id="wipReminderMinute" onchange="updateWipReminderTime()"
+                    style="padding:4px 6px; border:1px solid #ddd; border-radius:6px; font-size:0.85rem;">
+                {% for m in [0, 5, 10, 15, 30, 45] %}
+                <option value="{{ m }}" {% if wip_reminder_minute == m %}selected{% endif %}>{{ '%02d'|format(m) }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
 </div>
 
 <style>
@@ -391,6 +423,54 @@ async function sendTaskReminderNow() {
         const data = await resp.json();
         if (data.success) {
             alert('タスクリマインドをLINEに送信しました！');
+        } else {
+            alert(data.error || '送信に失敗しました');
+        }
+    } catch (e) {
+        alert('エラー: ' + e.message);
+    }
+}
+
+async function toggleWipReminder(enabled) {
+    const status = document.getElementById('wipReminderStatus');
+    try {
+        const resp = await fetch('/api/today/settings', {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({wip_reminder_enabled: enabled}),
+        });
+        const data = await resp.json();
+        if (data.success) {
+            status.textContent = data.wip_reminder_enabled ? 'ON' : 'OFF';
+            status.style.color = data.wip_reminder_enabled ? '#2e7d32' : '#999';
+        }
+    } catch (e) {
+        document.getElementById('wipReminderToggle').checked = !enabled;
+        alert('設定の更新に失敗しました');
+    }
+}
+
+async function updateWipReminderTime() {
+    try {
+        await fetch('/api/today/settings', {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                wip_reminder_hour: parseInt(document.getElementById('wipReminderHour').value),
+                wip_reminder_minute: parseInt(document.getElementById('wipReminderMinute').value),
+            }),
+        });
+    } catch (e) {
+        alert('設定の更新に失敗しました');
+    }
+}
+
+async function sendWipReminderNow() {
+    try {
+        const resp = await fetch('/api/today/send-wip-reminder', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            alert('進行中タスクのリマインドをLINEに送信しました！');
         } else {
             alert(data.error || '送信に失敗しました');
         }

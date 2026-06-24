@@ -103,6 +103,9 @@ async def today_page(request: Request):
         daily_plan_hour = app_cfg.daily_plan_hour_jst
         task_reminder_enabled = getattr(app_cfg, "task_reminder_enabled", False)
         task_reminder_hour = getattr(app_cfg, "task_reminder_hour_jst", 8)
+        wip_reminder_enabled = getattr(app_cfg, "wip_reminder_enabled", False)
+        wip_reminder_hour = getattr(app_cfg, "wip_reminder_hour_jst", 9)
+        wip_reminder_minute = getattr(app_cfg, "wip_reminder_minute_jst", 5)
 
     finally:
         db.close()
@@ -120,6 +123,9 @@ async def today_page(request: Request):
         "daily_plan_hour": daily_plan_hour,
         "task_reminder_enabled": task_reminder_enabled,
         "task_reminder_hour": task_reminder_hour,
+        "wip_reminder_enabled": wip_reminder_enabled,
+        "wip_reminder_hour": wip_reminder_hour,
+        "wip_reminder_minute": wip_reminder_minute,
         "cal_events": cal_events,
         "today_tasks": today_tasks,
         "today_projects": today_projects,
@@ -274,9 +280,25 @@ async def api_get_settings():
             "daily_plan_hour": cfg.daily_plan_hour_jst,
             "task_reminder_enabled": getattr(cfg, "task_reminder_enabled", False),
             "task_reminder_hour": getattr(cfg, "task_reminder_hour_jst", 8),
+            "wip_reminder_enabled": getattr(cfg, "wip_reminder_enabled", False),
+            "wip_reminder_hour": getattr(cfg, "wip_reminder_hour_jst", 9),
+            "wip_reminder_minute": getattr(cfg, "wip_reminder_minute_jst", 5),
         }
     finally:
         db.close()
+
+
+@router.post("/api/today/send-wip-reminder")
+async def api_send_wip_reminder():
+    """進行中タスクの残リマインドを今すぐLINE送信（テスト用）"""
+    from app.tasks.wip_reminder_scheduler import send_wip_reminder
+    try:
+        sent = await send_wip_reminder()
+        if sent:
+            return {"success": True}
+        return {"success": False, "error": "進行中のタスクがありません"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 @router.post("/api/today/send-task-reminder")
@@ -311,6 +333,16 @@ async def api_update_settings(request: Request):
             hour = int(body["task_reminder_hour"])
             if 0 <= hour <= 23:
                 cfg.task_reminder_hour_jst = hour
+        if "wip_reminder_enabled" in body:
+            cfg.wip_reminder_enabled = bool(body["wip_reminder_enabled"])
+        if "wip_reminder_hour" in body:
+            hour = int(body["wip_reminder_hour"])
+            if 0 <= hour <= 23:
+                cfg.wip_reminder_hour_jst = hour
+        if "wip_reminder_minute" in body:
+            minute = int(body["wip_reminder_minute"])
+            if 0 <= minute <= 59:
+                cfg.wip_reminder_minute_jst = minute
         db.commit()
         return {
             "success": True,
@@ -318,6 +350,9 @@ async def api_update_settings(request: Request):
             "daily_plan_hour": cfg.daily_plan_hour_jst,
             "task_reminder_enabled": cfg.task_reminder_enabled,
             "task_reminder_hour": cfg.task_reminder_hour_jst,
+            "wip_reminder_enabled": cfg.wip_reminder_enabled,
+            "wip_reminder_hour": cfg.wip_reminder_hour_jst,
+            "wip_reminder_minute": cfg.wip_reminder_minute_jst,
         }
     finally:
         db.close()

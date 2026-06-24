@@ -24,6 +24,7 @@ from app.tasks.heartbeat_checker import heartbeat_checker
 from app.tasks.health_check_scheduler import health_check_scheduler
 from app.tasks.task_reminder_scheduler import task_reminder_scheduler
 from app.tasks.recurring_task_scheduler import recurring_task_scheduler
+from app.tasks.wip_reminder_scheduler import wip_reminder_scheduler
 from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects, today, memos, mail, goals, pipeline, webhook, tracking, clients, infra
 
 STATUS_JA = {
@@ -79,9 +80,10 @@ async def lifespan(app: FastAPI):
     health_task = asyncio.create_task(health_check_scheduler())
     task_reminder_task = asyncio.create_task(task_reminder_scheduler())
     recurring_task_task = asyncio.create_task(recurring_task_scheduler())
+    wip_reminder_task = asyncio.create_task(wip_reminder_scheduler())
     yield
     # 終了時
-    all_tasks = [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task, reply_task, report_task, bounce_task, heartbeat_task, health_task, task_reminder_task, recurring_task_task]
+    all_tasks = [worker_task, scheduler_task, monitor_task, keepalive_task, daily_plan_task, reply_task, report_task, bounce_task, heartbeat_task, health_task, task_reminder_task, recurring_task_task, wip_reminder_task]
     for task in all_tasks:
         task.cancel()
     for task in all_tasks:
