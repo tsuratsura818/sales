@@ -175,9 +175,10 @@
         <textarea id="teMemo" class="task-modal-input" rows="3" style="resize:vertical;"></textarea>
         <label class="task-modal-label">📎 関連ファイル（PDF・画像 / 最大15MB）</label>
         <div id="teAttachments" class="te-attach-list"></div>
-        <div class="te-attach-add">
+        <div class="te-attach-add" style="display:flex; align-items:center; gap:10px;">
             <input type="file" id="teFileInput" accept="application/pdf,image/*" style="display:none;" onchange="uploadAttachment(this)">
             <button type="button" class="btn btn-secondary" id="teUploadBtn" onclick="document.getElementById('teFileInput').click()">＋ ファイルを追加</button>
+            <span style="font-size:11px; color:#999;">スクショは Ctrl/⌘+V で貼り付け可</span>
         </div>
         <div class="task-modal-actions">
             <button class="btn btn-secondary" onclick="closeTaskEdit()">キャンセル</button>
@@ -627,14 +628,22 @@ function renderAttachments(list) {
 }
 
 async function uploadAttachment(input) {
-    if (!editingTaskId || !input.files || !input.files[0]) return;
-    const file = input.files[0];
-    if (file.size > 15 * 1024 * 1024) { alert('ファイルが大きすぎます（最大15MB）'); input.value = ''; return; }
+    if (!input.files || !input.files[0]) return;
+    await uploadAttachmentFile(input.files[0]);
+    input.value = '';
+}
+
+// File/Blob を直接アップロード（ファイル選択・貼り付け 共通）
+async function uploadAttachmentFile(file) {
+    if (!editingTaskId || !file) return;
+    if (file.size > 15 * 1024 * 1024) { alert('ファイルが大きすぎます（最大15MB）'); return; }
     const btn = document.getElementById('teUploadBtn');
-    btn.disabled = true; btn.textContent = 'アップロード中...';
+    if (btn) { btn.disabled = true; btn.textContent = 'アップロード中...'; }
     try {
         const fd = new FormData();
-        fd.append('file', file);
+        // クリップボード画像など名前なしBlob用にファイル名を補完
+        const fname = file.name || `screenshot-${Date.now()}.png`;
+        fd.append('file', file, fname);
         const resp = await fetch(`/api/tasks/${editingTaskId}/attachments`, { method: 'POST', body: fd });
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
@@ -645,10 +654,25 @@ async function uploadAttachment(input) {
     } catch (e) {
         alert(e.message || 'アップロードに失敗しました');
     } finally {
-        btn.disabled = false; btn.textContent = '＋ ファイルを追加';
-        input.value = '';
+        if (btn) { btn.disabled = false; btn.textContent = '＋ ファイルを追加'; }
     }
 }
+
+// クリップボードから画像を貼り付け（Ctrl/Cmd+V）で添付
+document.addEventListener('paste', e => {
+    if (!editingTaskId) return;  // タスク編集モーダルが開いている時のみ
+    const items = (e.clipboardData || {}).items || [];
+    for (const it of items) {
+        if (it.type && it.type.startsWith('image/')) {
+            const blob = it.getAsFile();
+            if (blob) {
+                e.preventDefault();
+                uploadAttachmentFile(blob);
+            }
+            return;
+        }
+    }
+});
 
 async function deleteAttachment(attId) {
     if (!confirm('このファイルを削除しますか？')) return;
