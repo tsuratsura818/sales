@@ -325,6 +325,8 @@
 .te-attach-del { background:none; border:none; cursor:pointer; opacity:.5; font-size:13px; }
 .te-attach-del:hover { opacity:1; }
 .tcard-clip { font-size:11px; color:#888; margin-left:4px; }
+.tcard-status { font-size:11px; padding:2px 4px; border:1px solid #d8dde3; border-radius:4px;
+    background:#fff; color:#444; max-width:100%; cursor:pointer; }
 </style>
 <script>
 const projects = {{ projects | tojson }};
@@ -730,6 +732,9 @@ function taskCardHtml(t) {
             <button class="tcard-del" onclick="deleteTask('${t.id}')" title="削除">🗑</button>
         </div>
         <div class="tcard-meta">
+            <select class="tcard-status" onchange="updateTaskStatus('${t.id}', this.value)" onmousedown="event.stopPropagation()" title="ステータス変更">
+                ${BOARD_STATUSES.map(s => `<option value="${s}" ${t.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+            </select>
             ${pname ? `<span class="tcard-project">📁 ${escapeHtml(pname)}</span>` : ''}
             ${dueLabel}
             ${t.attachment_count ? `<span class="tcard-clip">📎 ${t.attachment_count}</span>` : ''}
