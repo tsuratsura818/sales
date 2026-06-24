@@ -458,6 +458,7 @@ function renderList() {
                 <div class="task-row-sub">
                     ${pname ? `<span class="task-row-project">📁 ${escapeHtml(pname)}</span>` : ''}
                     ${dueLabel}
+                    ${(t.memo && t.memo.trim()) ? `<span class="tcard-clip" title="メモあり">📝</span>` : ''}
                     ${t.attachment_count ? `<span class="tcard-clip">📎 ${t.attachment_count}</span>` : ''}
                     ${t.target_month ? `<span style="color:#8e44ad;">対象 ${t.target_month}</span>` : ''}
                 </div>
@@ -737,6 +738,7 @@ function taskCardHtml(t) {
             </select>
             ${pname ? `<span class="tcard-project">📁 ${escapeHtml(pname)}</span>` : ''}
             ${dueLabel}
+            ${(t.memo && t.memo.trim()) ? `<span class="tcard-clip" title="メモあり">📝</span>` : ''}
             ${t.attachment_count ? `<span class="tcard-clip">📎 ${t.attachment_count}</span>` : ''}
             ${t.target_month ? `<span style="color:#8e44ad;">対象 ${t.target_month}</span>` : ''}
         </div>
