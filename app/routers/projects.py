@@ -10,6 +10,7 @@ from typing import Optional
 from app.services import notion_service
 from app.database import SessionLocal
 from app.models.task_attachment import TaskAttachment
+from app.models.recurring_task import RecurringTask
 
 router = APIRouter(tags=["projects"])
 
@@ -437,6 +438,129 @@ async def api_delete_attachment(att_id: int):
         return {"success": True}
     finally:
         db.close()
+
+
+# ========== 毎週のタスク（曜日指定の自動生成テンプレート） ==========
+
+WEEKDAY_LABELS = ["月", "火", "水", "木", "金", "土", "日"]
+
+
+class RecurringTaskIn(BaseModel):
+    name: str
+    weekday: int = 2  # 月=0..日=6（水=2）
+    priority: str = "中"
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None
+    create_status: str = "進行中"
+    enabled: bool = True
+
+
+def _recurring_dict(r: RecurringTask) -> dict:
+    return {
+        "id": r.id,
+        "name": r.name,
+        "weekday": r.weekday,
+        "weekday_label": WEEKDAY_LABELS[r.weekday] if 0 <= r.weekday <= 6 else "",
+        "priority": r.priority,
+        "project_id": r.project_id,
+        "project_name": r.project_name,
+        "create_status": r.create_status,
+        "enabled": r.enabled,
+        "last_created_week": r.last_created_week,
+    }
+
+
+@router.get("/api/recurring-tasks")
+async def api_list_recurring():
+    """毎週のタスク一覧"""
+    db = SessionLocal()
+    try:
+        rows = db.query(RecurringTask).order_by(RecurringTask.weekday, RecurringTask.id).all()
+        return {"recurring_tasks": [_recurring_dict(r) for r in rows]}
+    finally:
+        db.close()
+
+
+@router.post("/api/recurring-tasks")
+async def api_create_recurring(data: RecurringTaskIn):
+    """毎週のタスクを登録"""
+    if not data.name.strip():
+        raise HTTPException(status_code=400, detail="タスク名は必須です")
+    if not (0 <= data.weekday <= 6):
+        raise HTTPException(status_code=400, detail="曜日が不正です")
+    db = SessionLocal()
+    try:
+        row = RecurringTask(
+            name=data.name.strip()[:300], weekday=data.weekday,
+            priority=data.priority or "中", project_id=data.project_id or None,
+            project_name=data.project_name or None, create_status=data.create_status or "進行中",
+            enabled=data.enabled,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return {"success": True, "recurring_task": _recurring_dict(row)}
+    finally:
+        db.close()
+
+
+@router.patch("/api/recurring-tasks/{rid}")
+async def api_update_recurring(rid: int, data: RecurringTaskIn):
+    """毎週のタスクを更新"""
+    db = SessionLocal()
+    try:
+        row = db.query(RecurringTask).filter(RecurringTask.id == rid).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="見つかりません")
+        row.name = data.name.strip()[:300]
+        row.weekday = data.weekday
+        row.priority = data.priority or "中"
+        row.project_id = data.project_id or None
+        row.project_name = data.project_name or None
+        row.create_status = data.create_status or "進行中"
+        row.enabled = data.enabled
+        db.commit()
+        return {"success": True, "recurring_task": _recurring_dict(row)}
+    finally:
+        db.close()
+
+
+@router.delete("/api/recurring-tasks/{rid}")
+async def api_delete_recurring(rid: int):
+    """毎週のタスクを削除"""
+    db = SessionLocal()
+    try:
+        row = db.query(RecurringTask).filter(RecurringTask.id == rid).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="見つかりません")
+        db.delete(row)
+        db.commit()
+        return {"success": True}
+    finally:
+        db.close()
+
+
+@router.post("/api/recurring-tasks/{rid}/run-now")
+async def api_run_recurring_now(rid: int):
+    """このテンプレートから今すぐタスクを1件作成（テスト用・週次dedupは無視）"""
+    db = SessionLocal()
+    try:
+        row = db.query(RecurringTask).filter(RecurringTask.id == rid).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="見つかりません")
+        name, pid, status, prio = row.name, row.project_id, row.create_status, row.priority
+    finally:
+        db.close()
+    from datetime import datetime, timezone, timedelta
+    today = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d")
+    try:
+        task = await notion_service.create_task(
+            name=name, project_id=pid or None, status=status or "進行中",
+            priority=prio or "中", due_date=today,
+        )
+        return {"success": True, "task": task}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ========== 繰り返しタスク生成 ==========
