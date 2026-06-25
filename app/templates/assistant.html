@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}秘書チャット - SellBuddy{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>🤝 秘書チャット</h1>
+    <p>タスクや案件の操作を会話で。例:「デモシステム完了にして」「アオンの投稿に明日の期日つけて」</p>
+</div>
+
+{% if not available %}
+<div class="card">
+    <div class="alert alert-warning">
+        ⚠️ この機能は <b>ローカル(自分のPC)で SellBuddy を起動した時だけ</b> 使えます。<br>
+        本番(クラウド)では claude CLI が無いため利用できません（課金ゼロでローカル動作する設計です）。
+    </div>
+</div>
+{% endif %}
+
+<div class="card" style="padding:0; display:flex; flex-direction:column; height:calc(100vh - 230px); min-height:420px;">
+    <div id="chatLog" style="flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px;">
+        <div class="chat-msg chat-assistant">こんにちは。タスクの完了・追加・期日変更などお手伝いします。何をしましょう？</div>
+    </div>
+    <div style="border-top:1px solid #eee; padding:12px; display:flex; gap:8px;">
+        <textarea id="chatInput" rows="1" placeholder="メッセージを入力（Enterで送信 / Shift+Enterで改行）"
+            style="flex:1; resize:none; padding:10px 12px; border:1px solid #ccc; border-radius:8px; font-size:14px; line-height:1.6; max-height:120px;"></textarea>
+        <button class="btn btn-primary" id="chatSend" onclick="sendChat()">送信</button>
+    </div>
+</div>
+
+<style>
+.chat-msg { max-width:80%; padding:10px 14px; border-radius:12px; font-size:14px; line-height:1.7; white-space:pre-wrap; word-break:break-word; }
+.chat-user { align-self:flex-end; background:#1976d2; color:#fff; border-bottom-right-radius:3px; }
+.chat-assistant { align-self:flex-start; background:#f0f2f5; color:#222; border-bottom-left-radius:3px; }
+.chat-note { align-self:center; font-size:11px; color:#999; }
+.chat-typing { align-self:flex-start; color:#999; font-size:13px; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const AVAILABLE = {{ 'true' if available else 'false' }};
+const history = [];  // {role, content}
+
+function addMsg(role, text) {
+    const log = document.getElementById('chatLog');
+    const div = document.createElement('div');
+    div.className = 'chat-msg ' + (role === 'user' ? 'chat-user' : 'chat-assistant');
+    div.textContent = text;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+    return div;
+}
+function addNote(text) {
+    const log = document.getElementById('chatLog');
+    const div = document.createElement('div');
+    div.className = 'chat-note';
+    div.textContent = text;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+}
+
+const input = document.getElementById('chatInput');
+input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+});
+input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+
+async function sendChat() {
+    const text = input.value.trim();
+    if (!text) return;
+    const btn = document.getElementById('chatSend');
+    addMsg('user', text);
+    history.push({role: 'user', content: text});
+    input.value = ''; input.style.height = 'auto';
+    btn.disabled = true;
+
+    const typing = document.createElement('div');
+    typing.className = 'chat-typing'; typing.textContent = '秘書が考えています…';
+    document.getElementById('chatLog').appendChild(typing);
+
+    try {
+        const resp = await fetch('/api/assistant/chat', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({messages: history}),
+        });
+        const data = await resp.json();
+        typing.remove();
+        addMsg('assistant', data.reply || '（応答なし）');
+        history.push({role: 'assistant', content: data.reply || ''});
+        const okCount = (data.executed || []).filter(e => e.ok).length;
+        const ngCount = (data.executed || []).filter(e => !e.ok).length;
+        if (okCount) addNote(`✅ ${okCount}件 反映しました`);
+        if (ngCount) addNote(`⚠️ ${ngCount}件 失敗しました`);
+    } catch (e) {
+        typing.remove();
+        addMsg('assistant', '通信エラーが発生しました。もう一度お願いします。');
+    } finally {
+        btn.disabled = false;
+        input.focus();
+    }
+}
+</script>
+{% endblock %}

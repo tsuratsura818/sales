@@ -25,7 +25,7 @@ from app.tasks.health_check_scheduler import health_check_scheduler
 from app.tasks.task_reminder_scheduler import task_reminder_scheduler
 from app.tasks.recurring_task_scheduler import recurring_task_scheduler
 from app.tasks.wip_reminder_scheduler import wip_reminder_scheduler
-from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects, today, memos, mail, goals, pipeline, webhook, tracking, clients, infra
+from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects, today, memos, mail, goals, pipeline, webhook, tracking, clients, infra, assistant
 
 STATUS_JA = {
     # リードステータス
@@ -126,6 +126,7 @@ app.include_router(webhook.router)
 app.include_router(clients.router)
 app.include_router(tracking.router)
 app.include_router(infra.router)
+app.include_router(assistant.router)
 
 
 @app.get("/health")
