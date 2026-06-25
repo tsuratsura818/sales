@@ -80,17 +80,20 @@ async def fetch_one_page(
 async def fetch_urls(query: str, num_results: int = 100, hl: str = "ja", gl: str = "jp") -> tuple[list[dict], int]:
     """SerpAPIでGoogle検索を実行し、(URLリスト, 使用API呼び出し回数) を返す"""
     results = []
-    pages_needed = (num_results + 9) // 10
+    seen = set()
+    per_page = 20  # 1呼び出しあたりの取得数（API節約）
+    # 取りこぼし対策で余裕を持って多めにページを回す（除外で減るため）
+    max_pages = max(3, (num_results // per_page) * 2 + 3)
     calls_used = 0
 
     async with httpx.AsyncClient(timeout=30) as client:
-        for page in range(pages_needed):
-            start = page * 10
+        for page in range(max_pages):
+            start = page * per_page
             params = {
                 "engine": "google",
                 "q": query,
                 "api_key": settings.SERPAPI_KEY,
-                "num": 10,
+                "num": per_page,
                 "start": start,
                 "hl": hl,
                 "gl": gl,
@@ -109,18 +112,19 @@ async def fetch_urls(query: str, num_results: int = 100, hl: str = "ja", gl: str
             organic = data.get("organic_results", [])
             for item in organic:
                 url = item.get("link", "")
-                if url and not _is_excluded(url):
+                if url and url not in seen and not _is_excluded(url):
+                    seen.add(url)
                     results.append({
                         "url": url,
                         "title": item.get("title", ""),
                         "snippet": item.get("snippet", ""),
                     })
-                if len(results) >= num_results:
-                    break
 
-            if len(results) >= num_results or len(organic) < 10:
+            # 終了条件: 目標到達 or organicが本当に尽きた(空)時のみ。
+            # （Googleは強調スニペット等で1ページ<件数 を返すため、件数<per_page では止めない）
+            if len(results) >= num_results or len(organic) == 0:
                 break
 
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.4)
 
     return results[:num_results], calls_used
