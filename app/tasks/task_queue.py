@@ -27,8 +27,28 @@ def enqueue(job_id: int) -> None:
     _queue.put_nowait(job_id)
 
 
+def _recover_orphaned_jobs() -> None:
+    """前回のワーカーが再起動(デプロイ等)で落ちて残った『分析中のまま』を回復する。"""
+    from sqlalchemy import text
+    db = SessionLocal()
+    try:
+        db.execute(text(
+            "UPDATE leads SET status='error', analysis_error='中断(再起動)' "
+            "WHERE status='analyzing'"
+        ))
+        db.execute(text(
+            "UPDATE search_jobs SET status='failed' WHERE status IN ('running','pending','queued')"
+        ))
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
 async def worker() -> None:
     """アプリ起動時から常駐するバックグラウンドワーカー"""
+    _recover_orphaned_jobs()  # 起動時に孤児ジョブを回復
     while True:
         job_id = await _queue.get()
         try:
