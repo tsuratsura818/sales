@@ -2608,3 +2608,44 @@ textarea.form-control { resize: vertical; font-family: inherit; }
     transition: border-color 0.2s;
 }
 .status-select:focus { border-color: var(--color-blue); outline: none; }
+
+/* ===== リード一覧テーブルの体裁を整える ===== */
+#leads-table { font-size: 13px; }
+#leads-table thead th {
+    background: #fafbfc;
+    color: #8a94a6;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    padding: 11px 16px;
+    border-bottom: 1px solid #eceff3;
+}
+#leads-table tbody td {
+    padding: 14px 16px;
+    border-bottom: 1px solid #f2f4f7;
+    color: #344054;
+}
+#leads-table tbody tr { transition: background .12s ease; }
+#leads-table tbody tr:hover td { background: #f7f9ff; }
+#leads-table tbody tr:last-child td { border-bottom: none; }
+#leads-table .domain-link { font-weight: 600; font-size: 13.5px; }
+#leads-table .site-title { font-size: 11px; color: #98a2b3; margin-top: 3px; line-height: 1.45; }
+
+/* スコア: 丸み・固定幅で揃える */
+#leads-table .score-badge {
+    min-width: 48px; text-align: center; padding: 5px 10px;
+    border-radius: 999px; font-weight: 700; font-size: 12.5px; line-height: 1;
+}
+/* 期待度ランク: 正方形チップで揃える */
+#leads-table .rank-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 26px; padding: 0; border-radius: 7px;
+    font-weight: 700; font-size: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.12);
+}
+/* HTTPS/モバイル/連絡先などは丸バッジで統一 */
+#leads-table .badge { padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+#leads-table .cms-badge { border-radius: 6px; padding: 3px 9px; font-size: 11px; }
+#leads-table .cms-ver { color: #98a2b3; font-size: 10px; }
+#leads-table td .btn-sm { padding: 5px 12px; border-radius: 7px; }
+/* 「-」だけのセルは控えめに */
+#leads-table tbody td { vertical-align: middle; }
