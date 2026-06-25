@@ -128,12 +128,14 @@
 {% endblock %}
 
 {% block scripts %}
-<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script>
-// グローバル設定
-Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif';
-Chart.defaults.font.size = 12;
-Chart.defaults.color = '#666';
+// グローバル設定（chart.js は同期読み込み済み。万一未ロードでも落ちないようガード）
+if (window.Chart) {
+    Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif';
+    Chart.defaults.font.size = 12;
+    Chart.defaults.color = '#666';
+}
 
 const COLORS = {
     blue: '#4a90d9',
