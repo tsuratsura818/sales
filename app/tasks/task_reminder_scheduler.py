@@ -39,41 +39,11 @@ async def collect_due_tasks() -> tuple[list[dict], list[dict]]:
     return overdue, due_today
 
 
-# 案件の納期で「もうすぐ」とみなす日数（今日からN日以内）
-PROJECT_SOON_DAYS = 3
-# 案件の納期通知の対象外ステータス
-_CLOSED_PROJECT_STATUSES = {"完了", "失注"}
-
-
-async def collect_due_projects() -> tuple[list[dict], list[dict]]:
-    """(納期切れ, 納期がもうすぐ=今日〜N日以内) の案件リストを返す（完了/失注は除外）。"""
-    now = datetime.now(JST)
-    today = now.strftime("%Y-%m-%d")
-    soon = (now + timedelta(days=PROJECT_SOON_DAYS)).strftime("%Y-%m-%d")
-    projects = await notion_service.list_projects()
-    overdue, soon_due = [], []
-    for p in projects:
-        end = p.get("end_date")
-        if not end or p.get("status") in _CLOSED_PROJECT_STATUSES:
-            continue
-        if end < today:
-            overdue.append(p)
-        elif end <= soon:
-            soon_due.append(p)
-    overdue.sort(key=lambda x: x.get("end_date") or "")
-    soon_due.sort(key=lambda x: x.get("end_date") or "")
-    return overdue, soon_due
-
-
-def _format_message(
-    overdue: list[dict], due_today: list[dict],
-    proj_overdue: list[dict], proj_soon: list[dict],
-) -> str | None:
-    if not (overdue or due_today or proj_overdue or proj_soon):
+def _format_message(overdue: list[dict], due_today: list[dict]) -> str | None:
+    if not (overdue or due_today):
         return None
-    lines = ["📋 今日のリマインド", ""]
+    lines = ["📋 今日のタスクリマインド", ""]
 
-    # --- タスク ---
     if overdue:
         lines.append(f"🔴 タスク期限切れ ({len(overdue)}件)")
         for t in overdue:
@@ -87,38 +57,20 @@ def _format_message(
             lines.append(f"・{pr}{t.get('name') or '（無題）'}")
         lines.append("")
 
-    # --- 案件の納期 ---
-    if proj_overdue:
-        lines.append(f"📁🔴 案件 納期超過 ({len(proj_overdue)}件)")
-        for p in proj_overdue:
-            cl = f"（{p['client']}）" if p.get("client") else ""
-            lines.append(f"・{p.get('name') or '（無題）'}{cl} 〜{p.get('end_date')}")
-        lines.append("")
-    if proj_soon:
-        lines.append(f"📁🟠 案件 納期間近 ({len(proj_soon)}件)")
-        for p in proj_soon:
-            cl = f"（{p['client']}）" if p.get("client") else ""
-            lines.append(f"・{p.get('name') or '（無題）'}{cl} 〜{p.get('end_date')}")
-        lines.append("")
-
     lines.append("https://sales-6g78.onrender.com/tasks")
     text = "\n".join(lines)
     return text[:4900]
 
 
 async def send_task_reminder() -> bool:
-    """リマインドを送信する。送る対象（タスク or 案件納期）があれば True。"""
+    """タスク期限リマインドを送信する。送る対象があれば True。"""
     overdue, due_today = await collect_due_tasks()
-    proj_overdue, proj_soon = await collect_due_projects()
-    msg = _format_message(overdue, due_today, proj_overdue, proj_soon)
+    msg = _format_message(overdue, due_today)
     if not msg:
         logger.info("リマインド: 対象なし")
         return False
     await line_service.push_text_message(msg)
-    logger.info(
-        f"リマインドLINE送信完了: タスク(期限切れ{len(overdue)}/今日{len(due_today)}) "
-        f"案件(超過{len(proj_overdue)}/間近{len(proj_soon)})"
-    )
+    logger.info(f"タスクリマインドLINE送信完了: 期限切れ{len(overdue)}/今日{len(due_today)}")
     return True
 
 
