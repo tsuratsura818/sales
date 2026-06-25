@@ -207,35 +207,29 @@
 </div>
 {% endif %}
 
-<!-- 案件の納期（Notion） -->
+<!-- アクティブ案件（Notion / 案件化） -->
 {% if notion_connected %}
 <div class="card" style="margin-bottom:16px;">
     <h3 style="margin-top:0; display:flex; align-items:center; gap:8px; justify-content:space-between;">
         <span style="display:flex; align-items:center; gap:8px;">
-            📁 案件の納期
-            <span style="font-size:0.75rem; font-weight:400; color:#888;">納期超過 / 3日以内</span>
+            📁 アクティブ案件
+            <span style="font-size:0.75rem; font-weight:400; color:#888;">案件化 {{ active_projects|length }}件</span>
         </span>
         <a href="/projects" style="font-size:0.8rem; font-weight:400;">案件管理 →</a>
     </h3>
-    {% if today_projects %}
-    <div style="display:flex; flex-direction:column; gap:6px;">
-        {% for p in today_projects %}
-        <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:8px;
-            {% if p.overdue %}background:#fdecea; border-left:3px solid #e74c3c;
-            {% else %}background:#fff4e5; border-left:3px solid #e67e22;{% endif %}">
-            <span style="min-width:92px; font-weight:600; font-size:0.8rem; white-space:nowrap;
-                {% if p.overdue %}color:#e74c3c;{% else %}color:#c2691b;{% endif %}">
-                {% if p.overdue %}⚠ 超過{% else %}📅 {{ p.end_date }}{% endif %}
-            </span>
-            <span style="flex:1; min-width:0; font-size:0.9rem;">
-                {{ p.name or '（無題）' }}{% if p.client %} <span style="color:#888; font-size:0.8rem;">/ {{ p.client }}</span>{% endif %}
-            </span>
-            {% if p.status %}<span class="memo-badge badge-linked" style="font-size:0.7rem;">{{ p.status }}</span>{% endif %}
+    {% if active_projects %}
+    <div style="display:flex; flex-wrap:wrap; gap:6px;">
+        {% for p in active_projects %}
+        <div style="display:flex; align-items:center; gap:6px; padding:6px 12px; border-radius:20px;
+                    background:#eafaf1; border:1px solid #c8ecd6; font-size:0.85rem;">
+            <span style="color:#27ae60;">●</span>
+            <span>{{ p.name or '（無題）' }}</span>
+            {% if p.client %}<span style="color:#888; font-size:0.78rem;">/ {{ p.client }}</span>{% endif %}
         </div>
         {% endfor %}
     </div>
     {% else %}
-    <p style="color:#999; margin:0; text-align:center; padding:12px;">納期が近い案件はありません 🎉</p>
+    <p style="color:#999; margin:0; text-align:center; padding:12px;">アクティブな案件はありません</p>
     {% endif %}
 </div>
 {% endif %}
