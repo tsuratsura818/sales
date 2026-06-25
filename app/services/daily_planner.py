@@ -118,8 +118,72 @@ async def gather_context() -> dict:
     }
 
 
+def build_plan_prompt(context: dict) -> str:
+    """context からスケジュール立案用プロンプト（system+user 結合）を組み立てる。
+
+    ローカルClaude(ブリッジ)でもAPIでも同じプロンプトを使えるよう共通化。
+    """
+    parts = [f"日付: {context['date']}\n"]
+
+    if context["today_events"]:
+        parts.append("## 今日のカレンダー予定")
+        for ev in context["today_events"]:
+            time_str = ev["start"] if not ev["all_day"] else "終日"
+            parts.append(f"- {time_str}: {ev['summary']}")
+        parts.append("")
+
+    if context["week_events"]:
+        parts.append("## 今週のカレンダー予定（参考）")
+        for ev in context["week_events"][:10]:
+            parts.append(f"- {ev['start']}: {ev['summary']}")
+        parts.append("")
+
+    if context["projects"]:
+        parts.append("## 案件化・商談中の案件")
+        for p in context["projects"]:
+            amount = f" ({p['amount']:,}円)" if p.get("amount") else ""
+            deadline = f" 期限:{p['end_date']}" if p.get("end_date") else ""
+            parts.append(f"- [{p['status']}] {p['name']}{amount}{deadline}")
+        parts.append("")
+
+    if context["tasks"]:
+        parts.append("## 未完了タスク")
+        for t in context["tasks"]:
+            prio = f"[{t['priority']}]" if t.get("priority") else ""
+            due = f" 期限:{t['due_date']}" if t.get("due_date") else ""
+            parts.append(f"- {prio} {t['name']}{due} ({t['status']})")
+        parts.append("")
+
+    if context["notified_jobs"]:
+        parts.append("## 注目案件（未対応）")
+        for j in context["notified_jobs"]:
+            budget = ""
+            if j.get("budget_min") and j.get("budget_max"):
+                budget = f" {j['budget_min']:,}〜{j['budget_max']:,}円"
+            parts.append(
+                f"- [{j['platform']}] {j['title']}{budget} (マッチ度:{j['match_score']}点)"
+            )
+        parts.append("")
+
+    if not context["today_events"] and not context["tasks"] and not context["projects"]:
+        parts.append("※ カレンダー・Notionともにデータがありません。一般的なフリーランスの1日のスケジュールを提案してください。")
+
+    user_prompt = "\n".join(parts) + "\n上記の情報をもとに、今日の最適なスケジュールをJSON形式で提案してください。"
+    return PLANNER_SYSTEM_PROMPT + "\n\n" + user_prompt
+
+
+def parse_plan(raw: str) -> dict:
+    """LLMの応答テキストからスケジュールJSONを抽出する。"""
+    json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+    if not json_match:
+        raise ValueError("プランのJSONが見つかりません")
+    plan = json.loads(json_match.group())
+    plan["generated_at"] = datetime.now(JST).isoformat()
+    return plan
+
+
 async def generate_daily_plan(context: dict | None = None) -> dict:
-    """Claude AI で1日のスケジュールを立案"""
+    """Claude AI(API) で1日のスケジュールを立案（スケジューラ用。手動はブリッジ）。"""
     settings = get_settings()
     if context is None:
         context = await gather_context()

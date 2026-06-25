@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 from sqlalchemy import desc
 
 from app.services import daily_planner, calendar_service, notion_service
@@ -128,7 +129,7 @@ async def today_page(request: Request):
 
 @router.post("/api/today/generate")
 async def api_generate_plan():
-    """1日のスケジュールをAIで生成"""
+    """1日のスケジュールをAI(API)で生成（フォールバック用）"""
     today_str = datetime.now(JST).strftime("%Y-%m-%d")
 
     context = await daily_planner.gather_context()
@@ -147,6 +148,44 @@ async def api_generate_plan():
     finally:
         db.close()
 
+    return {"success": True, "plan": plan}
+
+
+# ===== ローカルClaude(ブリッジ)用: prepare → (ブラウザがbridge実行) → save =====
+
+@router.post("/api/today/plan-prepare")
+async def api_plan_prepare():
+    """スケジュール生成用プロンプトを返す（claude実行はブラウザ側のローカルブリッジ）"""
+    context = await daily_planner.gather_context()
+    prompt = daily_planner.build_plan_prompt(context)
+    return {"prompt": prompt, "context": context}
+
+
+class PlanSaveRequest(BaseModel):
+    raw: str
+    context: dict | None = None
+
+
+@router.post("/api/today/plan-save")
+async def api_plan_save(data: PlanSaveRequest):
+    """ローカルClaudeの出力を解釈してプランを保存"""
+    try:
+        plan = daily_planner.parse_plan(data.raw)
+    except Exception as e:
+        return {"success": False, "error": f"プラン解釈に失敗: {e}"}
+    today_str = datetime.now(JST).strftime("%Y-%m-%d")
+    db = SessionLocal()
+    try:
+        record = DailyPlan(
+            plan_date=today_str,
+            plan_json=json.dumps(plan, ensure_ascii=False),
+            context_json=json.dumps(data.context or {}, ensure_ascii=False, default=str),
+            source="manual-local",
+        )
+        db.add(record)
+        db.commit()
+    finally:
+        db.close()
     return {"success": True, "plan": plan}
 
 

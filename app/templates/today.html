@@ -307,21 +307,47 @@
 
 {% block scripts %}
 <script>
+const PLAN_BRIDGE = 'http://127.0.0.1:3939';
+
 async function generatePlan() {
     const btn = document.getElementById('generateBtn');
     btn.disabled = true;
-    btn.textContent = '⏳ 生成中...（数秒かかります）';
-
+    btn.textContent = '⏳ 生成中...';
     try {
+        // ローカルブリッジが使えるか確認（使えれば課金ゼロのローカルClaude）
+        let bridgeOk = false;
+        try { bridgeOk = (await fetch(PLAN_BRIDGE + '/ping', {cache:'no-store'})).ok; } catch (e) {}
+
+        if (bridgeOk) {
+            // 1) プロンプト生成（サーバー）
+            const prep = await (await fetch('/api/today/plan-prepare', {method:'POST'})).json();
+            // 2) ローカルClaude実行（ブリッジ）
+            const br = await fetch(PLAN_BRIDGE + '/claude', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({prompt: prep.prompt}),
+            });
+            const bd = await br.json();
+            if (!br.ok || bd.error) throw new Error(bd.error || 'bridge error');
+            // 3) 解釈して保存（サーバー）
+            const res = await (await fetch('/api/today/plan-save', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({raw: bd.result || '', context: prep.context}),
+            })).json();
+            if (!res.success) throw new Error(res.error || '保存失敗');
+            location.reload();
+            return;
+        }
+
+        // ブリッジ未起動: 確認してAPI版にフォールバック
+        if (!confirm('ローカルブリッジが起動していません。\nAPI（有料）で生成しますか？\n（無料で使うには start_bridge.bat を起動してください）')) {
+            btn.disabled = false; btn.textContent = '🤖 AIでスケジュール生成'; return;
+        }
         const resp = await fetch('/api/today/generate', { method: 'POST' });
         const data = await resp.json();
-        if (data.success) {
-            location.reload();
-        } else {
-            alert('生成に失敗しました: ' + (data.error || ''));
-        }
+        if (data.success) location.reload();
+        else alert('生成に失敗しました: ' + (data.error || ''));
     } catch (e) {
-        alert('エラー: ' + e.message);
+        alert('エラー: ' + (e.message || e));
     } finally {
         btn.disabled = false;
         btn.textContent = '🤖 AIでスケジュール生成';
