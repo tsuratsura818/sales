@@ -1,8 +1,7 @@
-"""秘書AIチャット: ローカルの claude CLI でユーザー依頼を解釈し、タスク操作を実行する。
+"""秘書AIチャット: Anthropic API でユーザー依頼を解釈し、タスク操作を実行する。
 
-本番(Render)では claude CLI が無いため is_available()=False。呼び出し側で graceful degrade。
 LLM には現在のタスク/案件一覧(ID付き)を渡し、{reply, actions[]} のJSONを返させる。
-actions をこちら側で実行し、結果を reply と共に返す。
+actions をこちら側で実行し、結果を reply と共に返す。本番(Render)でも動作する。
 """
 from __future__ import annotations
 
@@ -10,10 +9,15 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
+import httpx
+
+from app.config import get_settings
 from app.services import local_claude, notion_service
 
 log = logging.getLogger("assistant")
 JST = timezone(timedelta(hours=9))
+
+ASSISTANT_MODEL = "claude-haiku-4-5-20251001"
 
 SYSTEM_PROMPT = (
     "あなたは営業ツール『SellBuddy』の秘書AIです。ユーザーの依頼を理解し、"
@@ -105,14 +109,33 @@ async def _execute_action(a: dict) -> dict:
         return {"ok": False, "type": t, "error": str(e)}
 
 
+async def _ask_llm(prompt: str) -> str:
+    """Anthropic API に問い合わせて応答テキストを返す。"""
+    settings = get_settings()
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": settings.ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": ASSISTANT_MODEL,
+                "max_tokens": 1024,
+                "system": SYSTEM_PROMPT,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()["content"][0]["text"]
+
+
 async def chat(messages: list[dict]) -> dict:
     """会話履歴を受け取り、秘書の返答とアクション実行結果を返す。"""
-    if not local_claude.is_available():
-        return {
-            "reply": "この秘書チャットは、SellBuddy をローカル(自分のPC)で起動した時だけ使えます。"
-                     "本番(クラウド)では claude CLI が無いため利用できません。",
-            "executed": [], "available": False,
-        }
+    if not get_settings().ANTHROPIC_API_KEY:
+        return {"reply": "AIキー(ANTHROPIC_API_KEY)が未設定のため利用できません。",
+                "executed": [], "available": False}
 
     conn = await notion_service.check_connection()
     tasks, projects = [], []
@@ -122,7 +145,7 @@ async def chat(messages: list[dict]) -> dict:
 
     prompt = _build_prompt(messages, tasks, projects)
     try:
-        raw = await local_claude.invoke(prompt, system_prompt=SYSTEM_PROMPT, timeout=120)
+        raw = await _ask_llm(prompt)
         data = local_claude.extract_json(raw)
     except Exception as e:
         log.error(f"秘書チャット失敗: {e}")

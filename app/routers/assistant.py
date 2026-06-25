@@ -4,7 +4,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from app.services import assistant_service, local_claude
+from app.config import get_settings
+from app.services import assistant_service
 
 router = APIRouter(tags=["assistant"])
 
@@ -18,7 +19,7 @@ def _get_templates():
 async def assistant_page(request: Request):
     """秘書チャット画面"""
     return _get_templates().TemplateResponse(request, "assistant.html", {
-        "available": local_claude.is_available(),
+        "available": bool(get_settings().ANTHROPIC_API_KEY),
     })
 
 
