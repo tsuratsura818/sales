@@ -25,5 +25,9 @@ services:
         sync: false
       - key: INFRA_CREDENTIALS_JSON
         sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: GOOGLE_CALENDAR_ID
+        sync: false
       - key: RENDER_EXTERNAL_URL
         value: https://sales-6g78.onrender.com
