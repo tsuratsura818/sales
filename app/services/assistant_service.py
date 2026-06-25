@@ -105,8 +105,37 @@ async def _execute_action(a: dict) -> dict:
         return {"ok": False, "type": t, "error": str(e)}
 
 
+async def prepare(messages: list[dict]) -> dict:
+    """会話履歴から claude に投げるプロンプトを組み立てて返す（実行はブラウザ側のローカルブリッジ）。"""
+    conn = await notion_service.check_connection()
+    tasks, projects = [], []
+    if conn["ok"]:
+        tasks = await notion_service.list_tasks()
+        projects = await notion_service.list_projects()
+    prompt = SYSTEM_PROMPT + "\n\n" + _build_prompt(messages, tasks, projects)
+    return {"prompt": prompt, "notion": conn["ok"]}
+
+
+async def execute_raw(raw: str) -> dict:
+    """claude の生出力(JSON想定)を解釈し、アクションを実行して返す。"""
+    try:
+        data = local_claude.extract_json(raw)
+    except Exception as e:
+        log.error(f"秘書チャット 応答解釈失敗: {e} / raw={raw[:200]}")
+        return {"reply": "うまく解釈できませんでした。もう一度お願いします。", "executed": []}
+
+    reply = data.get("reply") or "（応答なし）"
+    actions = data.get("actions") or []
+    executed = []
+    for a in actions:
+        if isinstance(a, dict) and a.get("type"):
+            executed.append(await _execute_action(a))
+    return {"reply": reply, "executed": executed,
+            "changed": any(e.get("ok") for e in executed)}
+
+
 async def chat(messages: list[dict]) -> dict:
-    """会話履歴を受け取り、秘書の返答とアクション実行結果を返す。"""
+    """（ローカル実行用）サーバー側で claude CLI を直接呼ぶ版。"""
     if not local_claude.is_available():
         return {
             "reply": "この秘書チャットは、SellBuddy をローカル(自分のPC)で起動した時だけ使えます。"
