@@ -532,8 +532,11 @@ async function loadProjectTaskSummary() {
             else if (t.due_date <= weekEndStr) dueThisWeek++;
         }
 
-        const revenue = monthly.total_revenue || 0;
-        const retainer = monthly.retainer_revenue || 0;
+        // 月次見込み売上 = 案件化 かつ 請求サイクル月次 の金額合計（実際の月次経常収益）
+        const monthlyRevenue = projects
+            .filter(p => p.status === '案件化' && p.billing_cycle === '月次')
+            .reduce((s, p) => s + (p.amount || 0), 0);
+        const monthlyCount = projects.filter(p => p.status === '案件化' && p.billing_cycle === '月次').length;
 
         el.innerHTML = `
             <div class="pt-stat"><div class="pt-num">${active}</div><div class="pt-lbl">案件化</div></div>
@@ -541,7 +544,7 @@ async function loadProjectTaskSummary() {
             <div class="pt-stat"><div class="pt-num">${openTasks}</div><div class="pt-lbl">未完了タスク</div></div>
             <div class="pt-stat"><div class="pt-num" style="color:#f39c12;">${dueThisWeek}</div><div class="pt-lbl">今週締切</div></div>
             <div class="pt-stat"><div class="pt-num" style="color:#e74c3c;">${overdue}</div><div class="pt-lbl">期限切れ</div></div>
-            <div class="pt-stat"><div class="pt-num" style="color:#27ae60;">${fmtYen(revenue)}</div><div class="pt-lbl">月次見込み売上<br><span style="font-size:10px;color:#999;">うち継続 ${fmtYen(retainer)}</span></div></div>
+            <div class="pt-stat"><div class="pt-num" style="color:#27ae60;">${fmtYen(monthlyRevenue)}</div><div class="pt-lbl">月次見込み売上<br><span style="font-size:10px;color:#999;">案件化×月次 ${monthlyCount}件</span></div></div>
         `;
     } catch (e) {
         el.innerHTML = '<div style="color:#888; padding:8px;">読み込みに失敗しました</div>';
