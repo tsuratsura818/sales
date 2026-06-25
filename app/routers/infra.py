@@ -13,14 +13,18 @@ import json
 import os
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 router = APIRouter(tags=["infra"])
 
 _BASE_DIR = Path(__file__).resolve().parent.parent.parent
-_DASHBOARD_PATH = _BASE_DIR / "app" / "templates" / "infra_dashboard.html"
 _CREDS_FILE = _BASE_DIR / "infra_credentials.json"
+
+
+def _get_templates():
+    from main import templates
+    return templates
 
 
 def _auth_enabled() -> bool:
@@ -53,12 +57,11 @@ def _load_credentials() -> list:
 
 
 @router.get("/infra", response_class=HTMLResponse)
-async def infra_dashboard():
-    """開発プロジェクト基盤ダッシュボード"""
-    html = _DASHBOARD_PATH.read_text(encoding="utf-8")
+async def infra_dashboard(request: Request):
+    """開発プロジェクト基盤ダッシュボード（SellBuddyのレイアウトに統合）"""
     creds = _load_credentials()
     # </script> でのブレイクアウトを防ぎつつ JSON を埋め込む
-    payload = json.dumps(creds, ensure_ascii=False).replace("</", "<\\/")
-    inject = f"<script>window.__INFRA_CREDS__ = {payload};</script>"
-    html = html.replace("<body>", f"<body>\n{inject}", 1)
-    return HTMLResponse(html)
+    creds_json = json.dumps(creds, ensure_ascii=False).replace("</", "<\\/")
+    return _get_templates().TemplateResponse(request, "infra_dashboard.html", {
+        "creds_json": creds_json,
+    })
