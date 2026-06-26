@@ -65,7 +65,11 @@ async def run_weekly_outreach() -> dict:
             logger.info("週次アウトリーチ: 既にパイプライン実行中のためスキップ")
             return {"started": False, "run_id": running.id, "leads": 0, "with_email": 0, "ready": 0}
 
-        # 週次は控えめな量で収集（送信上限 50件/週 を意識）
+        # 週次は全98キーワードを一度に回すとRender無料枠で時間切れになるため、
+        # 毎週ローテーションで一部(KW_LIMIT件)だけ回す。ISO週で回転させ全件を順に網羅。
+        KW_LIMIT = 12
+        _, week_no, _ = datetime.now(JST).isocalendar()
+        kw_offset = week_no * KW_LIMIT
         sources = ["yahoo", "rakuten", "google", "duckduckgo"]
         run = PipelineRun(
             sources=json.dumps(sources),
@@ -73,7 +77,10 @@ async def run_weekly_outreach() -> dict:
             skip_mx=1,
             status="pending",
             mode="ec",
-            category_config=None,
+            category_config=json.dumps(
+                {"keyword_limit": KW_LIMIT, "keyword_offset": kw_offset},
+                ensure_ascii=False,
+            ),
         )
         db.add(run)
         db.commit()

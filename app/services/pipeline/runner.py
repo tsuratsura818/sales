@@ -338,9 +338,22 @@ async def run_pipeline(run_id: int):
 
         # DBからキーワードを取得（有効なもののみ）
         from app.models.pipeline_keyword import PipelineKeyword
-        db_keywords = db.query(PipelineKeyword).filter(PipelineKeyword.enabled == 1).all()
+        db_keywords = db.query(PipelineKeyword).filter(PipelineKeyword.enabled == 1).order_by(PipelineKeyword.id).all()
         keyword_list = [(kw.keyword, kw.industry) for kw in db_keywords]
-        log.info(f"キーワード: {len(keyword_list)}件（DB）")
+
+        # 週次自動実行などで keyword_limit / keyword_offset が指定されていれば、
+        # 全件ではなくローテーションで一部だけ回す（Render無料枠で時間内に完了させるため）
+        kw_limit = cat_config.get("keyword_limit") if isinstance(cat_config, dict) else None
+        if kw_limit and keyword_list:
+            total_kw = len(keyword_list)
+            kw_offset = (cat_config.get("keyword_offset") or 0) % total_kw
+            window = keyword_list[kw_offset:kw_offset + kw_limit]
+            if len(window) < kw_limit:  # 端で折り返し
+                window += keyword_list[: kw_limit - len(window)]
+            keyword_list = window
+            log.info(f"キーワード: {len(keyword_list)}件（全{total_kw}件中 offset={kw_offset} のローテーション）")
+        else:
+            log.info(f"キーワード: {len(keyword_list)}件（DB全件）")
 
         # 既存の結果からメール重複除外（直近5回分に制限してメモリ節約）
         recent_run_ids = [
