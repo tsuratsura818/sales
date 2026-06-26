@@ -1,22 +1,29 @@
 """週次自動アウトリーチ: 毎週指定の曜日・時刻に
-  1) 企業検索（バッチ収集 pipeline）を自動実行
-  2) 分析・メールアドレス抽出・営業メール文面の下書きを自動生成（=リスト化）
+  1) 企業検索（SerpAPI＝普通のGoogle検索）を登録キーワードで自動実行
+  2) サイト分析・メールアドレス抽出・スコアリング（=関連性の高いリスト化）
   3) 準備完了を LINE 通知
 
-実際の送信は行わない（ユーザーがレビューしてから手動送信＝「レビュー後に送信」方針）。
-週1回だけ実行する（last_week = ISO週で管理）。
+「リスト収集(スクレイパー)」ではなく「企業検索」を使う（関連性が高く・安定）。
+提案文(AI下書き)は背景ではローカルClaudeを使えないため生成しない。ユーザーが
+/leads でレビューする際にローカルClaude(ブリッジ=課金ゼロ)で都度生成する方針。
+実際の送信もレビュー後に手動。週1回だけ実行（last_week = ISO週で管理）。
 """
 
 import asyncio
-import json
 import logging
 from datetime import datetime, timedelta, timezone
 
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models.app_settings import AppSettings
-from app.models.pipeline import PipelineRun, PipelineResult
+from app.models.search_job import SearchJob
+from app.models.lead import Lead
+from app.models.pipeline_keyword import PipelineKeyword
 from app.services import line_service
+
+# 週あたりに回す企業検索キーワード数（SerpAPI無料枠250/月を考慮）と1キーワードの取得件数
+KW_PER_WEEK = 3
+RESULTS_PER_KEYWORD = 25
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -55,53 +62,46 @@ async def run_weekly_outreach() -> dict:
     返り値: {"started": bool, "run_id": int|None, "leads": int, "with_email": int, "ready": int}
     送信はしない（レビュー用リストを作るだけ）。
     """
-    from app.services.pipeline.runner import run_pipeline
+    from app.tasks import task_queue
 
+    # 登録キーワードから今週分をローテーション選択
     db = SessionLocal()
     try:
-        # 既に実行中なら二重起動しない
-        running = db.query(PipelineRun).filter(PipelineRun.status == "running").first()
-        if running:
-            logger.info("週次アウトリーチ: 既にパイプライン実行中のためスキップ")
-            return {"started": False, "run_id": running.id, "leads": 0, "with_email": 0, "ready": 0}
+        kws = (
+            db.query(PipelineKeyword)
+            .filter(PipelineKeyword.enabled == 1)
+            .order_by(PipelineKeyword.id)
+            .all()
+        )
+        if not kws:
+            await _notify_text(
+                "📬 週次アウトリーチ\n検索キーワードが未登録です。\n"
+                f"{BASE_URL}/pipeline/keywords で登録してください。"
+            )
+            return {"started": False, "run_id": None, "leads": 0, "with_email": 0, "ready": 0}
 
-        # 週次は全98キーワードを一度に回すとRender無料枠で時間切れになるため、
-        # 毎週ローテーションで一部(KW_LIMIT件)だけ回す。ISO週で回転させ全件を順に網羅。
-        KW_LIMIT = 12
+        total_kw = len(kws)
         _, week_no, _ = datetime.now(JST).isocalendar()
-        kw_offset = week_no * KW_LIMIT
-        sources = ["yahoo", "rakuten", "google", "duckduckgo"]
-        run = PipelineRun(
-            sources=json.dumps(sources),
-            keywords_count=0,
-            skip_mx=1,
-            status="pending",
-            mode="ec",
-            category_config=json.dumps(
-                {"keyword_limit": KW_LIMIT, "keyword_offset": kw_offset},
-                ensure_ascii=False,
-            ),
-        )
-        db.add(run)
-        db.commit()
-        db.refresh(run)
-        run_id = run.id
-    finally:
-        db.close()
+        offset = (week_no * KW_PER_WEEK) % total_kw
+        selected = [kws[(offset + i) % total_kw] for i in range(min(KW_PER_WEEK, total_kw))]
 
-    logger.info(f"週次アウトリーチ開始: run_id={run_id}")
-    await run_pipeline(run_id)
+        job_ids = []
+        kw_labels = []
+        for kw in selected:
+            job = SearchJob(
+                query=kw.keyword,
+                industry=kw.industry,
+                num_results=RESULTS_PER_KEYWORD,
+                search_method="serpapi",
+                status="pending",
+                auto_generate_proposal=False,  # 背景ではローカルClaude不可。下書きはレビュー時に生成
+            )
+            db.add(job)
+            db.commit()
+            db.refresh(job)
+            job_ids.append(job.id)
+            kw_labels.append(kw.keyword)
 
-    # 結果を集計
-    db = SessionLocal()
-    try:
-        results = db.query(PipelineResult).filter(PipelineResult.run_id == run_id).all()
-        total = len(results)
-        with_email = sum(1 for r in results if r.email)
-        ready = sum(
-            1 for r in results
-            if r.email and (r.personalized_subject or r.personalized_body or r.proposal)
-        )
         cap = 50
         cfg = db.query(AppSettings).first()
         if cfg:
@@ -109,28 +109,51 @@ async def run_weekly_outreach() -> dict:
     finally:
         db.close()
 
-    await _notify(total, with_email, ready, cap, run_id)
-    return {"started": True, "run_id": run_id, "leads": total, "with_email": with_email, "ready": ready}
+    logger.info(f"週次アウトリーチ(企業検索)開始: jobs={job_ids} kw={kw_labels}")
+
+    # 各検索ジョブを順に実行（企業検索→サイト分析→スコアリング）
+    for jid in job_ids:
+        try:
+            await task_queue._run_search_job(jid)
+        except Exception as e:
+            logger.error(f"週次アウトリーチ 検索ジョブ {jid} エラー: {e}")
+
+    # 集計
+    db = SessionLocal()
+    try:
+        leads = db.query(Lead).filter(Lead.search_job_id.in_(job_ids)).all()
+        total = len(leads)
+        with_email = sum(1 for l in leads if l.contact_email)
+    finally:
+        db.close()
+
+    await _notify(total, with_email, kw_labels, cap)
+    return {"started": True, "run_id": job_ids, "leads": total, "with_email": with_email, "ready": with_email}
 
 
-async def _notify(total: int, with_email: int, ready: int, cap: int, run_id: int) -> None:
+async def _notify_text(text: str) -> None:
     if not (settings.LINE_CHANNEL_ACCESS_TOKEN and settings.LINE_USER_ID):
         return
-    lines = [
-        "📬 今週の自動アウトリーチが準備できました",
-        "",
-        f"・収集した見込み客: {total}件",
-        f"・メール取得済み: {with_email}件",
-        f"・メール下書きあり: {ready}件",
-        "",
-        f"レビューして送信してください（送信目安 {cap}件/週・送信はあなたの操作で実行）:",
-        f"{BASE_URL}/pipeline",
-    ]
     try:
-        await line_service.push_text_message("\n".join(lines)[:4900])
-        logger.info("週次アウトリーチ: 準備完了をLINE通知")
+        await line_service.push_text_message(text[:4900])
     except Exception as e:
         logger.error(f"週次アウトリーチ通知エラー: {e}")
+
+
+async def _notify(total: int, with_email: int, kw_labels: list, cap: int) -> None:
+    kw_str = "、".join(kw_labels) if kw_labels else "-"
+    lines = [
+        "📬 今週の自動アウトリーチ（企業検索）が完了しました",
+        "",
+        f"・検索キーワード: {kw_str}",
+        f"・見込み客: {total}件",
+        f"・メール取得済み: {with_email}件",
+        "",
+        f"/leads でレビュー → 提案文をローカルClaudeで生成 → 送信（目安 {cap}件/週）:",
+        f"{BASE_URL}/leads",
+    ]
+    await _notify_text("\n".join(lines))
+    logger.info("週次アウトリーチ: 完了をLINE通知")
 
 
 async def weekly_outreach_scheduler() -> None:
