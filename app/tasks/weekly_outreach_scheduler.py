@@ -111,12 +111,24 @@ async def run_weekly_outreach() -> dict:
 
     logger.info(f"週次アウトリーチ(企業検索)開始: jobs={job_ids} kw={kw_labels}")
 
-    # 各検索ジョブを順に実行（企業検索→サイト分析→スコアリング）
+    # 常駐ワーカーに投入（再起動に強い）。ワーカーが企業検索→分析→スコアリングを処理。
     for jid in job_ids:
+        task_queue.enqueue(jid)
+
+    # 全ジョブが終端状態になるまでポーリング（最大~12分）
+    terminal = {"completed", "done", "failed", "error"}
+    for _ in range(72):  # 72 * 10s = 12分
+        await asyncio.sleep(10)
+        db = SessionLocal()
         try:
-            await task_queue._run_search_job(jid)
-        except Exception as e:
-            logger.error(f"週次アウトリーチ 検索ジョブ {jid} エラー: {e}")
+            statuses = [
+                s for (s,) in db.query(SearchJob.status)
+                .filter(SearchJob.id.in_(job_ids)).all()
+            ]
+        finally:
+            db.close()
+        if statuses and all(s in terminal for s in statuses):
+            break
 
     # 集計
     db = SessionLocal()
