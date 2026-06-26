@@ -190,6 +190,30 @@
             return Object.assign({viaLocal:false}, res);
         };
 
+        // prepare → ローカルブリッジ実行 → 生テキストを返す（保存せず呼び出し側で処理）。
+        // ブリッジ未起動なら null を返す（API代替なし）。
+        window.runLocalClaudeRaw = async function(opts){
+            const { prepareUrl, prepareBody } = opts;
+            let bridgeOk = false;
+            try { bridgeOk = (await fetch(BRIDGE + '/ping', {cache:'no-store'})).ok; } catch(e){}
+            if (!bridgeOk) {
+                alert('ローカルブリッジ(start_bridge.bat)が起動していません。\n無料で使うには起動してください。');
+                return null;
+            }
+            const prep = await (await fetch(prepareUrl, {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify(prepareBody || {}),
+            })).json();
+            if (prep.error) throw new Error(prep.error);
+            const br = await fetch(BRIDGE + '/claude', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({prompt: prep.prompt}),
+            });
+            const bd = await br.json();
+            if (!br.ok || bd.error) throw new Error(bd.error || 'bridge error');
+            return bd.result || '';
+        };
+
         window.secToggle = function(){
             const p = document.getElementById('secPanel'), f = document.getElementById('secFab');
             const open = p.style.display === 'none';

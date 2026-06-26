@@ -15,9 +15,11 @@
             <span style="color:#888;margin: 0 8px;">|</span>
             <span id="stat-enabled" style="font-weight:700;color:var(--color-green);">-</span> 件有効
         </div>
-        <div style="display: flex; gap: 8px;">
-            <button class="btn btn-primary" onclick="openAddModal()">キーワード追加</button>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn btn-primary" onclick="openSuggestModal()">🤖 AIで提案</button>
+            <button class="btn btn-secondary" onclick="openAddModal()">キーワード追加</button>
             <button class="btn btn-secondary" onclick="openBulkModal()">一括追加</button>
+            <button class="btn btn-secondary" onclick="disableAll()" style="color:var(--color-danger);">全て無効化</button>
             <a href="/pipeline" class="btn btn-secondary">パイプラインに戻る</a>
         </div>
     </div>
@@ -101,6 +103,42 @@
         <div class="goal-form-actions" style="margin-top:12px;">
             <button class="btn btn-primary" onclick="bulkAdd()">一括追加</button>
             <button class="btn btn-secondary" onclick="closeModals()">キャンセル</button>
+        </div>
+    </div>
+</div>
+
+<!-- AI提案モーダル -->
+<div id="suggest-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="max-width:680px;">
+        <h3>🤖 AIで検索キーワードを提案（ローカルClaude・課金ゼロ）</h3>
+        <p style="font-size:0.83rem;color:#888;margin-bottom:12px;">
+            あなたのサービス・狙う顧客を入れると、ローカルClaudeが「業種×検索ワード」を提案します。チェックして登録できます。
+        </p>
+        <div class="goal-form-grid" style="grid-template-columns: 1fr 1fr;">
+            <div class="goal-form-item" style="grid-column:1/-1;">
+                <label>売るもの / 狙う顧客</label>
+                <textarea id="sg-service" rows="2" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:0.88rem;">Webサイト制作・リニューアル、ECサイト構築・改善(Shopify等)。自社サイトを持つ中小企業・通販事業者で、サイトが古い/スマホ非対応/EC化の余地がある先。</textarea>
+            </div>
+            <div class="goal-form-item">
+                <label>対象エリア</label>
+                <input type="text" id="sg-area" value="関西中心（大阪・京都・兵庫・奈良・和歌山・滋賀）" />
+            </div>
+            <div class="goal-form-item">
+                <label>提案件数</label>
+                <input type="number" id="sg-count" value="20" min="5" max="50" />
+            </div>
+        </div>
+        <div class="goal-form-actions" style="margin-top:12px;">
+            <button class="btn btn-primary" id="sg-run-btn" onclick="runSuggest()">この内容で提案する</button>
+            <button class="btn btn-secondary" onclick="closeModals()">キャンセル</button>
+        </div>
+        <div id="sg-status" style="font-size:0.85rem;color:#888;margin-top:10px;"></div>
+        <div id="sg-results" style="margin-top:10px; max-height:360px; overflow-y:auto;"></div>
+        <div id="sg-add-actions" style="display:none; margin-top:12px; gap:8px;" class="goal-form-actions">
+            <button class="btn btn-primary" onclick="addSelectedSuggestions()">✓ チェックした項目を登録</button>
+            <label style="font-size:0.82rem;color:#888;display:flex;align-items:center;gap:4px;">
+                <input type="checkbox" id="sg-check-all" checked onchange="toggleAllSuggestions(this.checked)"> 全選択
+            </label>
         </div>
     </div>
 </div>
@@ -241,6 +279,7 @@ function openBulkModal() {
 function closeModals() {
     document.getElementById('add-modal').style.display = 'none';
     document.getElementById('bulk-modal').style.display = 'none';
+    document.getElementById('suggest-modal').style.display = 'none';
 }
 
 document.getElementById('add-form').addEventListener('submit', async (e) => {
@@ -292,6 +331,97 @@ async function bulkAdd() {
         await loadKeywords();
         alert(`${data.added}件追加しました`);
     }
+}
+
+// ===== AIキーワード提案（ローカルClaude） =====
+let suggestCandidates = [];
+
+function openSuggestModal() {
+    document.getElementById('suggest-modal').style.display = 'flex';
+    document.getElementById('sg-results').innerHTML = '';
+    document.getElementById('sg-add-actions').style.display = 'none';
+    document.getElementById('sg-status').textContent = '';
+    suggestCandidates = [];
+}
+
+async function runSuggest() {
+    const btn = document.getElementById('sg-run-btn');
+    const status = document.getElementById('sg-status');
+    btn.disabled = true; btn.textContent = '生成中...';
+    status.textContent = 'ローカルClaudeで提案を生成中… (10-40秒)';
+    try {
+        // 既存の業種一覧を「避ける」ヒントに渡す
+        const avoid = [...new Set(allKeywords.map(k => k.industry))];
+        const raw = await runLocalClaudeRaw({
+            prepareUrl: '/api/pipeline/keywords/suggest-prepare',
+            prepareBody: {
+                service: document.getElementById('sg-service').value,
+                area: document.getElementById('sg-area').value,
+                count: parseInt(document.getElementById('sg-count').value) || 20,
+                avoid: avoid,
+            },
+        });
+        if (raw === null) { btn.disabled=false; btn.textContent='この内容で提案する'; status.textContent=''; return; }
+        let txt = raw.trim();
+        // コードブロック/前後ノイズ除去 → JSON配列を抽出
+        const s = txt.indexOf('['), e = txt.lastIndexOf(']');
+        if (s >= 0 && e > s) txt = txt.slice(s, e + 1);
+        let arr;
+        try { arr = JSON.parse(txt); } catch(_) { throw new Error('提案の解釈に失敗しました。もう一度お試しください。'); }
+        suggestCandidates = arr.filter(x => x && x.keyword && x.industry);
+        if (!suggestCandidates.length) throw new Error('提案が空でした。');
+        renderSuggestions();
+        status.textContent = `${suggestCandidates.length}件の提案。チェックして登録してください。`;
+    } catch (e) {
+        status.textContent = '失敗: ' + e.message;
+    } finally {
+        btn.disabled = false; btn.textContent = 'この内容で提案する';
+    }
+}
+
+function renderSuggestions() {
+    const area = document.getElementById('sg-results');
+    area.innerHTML = suggestCandidates.map((c, i) => `
+        <label style="display:flex; gap:8px; align-items:flex-start; padding:7px 4px; border-bottom:1px solid #f0f0f0; cursor:pointer;">
+            <input type="checkbox" class="sg-cb" data-i="${i}" checked style="margin-top:3px;">
+            <span style="flex:1;">
+                <strong style="font-size:0.9rem;">${esc(c.keyword)}</strong>
+                <span style="color:#888; font-size:0.8rem;"> ［${esc(c.industry)}］</span>
+                ${c.reason ? `<div style="color:#aaa; font-size:0.78rem;">${esc(c.reason)}</div>` : ''}
+            </span>
+        </label>
+    `).join('');
+    document.getElementById('sg-add-actions').style.display = 'flex';
+    document.getElementById('sg-check-all').checked = true;
+}
+
+function toggleAllSuggestions(on) {
+    document.querySelectorAll('.sg-cb').forEach(cb => { cb.checked = on; });
+}
+
+async function addSelectedSuggestions() {
+    const picked = [...document.querySelectorAll('.sg-cb:checked')]
+        .map(cb => suggestCandidates[parseInt(cb.dataset.i)])
+        .filter(Boolean)
+        .map(c => ({keyword: c.keyword, industry: c.industry, source: 'all', note: 'AI提案'}));
+    if (!picked.length) { alert('1件以上チェックしてください'); return; }
+    const resp = await fetch('/api/pipeline/keywords/bulk', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(picked),
+    });
+    const data = await resp.json();
+    if (data.success) {
+        closeModals();
+        await loadKeywords();
+        alert(`${data.added}件を登録しました`);
+    }
+}
+
+async function disableAll() {
+    if (!confirm('現在有効な全キーワードを無効化しますか？\n（初期サンプルを一掃して、自分のキーワードに入れ替える用）')) return;
+    const resp = await fetch('/api/pipeline/keywords/disable-all', {method: 'POST'});
+    const data = await resp.json();
+    if (data.success) { await loadKeywords(); alert(`${data.disabled}件を無効化しました`); }
 }
 
 // Escキーでモーダル閉じる

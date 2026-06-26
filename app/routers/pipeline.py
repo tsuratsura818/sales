@@ -588,6 +588,58 @@ async def create_keyword(data: KeywordCreate, db: Session = Depends(get_db)):
     return {"success": True, "id": kw.id}
 
 
+class KeywordSuggestRequest(BaseModel):
+    service: str = ""        # 何を売るか（例: Webサイト制作・リニューアル / EC・Shopify改善）
+    area: str = "関西"        # 対象エリア
+    count: int = 20          # 提案件数
+    avoid: list[str] = []    # 既に登録済みの業種（なるべく避ける）
+
+
+def _build_keyword_suggest_prompt(service: str, area: str, count: int, avoid: list[str]) -> str:
+    avoid_text = "、".join(avoid[:60]) if avoid else "（特になし）"
+    return f"""あなたはBtoB営業のターゲティング戦略の専門家です。
+
+# 弊社が売るもの
+{service or "Webサイト制作・リニューアル、ECサイト構築・改善(Shopify等)"}
+
+# 対象エリア
+{area}
+
+# 依頼
+上記サービスの見込み客（自社サイトを持つ中小企業・EC/通販事業者で、サイトのリニューアルやEC改善の需要がありそうな先）を
+Google検索で発掘するための「検索キーワード」を {count} 件提案してください。
+
+# 条件
+- 各キーワードは実際にGoogleで検索する想定の語句にする（例: "和菓子 京都 老舗 通販" / "工務店 大阪 注文住宅" / "クリニック 神戸 ホームページ"）。
+- 業種は多様に。サイトが古い/弱い/EC化余地がある業種を優先（製造・卸・食品・工芸・小売・士業・クリニック・飲食・工務店・サービス業など）。
+- エリア {area} を反映し、具体地名（大阪/京都/兵庫/神戸/奈良/和歌山/滋賀 等）も織り交ぜる。
+- 次の業種はすでに登録済みなので、できるだけ別の切り口を出す: {avoid_text}
+- ポータル/求人/比較サイトが上位に来やすい語は避け、事業者本体サイトが出やすい語にする。
+
+# 出力
+JSON配列のみを出力（前後の説明やコードブロックは不要）。各要素は:
+[{{"industry": "業種名", "keyword": "検索ワード", "reason": "狙う理由を一言"}}]
+"""
+
+
+@router.post("/api/pipeline/keywords/suggest-prepare")
+async def suggest_keywords_prepare(data: KeywordSuggestRequest):
+    """AIキーワード提案用プロンプトを返す（claude実行はブラウザ側ローカルブリッジ）"""
+    count = max(5, min(data.count, 50))
+    prompt = _build_keyword_suggest_prompt(data.service, data.area, count, data.avoid or [])
+    return {"prompt": prompt}
+
+
+@router.post("/api/pipeline/keywords/disable-all")
+async def disable_all_keywords(db: Session = Depends(get_db)):
+    """全キーワードを無効化（初期サンプルを一掃して自分のキーワードに入れ替える用）"""
+    n = db.query(PipelineKeyword).filter(PipelineKeyword.enabled == 1).update(
+        {PipelineKeyword.enabled: 0}, synchronize_session=False
+    )
+    db.commit()
+    return {"success": True, "disabled": n}
+
+
 @router.post("/api/pipeline/keywords/bulk")
 async def bulk_create_keywords(keywords: list[KeywordCreate], db: Session = Depends(get_db)):
     """キーワード一括追加"""
