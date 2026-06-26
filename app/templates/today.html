@@ -102,6 +102,52 @@
     </div>
 </div>
 
+<div class="card" style="margin-bottom:16px; padding:16px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+            <span style="font-weight:600; font-size:0.9rem;">📬 週次 自動アウトリーチ</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="weeklyOutreachToggle"
+                       {% if weekly_outreach_enabled %}checked{% endif %}
+                       onchange="toggleWeeklyOutreach(this.checked)">
+                <span class="toggle-slider"></span>
+            </label>
+            <span id="weeklyOutreachStatus" style="font-size:0.85rem; color:{% if weekly_outreach_enabled %}#2e7d32{% else %}#999{% endif %};">
+                {{ 'ON' if weekly_outreach_enabled else 'OFF' }}
+            </span>
+            <button onclick="runWeeklyOutreachNow()" class="btn btn-secondary" style="font-size:0.78rem; padding:3px 10px;">今すぐ実行</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <label style="font-size:0.85rem; color:#666;">毎週</label>
+            <select id="weeklyOutreachWeekday" onchange="updateWeeklyOutreach()"
+                    style="padding:4px 6px; border:1px solid #ddd; border-radius:6px; font-size:0.85rem;">
+                {% set wd_names = ['月','火','水','木','金','土','日'] %}
+                {% for i in range(7) %}
+                <option value="{{ i }}" {% if weekly_outreach_weekday == i %}selected{% endif %}>{{ wd_names[i] }}曜</option>
+                {% endfor %}
+            </select>
+            <select id="weeklyOutreachHour" onchange="updateWeeklyOutreach()"
+                    style="padding:4px 6px; border:1px solid #ddd; border-radius:6px; font-size:0.85rem;">
+                {% for h in range(6, 22) %}
+                <option value="{{ h }}" {% if weekly_outreach_hour == h %}selected{% endif %}>{{ '%02d'|format(h) }}:00</option>
+                {% endfor %}
+            </select>
+            <label style="font-size:0.85rem; color:#666; margin-left:6px;">送信上限</label>
+            <select id="weeklyOutreachCap" onchange="updateWeeklyOutreach()"
+                    style="padding:4px 6px; border:1px solid #ddd; border-radius:6px; font-size:0.85rem;">
+                {% for c in [20, 50, 100] %}
+                <option value="{{ c }}" {% if weekly_outreach_send_cap == c %}selected{% endif %}>{{ c }}件/週</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    <div style="margin-top:8px; font-size:0.78rem; color:#888;">
+        毎週自動で「企業検索→リスト化→営業メール下書き生成」まで実行し、準備できたらLINE通知します。
+        <b>送信はあなたのレビュー後</b>に <a href="/pipeline">収集リスト</a> から手動で行います（誤送信・法令対策）。
+        {% if weekly_outreach_last_week %}<span style="color:#aaa;">／前回実行: {{ weekly_outreach_last_week }}</span>{% endif %}
+    </div>
+</div>
+
 <style>
 .toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; }
 .toggle-switch input { opacity: 0; width: 0; height: 0; }
@@ -494,6 +540,52 @@ async function sendWipReminderNow() {
         } else {
             alert(data.error || '送信に失敗しました');
         }
+    } catch (e) {
+        alert('エラー: ' + e.message);
+    }
+}
+
+async function toggleWeeklyOutreach(enabled) {
+    const status = document.getElementById('weeklyOutreachStatus');
+    try {
+        const resp = await fetch('/api/today/settings', {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({weekly_outreach_enabled: enabled}),
+        });
+        const data = await resp.json();
+        if (data.success) {
+            status.textContent = data.weekly_outreach_enabled ? 'ON' : 'OFF';
+            status.style.color = data.weekly_outreach_enabled ? '#2e7d32' : '#999';
+        }
+    } catch (e) {
+        document.getElementById('weeklyOutreachToggle').checked = !enabled;
+        alert('設定の更新に失敗しました');
+    }
+}
+
+async function updateWeeklyOutreach() {
+    try {
+        await fetch('/api/today/settings', {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                weekly_outreach_weekday: parseInt(document.getElementById('weeklyOutreachWeekday').value),
+                weekly_outreach_hour: parseInt(document.getElementById('weeklyOutreachHour').value),
+                weekly_outreach_send_cap: parseInt(document.getElementById('weeklyOutreachCap').value),
+            }),
+        });
+    } catch (e) {
+        alert('設定の更新に失敗しました');
+    }
+}
+
+async function runWeeklyOutreachNow() {
+    if (!confirm('今すぐ週次アウトリーチを実行しますか？\n（企業検索→リスト化→メール下書き生成。送信はしません。数分かかり、完了時にLINE通知します）')) return;
+    try {
+        const resp = await fetch('/api/today/run-weekly-outreach', { method: 'POST' });
+        const data = await resp.json();
+        alert(data.message || '開始しました');
     } catch (e) {
         alert('エラー: ' + e.message);
     }

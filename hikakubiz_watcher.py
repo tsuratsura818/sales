@@ -54,10 +54,16 @@ LOG_FILE = ROOT / ".hikakubiz_log.json"
 LOCK_FILE = ROOT / ".hikakubiz_watcher.lock"
 LOCK_TTL_SEC = 300  # 5分以上前のロックは古いとみなして無視
 
+_LOG_DIR = ROOT / "logs"
+_LOG_DIR.mkdir(exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.FileHandler(_LOG_DIR / "hikakubiz_watcher.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
 )
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,6 @@
 """今日のスケジュール立案ルーター"""
 
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -101,6 +102,11 @@ async def today_page(request: Request):
         wip_reminder_enabled = getattr(app_cfg, "wip_reminder_enabled", False)
         wip_reminder_hour = getattr(app_cfg, "wip_reminder_hour_jst", 9)
         wip_reminder_minute = getattr(app_cfg, "wip_reminder_minute_jst", 5)
+        weekly_outreach_enabled = getattr(app_cfg, "weekly_outreach_enabled", False)
+        weekly_outreach_weekday = getattr(app_cfg, "weekly_outreach_weekday", 0)
+        weekly_outreach_hour = getattr(app_cfg, "weekly_outreach_hour_jst", 9)
+        weekly_outreach_send_cap = getattr(app_cfg, "weekly_outreach_send_cap", 50)
+        weekly_outreach_last_week = getattr(app_cfg, "weekly_outreach_last_week", None)
 
     finally:
         db.close()
@@ -121,6 +127,11 @@ async def today_page(request: Request):
         "wip_reminder_enabled": wip_reminder_enabled,
         "wip_reminder_hour": wip_reminder_hour,
         "wip_reminder_minute": wip_reminder_minute,
+        "weekly_outreach_enabled": weekly_outreach_enabled,
+        "weekly_outreach_weekday": weekly_outreach_weekday,
+        "weekly_outreach_hour": weekly_outreach_hour,
+        "weekly_outreach_send_cap": weekly_outreach_send_cap,
+        "weekly_outreach_last_week": weekly_outreach_last_week,
         "cal_events": cal_events,
         "today_tasks": today_tasks,
         "active_projects": active_projects,
@@ -316,6 +327,11 @@ async def api_get_settings():
             "wip_reminder_enabled": getattr(cfg, "wip_reminder_enabled", False),
             "wip_reminder_hour": getattr(cfg, "wip_reminder_hour_jst", 9),
             "wip_reminder_minute": getattr(cfg, "wip_reminder_minute_jst", 5),
+            "weekly_outreach_enabled": getattr(cfg, "weekly_outreach_enabled", False),
+            "weekly_outreach_weekday": getattr(cfg, "weekly_outreach_weekday", 0),
+            "weekly_outreach_hour": getattr(cfg, "weekly_outreach_hour_jst", 9),
+            "weekly_outreach_send_cap": getattr(cfg, "weekly_outreach_send_cap", 50),
+            "weekly_outreach_last_week": getattr(cfg, "weekly_outreach_last_week", None),
         }
     finally:
         db.close()
@@ -332,6 +348,14 @@ async def api_send_wip_reminder():
         return {"success": False, "error": "進行中のタスクがありません"}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+@router.post("/api/today/run-weekly-outreach")
+async def api_run_weekly_outreach():
+    """週次自動アウトリーチを今すぐ1回実行（テスト用）。重いのでバックグラウンド起動し即返す。"""
+    from app.tasks.weekly_outreach_scheduler import run_weekly_outreach
+    asyncio.create_task(run_weekly_outreach())
+    return {"success": True, "message": "アウトリーチを開始しました。完了時にLINE通知します（数分かかります）。"}
 
 
 @router.post("/api/today/send-task-reminder")
@@ -376,6 +400,20 @@ async def api_update_settings(request: Request):
             minute = int(body["wip_reminder_minute"])
             if 0 <= minute <= 59:
                 cfg.wip_reminder_minute_jst = minute
+        if "weekly_outreach_enabled" in body:
+            cfg.weekly_outreach_enabled = bool(body["weekly_outreach_enabled"])
+        if "weekly_outreach_weekday" in body:
+            wd = int(body["weekly_outreach_weekday"])
+            if 0 <= wd <= 6:
+                cfg.weekly_outreach_weekday = wd
+        if "weekly_outreach_hour" in body:
+            hour = int(body["weekly_outreach_hour"])
+            if 0 <= hour <= 23:
+                cfg.weekly_outreach_hour_jst = hour
+        if "weekly_outreach_send_cap" in body:
+            cap = int(body["weekly_outreach_send_cap"])
+            if 1 <= cap <= 500:
+                cfg.weekly_outreach_send_cap = cap
         db.commit()
         return {
             "success": True,
@@ -386,6 +424,10 @@ async def api_update_settings(request: Request):
             "wip_reminder_enabled": cfg.wip_reminder_enabled,
             "wip_reminder_hour": cfg.wip_reminder_hour_jst,
             "wip_reminder_minute": cfg.wip_reminder_minute_jst,
+            "weekly_outreach_enabled": cfg.weekly_outreach_enabled,
+            "weekly_outreach_weekday": cfg.weekly_outreach_weekday,
+            "weekly_outreach_hour": cfg.weekly_outreach_hour_jst,
+            "weekly_outreach_send_cap": cfg.weekly_outreach_send_cap,
         }
     finally:
         db.close()

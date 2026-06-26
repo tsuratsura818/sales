@@ -129,6 +129,12 @@ def _migrate_sqlite():
         ("app_settings", "wip_reminder_hour_jst",   "INTEGER DEFAULT 9"),
         ("app_settings", "wip_reminder_minute_jst", "INTEGER DEFAULT 5"),
         ("app_settings", "wip_reminder_last_sent",  "TEXT"),
+        # 週次自動アウトリーチ
+        ("app_settings", "weekly_outreach_enabled",   "BOOLEAN DEFAULT 0"),
+        ("app_settings", "weekly_outreach_weekday",   "INTEGER DEFAULT 0"),
+        ("app_settings", "weekly_outreach_hour_jst",  "INTEGER DEFAULT 9"),
+        ("app_settings", "weekly_outreach_send_cap",  "INTEGER DEFAULT 50"),
+        ("app_settings", "weekly_outreach_last_week", "TEXT"),
         # メモ: ピン留め・タグ
         ("memos", "pinned", "INTEGER DEFAULT 0"),
         ("memos", "tags",   "TEXT DEFAULT ''"),
@@ -187,6 +193,12 @@ def _migrate_postgres():
         ("app_settings", "wip_reminder_hour_jst",   "INTEGER DEFAULT 9"),
         ("app_settings", "wip_reminder_minute_jst", "INTEGER DEFAULT 5"),
         ("app_settings", "wip_reminder_last_sent",  "TEXT"),
+        # 週次自動アウトリーチ
+        ("app_settings", "weekly_outreach_enabled",   "BOOLEAN DEFAULT FALSE"),
+        ("app_settings", "weekly_outreach_weekday",   "INTEGER DEFAULT 0"),
+        ("app_settings", "weekly_outreach_hour_jst",  "INTEGER DEFAULT 9"),
+        ("app_settings", "weekly_outreach_send_cap",  "INTEGER DEFAULT 50"),
+        ("app_settings", "weekly_outreach_last_week", "TEXT"),
         # メモ: ピン留め・タグ
         ("memos", "pinned", "INTEGER DEFAULT 0"),
         ("memos", "tags",   "TEXT DEFAULT ''"),

@@ -9,9 +9,16 @@ import asyncio
 import json
 import re
 import sys
+from pathlib import Path
 
 import httpx
 from bs4 import BeautifulSoup
+
+if sys.stdout is None or sys.stderr is None:
+    _log_path = Path(__file__).parent / "logs" / "lancers_local.log"
+    _log_path.parent.mkdir(exist_ok=True)
+    sys.stdout = open(_log_path, "a", encoding="utf-8", buffering=1)
+    sys.stderr = sys.stdout
 
 SERVER_URL = "https://sales-6g78.onrender.com"
 HEARTBEAT_URL = SERVER_URL + "/api/heartbeat/lancers_local"

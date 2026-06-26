@@ -36,10 +36,16 @@ MARK_OPENED_URL = f"{SERVER_URL}/api/jobs/{{}}/mark-opened"
 HEARTBEAT_URL = f"{SERVER_URL}/api/heartbeat/apply_helper"
 POLL_INTERVAL = 10
 
+_LOG_DIR = ROOT / "logs"
+_LOG_DIR.mkdir(exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
+    handlers=[
+        logging.FileHandler(_LOG_DIR / "apply_helper.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
 )
 logger = logging.getLogger("apply_helper")
 

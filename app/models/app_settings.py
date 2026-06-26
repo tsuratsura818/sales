@@ -26,6 +26,13 @@ class AppSettings(Base):
     wip_reminder_minute_jst: Mapped[int] = mapped_column(Integer, default=5)
     wip_reminder_last_sent: Mapped[str] = mapped_column(String(10), nullable=True)
 
+    # 週次自動アウトリーチ（毎週: 企業検索→リスト化→メール文面下書き→LINE通知。送信はレビュー後に手動）
+    weekly_outreach_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    weekly_outreach_weekday: Mapped[int] = mapped_column(Integer, default=0)  # 0=月 .. 6=日
+    weekly_outreach_hour_jst: Mapped[int] = mapped_column(Integer, default=9)
+    weekly_outreach_send_cap: Mapped[int] = mapped_column(Integer, default=50)  # 週あたり送信上限の目安
+    weekly_outreach_last_week: Mapped[str] = mapped_column(String(10), nullable=True)  # 例 2026-W26
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now()
     )
