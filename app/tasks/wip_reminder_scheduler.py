@@ -90,8 +90,11 @@ async def wip_reminder_scheduler() -> None:
                 mm = getattr(cfg, "wip_reminder_minute_jst", 5)
                 target = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
                 if now >= target and getattr(cfg, "wip_reminder_last_sent", None) != today:
-                    await send_wip_reminder()
-                    _mark_sent(today)  # 送信有無に関わらず1日1回に固定
+                    # 実際に送信できた時だけ「送信済み」にする。
+                    # （対象0件で印を付けると、後から進行中タスクが出ても今日は二度と送らなくなるため）
+                    sent = await send_wip_reminder()
+                    if sent:
+                        _mark_sent(today)
         except asyncio.CancelledError:
             raise
         except Exception as e:
