@@ -445,19 +445,27 @@ async function reclassifyMemo() {
     // まず最新の内容を保存
     await saveMemo();
 
-    document.getElementById('editorStatus').textContent = 'AIで分類中...';
+    document.getElementById('editorStatus').textContent = 'ローカルClaudeで分類中...';
 
-    const resp = await fetch(`/api/memos/${currentMemoId}/classify`, {method: 'POST'});
-    const data = await resp.json();
-
-    if (data.success) {
+    try {
+        const data = await runLocalClaude({
+            prepareUrl: `/api/memos/${currentMemoId}/classify-prepare`,
+            saveUrl: `/api/memos/${currentMemoId}/classify-save`,
+            apiFallbackUrl: `/api/memos/${currentMemoId}/classify`,
+            label: '分類',
+        });
+        if (data.cancelled) { document.getElementById('editorStatus').textContent = 'キャンセルしました'; return; }
+        if (!data.success && data.error) { alert(data.error); return; }
         const cl = data.classification;
-        if (cl.matched) {
-            alert(`案件「${cl.project_name}」にマッチしました\n理由: ${cl.reason}\n確信度: ${cl.confidence}`);
+        if (cl && cl.matched) {
+            alert(`案件「${cl.project_name}」にマッチしました\n理由: ${cl.reason}\n確信度: ${cl.confidence}` + (data.viaLocal ? '\n(ローカル/無料)' : '\n(API)'));
         } else {
-            alert(`該当する案件が見つかりませんでした\n理由: ${cl.reason}`);
+            alert(`該当する案件が見つかりませんでした\n理由: ${cl ? cl.reason : ''}`);
         }
         location.reload();
+    } catch (e) {
+        document.getElementById('editorStatus').textContent = '';
+        alert('分類失敗: ' + e.message);
     }
 }
 
@@ -1112,22 +1120,22 @@ async function toMinutes() {
     ) ? 'replace' : 'append';
 
     await saveMemo();
-    setBusyBanner('✨ Claudeで議事録整形中... (10-30秒)');
+    setBusyBanner('✨ ローカルClaudeで議事録整形中... (10-30秒)');
 
     try {
-        const resp = await fetch(`/api/memos/${currentMemoId}/to_minutes`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({mode}),
+        const data = await runLocalClaude({
+            prepareUrl: `/api/memos/${currentMemoId}/minutes-prepare`,
+            prepareBody: {mode},
+            saveUrl: `/api/memos/${currentMemoId}/minutes-save`,
+            apiFallbackUrl: `/api/memos/${currentMemoId}/to_minutes`,
+            apiFallbackBody: {mode},
+            label: '議事録整形',
         });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.detail || `HTTP ${resp.status}`);
-        }
-        const data = await resp.json();
         clearBusyBanner();
+        if (data.cancelled) { document.getElementById('editorStatus').textContent = 'キャンセルしました'; return; }
+        if (!data.success && data.error) throw new Error(data.error);
         document.getElementById('memoTextarea').value = data.memo.content;
-        document.getElementById('editorStatus').textContent = '議事録整形完了';
+        document.getElementById('editorStatus').textContent = '議事録整形完了' + (data.viaLocal ? '（ローカル/無料）' : '（API）');
         const item = document.querySelector(`.memo-item[data-id="${currentMemoId}"] .memo-item-title`);
         if (item) item.textContent = data.memo.title;
     } catch (e) {

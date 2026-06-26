@@ -182,6 +182,58 @@ async def get_proposal(job_id: int, db: Session = Depends(get_db)):
     }
 
 
+# ===== ローカルClaude(ブリッジ)版 提案文生成: prepare → bridge → save =====
+
+@router.post("/api/jobs/{job_id}/proposal-prepare")
+async def proposal_prepare(job_id: int, db: Session = Depends(get_db)):
+    """提案文生成プロンプトを返す（claude実行はブラウザ側ローカルブリッジ）"""
+    from app.services.job_matcher import build_proposal_prompt
+    job = db.query(JobListing).filter(JobListing.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="案件が見つかりません")
+    if job.status == "applied":
+        return {"error": "既に応募済みです"}
+    prompt = build_proposal_prompt(
+        title=job.title,
+        description=job.description or "",
+        budget_min=job.budget_min,
+        budget_max=job.budget_max,
+        platform=job.platform,
+    )
+    return {"prompt": prompt, "context": None}
+
+
+@router.post("/api/jobs/{job_id}/proposal-save")
+async def proposal_save(job_id: int, request: Request, db: Session = Depends(get_db)):
+    """ローカルClaudeの生成結果を提案文として保存（応募はしない＝review状態に）"""
+    job = db.query(JobListing).filter(JobListing.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="案件が見つかりません")
+    body = await request.json()
+    proposal_text = (body.get("raw") or "").strip()
+    if proposal_text.startswith("```"):
+        lines = proposal_text.split("\n")
+        proposal_text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:]).strip()
+    if not proposal_text:
+        return {"success": False, "error": "生成結果が空です"}
+
+    application = db.query(JobApplication).filter(
+        JobApplication.job_listing_id == job_id
+    ).first()
+    if application:
+        application.proposal_text = proposal_text
+    else:
+        application = JobApplication(
+            job_listing_id=job_id,
+            proposal_text=proposal_text,
+            result_status="pending",
+        )
+        db.add(application)
+    job.status = "review"
+    db.commit()
+    return {"success": True, "proposal_text": proposal_text, "status": job.status}
+
+
 @router.post("/api/jobs/{job_id}/confirm")
 async def confirm_proposal(job_id: int, db: Session = Depends(get_db)):
     """提案文を承認して応募を実行"""

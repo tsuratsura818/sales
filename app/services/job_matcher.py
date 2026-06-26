@@ -250,30 +250,9 @@ async def generate_proposal(
     """案件に合わせた提案文をClaudeで生成"""
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
-    from app.services.settings_service import get_monitor_settings
-    ms = get_monitor_settings()
-    profile_text = user_profile or ms.user_profile_text or settings.USER_PROFILE_TEXT or "Web制作・デザインの経験あり"
-
-    budget_text = "記載なし"
-    if budget_min and budget_max:
-        if budget_min == budget_max:
-            budget_text = f"{budget_min:,}円"
-        else:
-            budget_text = f"{budget_min:,}円〜{budget_max:,}円"
-
-    # 説明文を1000文字に制限（トークンコスト削減）
-    desc_truncated = description[:1000] if description else "詳細なし"
-
-    user_prompt = f"""【案件情報】
-タイトル: {title}
-予算: {budget_text}
-説明:
-{desc_truncated}
-
-【応募者プロフィール】
-{profile_text}
-
-この案件への提案文を作成してください。"""
+    user_prompt = _build_proposal_user_prompt(
+        title, description, budget_min, budget_max, platform, user_profile
+    )
 
     try:
         message = await client.messages.create(
@@ -286,3 +265,51 @@ async def generate_proposal(
     except Exception as e:
         logger.error(f"提案文生成エラー: {e}")
         raise
+
+
+def _build_proposal_user_prompt(
+    title: str,
+    description: str,
+    budget_min: Optional[int],
+    budget_max: Optional[int],
+    platform: str,
+    user_profile: str = "",
+) -> str:
+    from app.services.settings_service import get_monitor_settings
+    ms = get_monitor_settings()
+    profile_text = user_profile or ms.user_profile_text or settings.USER_PROFILE_TEXT or "Web制作・デザインの経験あり"
+
+    budget_text = "記載なし"
+    if budget_min and budget_max:
+        if budget_min == budget_max:
+            budget_text = f"{budget_min:,}円"
+        else:
+            budget_text = f"{budget_min:,}円〜{budget_max:,}円"
+
+    desc_truncated = description[:1000] if description else "詳細なし"
+
+    return f"""【案件情報】
+タイトル: {title}
+予算: {budget_text}
+説明:
+{desc_truncated}
+
+【応募者プロフィール】
+{profile_text}
+
+この案件への提案文を作成してください。"""
+
+
+def build_proposal_prompt(
+    title: str,
+    description: str,
+    budget_min: Optional[int],
+    budget_max: Optional[int],
+    platform: str,
+    user_profile: str = "",
+) -> str:
+    """ローカルClaude(ブリッジ)用: system+user を1プロンプトに畳んで返す。"""
+    user_prompt = _build_proposal_user_prompt(
+        title, description, budget_min, budget_max, platform, user_profile
+    )
+    return PROPOSAL_SYSTEM_PROMPT + "\n\n" + user_prompt

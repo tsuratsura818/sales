@@ -104,18 +104,7 @@ async def transcript_to_minutes(
     if not settings.ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY が設定されていません。")
 
-    today = datetime.now().strftime("%Y-%m-%d")
-    hint_lines = [f"- 今日の日付: {today}"]
-    if project_hint:
-        hint_lines.append(f"- 関連プロジェクト(指定): {project_hint}")
-    if title_hint:
-        hint_lines.append(f"- 会議タイトル(指定): {title_hint}")
-
-    user_content = (
-        "以下の文字起こしを議事録に整形してください。\n\n"
-        "## ヒント\n" + "\n".join(hint_lines) + "\n\n"
-        "## 文字起こし本文\n\n" + transcript
-    )
+    user_content = _build_user_content(transcript, project_hint, title_hint)
 
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
     message = client.messages.create(
@@ -126,9 +115,38 @@ async def transcript_to_minutes(
     )
 
     text_blocks = [b.text for b in message.content if getattr(b, "type", None) == "text"]
-    minutes_md = "\n".join(text_blocks).strip()
+    return clean_minutes("\n".join(text_blocks))
 
-    # 念のためコードブロック剥がし
+
+def _build_user_content(
+    transcript: str, project_hint: str | None, title_hint: str | None
+) -> str:
+    today = datetime.now().strftime("%Y-%m-%d")
+    hint_lines = [f"- 今日の日付: {today}"]
+    if project_hint:
+        hint_lines.append(f"- 関連プロジェクト(指定): {project_hint}")
+    if title_hint:
+        hint_lines.append(f"- 会議タイトル(指定): {title_hint}")
+    return (
+        "以下の文字起こしを議事録に整形してください。\n\n"
+        "## ヒント\n" + "\n".join(hint_lines) + "\n\n"
+        "## 文字起こし本文\n\n" + transcript
+    )
+
+
+def build_minutes_prompt(
+    transcript: str,
+    project_hint: str | None = None,
+    title_hint: str | None = None,
+) -> str:
+    """ローカルClaude(ブリッジ)用: system+user を1つのプロンプトに畳んで返す。"""
+    user_content = _build_user_content(transcript, project_hint, title_hint)
+    return MINUTES_SYSTEM_PROMPT + "\n\n" + user_content
+
+
+def clean_minutes(raw: str) -> str:
+    """Claude出力からコードブロック等を剥がして議事録Markdownを得る。"""
+    minutes_md = (raw or "").strip()
     if minutes_md.startswith("```"):
         lines = minutes_md.split("\n")
         if lines[0].startswith("```"):
@@ -136,5 +154,4 @@ async def transcript_to_minutes(
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]
         minutes_md = "\n".join(lines).strip()
-
     return minutes_md

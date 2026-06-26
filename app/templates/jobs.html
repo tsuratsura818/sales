@@ -501,19 +501,34 @@ async function confirmProposal() {
 
 async function regenerateProposal() {
     if (!currentJobId) return;
-    if (!confirm('提案文を再生成しますか？')) return;
 
     const btn = document.getElementById('btnRegenerate');
     btn.disabled = true;
-    btn.textContent = '再生成中...';
+    btn.textContent = '生成中...';
 
-    const resp = await fetch(`/api/jobs/${currentJobId}/regenerate`, {method: 'POST'});
-    if (resp.ok) {
-        closeModal();
-        location.reload();
-    } else {
-        const data = await resp.json();
-        alert(data.detail || 'エラーが発生しました');
+    try {
+        const data = await runLocalClaude({
+            prepareUrl: `/api/jobs/${currentJobId}/proposal-prepare`,
+            saveUrl: `/api/jobs/${currentJobId}/proposal-save`,
+            apiFallbackUrl: `/api/jobs/${currentJobId}/regenerate`,
+            label: '提案文の再生成',
+        });
+        if (data.cancelled) { btn.disabled = false; btn.textContent = '再生成'; return; }
+        if (data.viaLocal === false) {
+            // APIフォールバック（バックグラウンド再生成＋LINE再送）→ 閉じてリロード
+            closeModal();
+            location.reload();
+            return;
+        }
+        if (!data.success && data.error) throw new Error(data.error);
+        // ローカル生成成功 → モーダルの提案文を即更新
+        document.getElementById('proposalText').textContent = data.proposal_text;
+        document.getElementById('btnConfirm').style.display = '';
+        document.getElementById('modalActions').style.display = 'flex';
+        btn.disabled = false;
+        btn.textContent = '再生成';
+    } catch (e) {
+        alert('提案文の生成に失敗: ' + e.message);
         btn.disabled = false;
         btn.textContent = '再生成';
     }

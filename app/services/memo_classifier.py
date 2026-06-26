@@ -29,11 +29,7 @@ async def classify_memo(memo_content: str) -> dict:
     if not projects:
         return {"matched": False, "project_id": None, "project_name": None, "confidence": "low", "reason": "案件DBが空"}
 
-    project_list = "\n".join(
-        f"- ID: {p['id']} | 案件名: {p['name']} | クライアント: {p.get('client', '')} | ステータス: {p.get('status', '')}"
-        for p in projects
-    )
-
+    project_list = _format_project_list(projects)
     settings = get_settings()
 
     async with httpx.AsyncClient(timeout=30) as client:
@@ -48,9 +44,25 @@ async def classify_memo(memo_content: str) -> dict:
                 "model": "claude-haiku-4-5-20251001",
                 "max_tokens": 256,
                 "messages": [
-                    {
-                        "role": "user",
-                        "content": f"""以下のメモが、どの案件に関するものか判定してください。
+                    {"role": "user", "content": _build_classify_user_prompt(project_list, memo_content)}
+                ],
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    return parse_classify(data["content"][0]["text"])
+
+
+def _format_project_list(projects: list) -> str:
+    return "\n".join(
+        f"- ID: {p['id']} | 案件名: {p['name']} | クライアント: {p.get('client', '')} | ステータス: {p.get('status', '')}"
+        for p in projects
+    )
+
+
+def _build_classify_user_prompt(project_list: str, memo_content: str) -> str:
+    return f"""以下のメモが、どの案件に関するものか判定してください。
 
 【案件一覧】
 {project_list}
@@ -66,18 +78,24 @@ JSONで回答してください（コードブロック不要）:
 - reason: string (判定理由を1行で)
 
 該当する案件がない場合は matched: false にしてください。"""
-                    }
-                ],
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
 
-    text = data["content"][0]["text"].strip()
+
+async def build_classify_prompt(memo_content: str) -> str | None:
+    """ローカルClaude(ブリッジ)用のプロンプトを返す。案件DBが空なら None。"""
+    if not (memo_content or "").strip():
+        return None
+    projects = await notion_service.list_projects()
+    if not projects:
+        return None
+    return _build_classify_user_prompt(_format_project_list(projects), memo_content)
+
+
+def parse_classify(raw: str) -> dict:
+    """Claude出力(JSON文字列)を分類結果dictに変換。"""
+    text = (raw or "").strip()
     if text.startswith("```"):
         lines = text.split("\n")
         text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-
     try:
         result = json.loads(text)
         return {

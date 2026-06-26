@@ -101,19 +101,8 @@ async def api_create_memo(data: MemoCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(memo)
 
-    # AI自動分類
-    classification = await classify_memo(data.content)
-
-    if classification["matched"] and classification["project_id"]:
-        memo.notion_project_id = classification["project_id"]
-        memo.notion_project_name = classification["project_name"]
-        memo.classification_status = "classified"
-    else:
-        memo.classification_status = "unlinked"
-
-    db.commit()
-    db.refresh(memo)
-
+    # AI自動分類はブラウザ側ローカルClaude(ブリッジ)で行う（課金ゼロ）。
+    # ここでは pending のまま返し、フロントが /classify-prepare → bridge → /classify-save を実行する。
     return {
         "success": True,
         "memo": {
@@ -125,8 +114,52 @@ async def api_create_memo(data: MemoCreate, db: Session = Depends(get_db)):
             "classification_status": memo.classification_status,
             "synced_to_notion": memo.synced_to_notion,
         },
-        "classification": classification,
+        "classification": None,
     }
+
+
+def _apply_classification(memo, classification: dict, db) -> None:
+    """分類結果をメモに反映して保存。"""
+    if classification.get("matched") and classification.get("project_id"):
+        memo.notion_project_id = classification["project_id"]
+        memo.notion_project_name = classification["project_name"]
+        memo.classification_status = "classified"
+    else:
+        memo.notion_project_id = None
+        memo.notion_project_name = None
+        memo.classification_status = "unlinked"
+    memo.synced_to_notion = 0
+    db.commit()
+
+
+@router.post("/api/memos/{memo_id}/classify-prepare")
+async def api_classify_prepare(memo_id: int, db: Session = Depends(get_db)):
+    """メモ分類用プロンプトを返す（claude実行はブラウザ側ローカルブリッジ）"""
+    from app.services.memo_classifier import build_classify_prompt
+    memo = db.query(Memo).filter(Memo.id == memo_id).first()
+    if not memo:
+        raise HTTPException(status_code=404, detail="メモが見つかりません")
+    prompt = await build_classify_prompt(memo.content or "")
+    if not prompt:
+        return {"error": "分類対象がありません（メモが空、または案件DBが空）"}
+    return {"prompt": prompt, "context": None}
+
+
+class ClassifySaveRequest(BaseModel):
+    raw: str
+    context: Optional[dict] = None
+
+
+@router.post("/api/memos/{memo_id}/classify-save")
+async def api_classify_save(memo_id: int, data: ClassifySaveRequest, db: Session = Depends(get_db)):
+    """ローカルClaudeの分類結果をメモに反映"""
+    from app.services.memo_classifier import parse_classify
+    memo = db.query(Memo).filter(Memo.id == memo_id).first()
+    if not memo:
+        raise HTTPException(status_code=404, detail="メモが見つかりません")
+    classification = parse_classify(data.raw)
+    _apply_classification(memo, classification, db)
+    return {"success": True, "classification": classification}
 
 
 @router.patch("/api/memos/{memo_id}")
@@ -182,19 +215,7 @@ async def api_classify_memo(memo_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="メモが見つかりません")
 
     classification = await classify_memo(memo.content)
-
-    if classification["matched"] and classification["project_id"]:
-        memo.notion_project_id = classification["project_id"]
-        memo.notion_project_name = classification["project_name"]
-        memo.classification_status = "classified"
-    else:
-        memo.notion_project_id = None
-        memo.notion_project_name = None
-        memo.classification_status = "unlinked"
-
-    memo.synced_to_notion = 0
-    db.commit()
-
+    _apply_classification(memo, classification, db)
     return {"success": True, "classification": classification}
 
 
@@ -353,21 +374,68 @@ async def api_to_minutes(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"議事録整形に失敗: {e}")
 
-    if data.mode == "append":
+    _apply_minutes(memo, source, minutes_md, data.mode, db)
+    return {
+        "success": True,
+        "memo": {"id": memo.id, "title": memo.title, "content": memo.content},
+    }
+
+
+def _apply_minutes(memo, source: str, minutes_md: str, mode: str, db) -> None:
+    """議事録Markdownをメモに反映して保存（replace/append）。"""
+    if mode == "append":
         memo.content = source + "\n\n---\n\n" + minutes_md
     else:
         memo.content = minutes_md
-
     # 議事録の1行目(# 議事録: ...)からタイトル生成
     first_line = memo.content.split("\n", 1)[0].lstrip("# ").strip()
     if first_line:
         memo.title = first_line[:100]
-
     memo.updated_at = datetime.now(timezone.utc)
     memo.synced_to_notion = 0
     db.commit()
     db.refresh(memo)
 
+
+# ===== ローカルClaude(ブリッジ)版: prepare → ブラウザがbridge実行 → save =====
+
+@router.post("/api/memos/{memo_id}/minutes-prepare")
+async def api_minutes_prepare(
+    memo_id: int, data: MinutesRequest, db: Session = Depends(get_db)
+):
+    """議事録整形用のプロンプトを返す（claude実行はブラウザ側ローカルブリッジ）"""
+    from app.services.minutes_service import build_minutes_prompt
+    memo = db.query(Memo).filter(Memo.id == memo_id).first()
+    if not memo:
+        raise HTTPException(status_code=404, detail="メモが見つかりません")
+    source = (memo.content or "").strip()
+    if not source:
+        return {"error": "メモ内容が空です"}
+    project_hint = data.project_hint or memo.notion_project_name
+    prompt = build_minutes_prompt(source, project_hint=project_hint, title_hint=data.title_hint)
+    return {"prompt": prompt, "context": {"mode": data.mode}}
+
+
+class MinutesSaveRequest(BaseModel):
+    raw: str
+    context: Optional[dict] = None
+
+
+@router.post("/api/memos/{memo_id}/minutes-save")
+async def api_minutes_save(
+    memo_id: int, data: MinutesSaveRequest, db: Session = Depends(get_db)
+):
+    """ローカルClaudeの出力を議事録としてメモに反映"""
+    from app.services.minutes_service import clean_minutes
+    memo = db.query(Memo).filter(Memo.id == memo_id).first()
+    if not memo:
+        raise HTTPException(status_code=404, detail="メモが見つかりません")
+    source = (memo.content or "").strip()
+    minutes_md = clean_minutes(data.raw)
+    if not minutes_md:
+        return {"success": False, "error": "議事録の生成結果が空です"}
+    mode = (data.context or {}).get("mode", "replace")
+    _apply_minutes(memo, source, minutes_md, mode, db)
     return {
         "success": True,
         "memo": {"id": memo.id, "title": memo.title, "content": memo.content},

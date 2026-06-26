@@ -153,6 +153,43 @@
         let secBridgeOk = false;
         try { secHistory = JSON.parse(sessionStorage.getItem('secHistory') || '[]'); } catch(e){}
 
+        // ===== 共通: ローカルClaude実行ヘルパー（課金ゼロ。未起動時のみAPI確認） =====
+        // prepare(プロンプト取得) → ローカルブリッジ実行 → save(解釈・保存) の3段。
+        // 戻り値: {cancelled?:bool, viaLocal?:bool, ...saveのJSON}
+        window.runLocalClaude = async function(opts){
+            const { prepareUrl, prepareBody, saveUrl, apiFallbackUrl, apiFallbackBody, label } = opts;
+            let bridgeOk = false;
+            try { bridgeOk = (await fetch(BRIDGE + '/ping', {cache:'no-store'})).ok; } catch(e){}
+            if (bridgeOk) {
+                const prep = await (await fetch(prepareUrl, {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify(prepareBody || {}),
+                })).json();
+                if (prep.error) throw new Error(prep.error);
+                const br = await fetch(BRIDGE + '/claude', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({prompt: prep.prompt}),
+                });
+                const bd = await br.json();
+                if (!br.ok || bd.error) throw new Error(bd.error || 'bridge error');
+                const res = await (await fetch(saveUrl, {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({raw: bd.result || '', context: prep.context || null}),
+                })).json();
+                return Object.assign({viaLocal:true}, res);
+            }
+            // ブリッジ未起動 → API（有料）で実行するか確認
+            if (!apiFallbackUrl) { alert('ローカルブリッジ(start_bridge.bat)が起動していません。'); return {cancelled:true}; }
+            if (!confirm('ローカルブリッジが起動していません。\nAPI（有料）で' + (label || '実行') + 'しますか？\n（無料で使うには start_bridge.bat を起動してください）')) {
+                return {cancelled:true};
+            }
+            const res = await (await fetch(apiFallbackUrl, {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify(apiFallbackBody || {}),
+            })).json();
+            return Object.assign({viaLocal:false}, res);
+        };
+
         window.secToggle = function(){
             const p = document.getElementById('secPanel'), f = document.getElementById('secFab');
             const open = p.style.display === 'none';
