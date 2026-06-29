@@ -4,13 +4,30 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# 除外するドメイン（大手ポータル・SNS等）
+# 除外するドメイン（大手ポータル・SNS・求人・企業DB・地域メディア等）
+# ＝事業者本体サイトではなく、メールが取れず営業対象にならない先
 EXCLUDE_DOMAINS = {
+    # SNS / 大手プラットフォーム
     "google.com", "google.co.jp", "youtube.com", "facebook.com",
-    "twitter.com", "instagram.com", "linkedin.com", "wikipedia.org",
+    "twitter.com", "x.com", "instagram.com", "linkedin.com", "wikipedia.org",
     "amazon.co.jp", "amazon.com", "rakuten.co.jp", "yahoo.co.jp",
-    "tabelog.com", "hotpepper.jp", "jalan.net", "booking.com",
-    "indeed.com", "mynavi.jp", "rikunabi.com",
+    "pinterest.com", "note.com", "ameblo.jp", "ameba.jp", "fc2.com",
+    "livedoor.com", "hatenablog.com", "hatena.ne.jp", "goo.ne.jp",
+    "wordpress.com", "blogspot.com", "tumblr.com", "threads.net", "tiktok.com",
+    # グルメ・予約・口コミ
+    "tabelog.com", "hotpepper.jp", "jalan.net", "booking.com", "gnavi.co.jp",
+    "retty.me", "ikyu.com", "epark.jp", "ozmall.co.jp", "beauty.hotpepper.jp",
+    # 求人
+    "indeed.com", "mynavi.jp", "rikunabi.com", "en-gage.net", "en-japan.com",
+    "townwork.net", "baitoru.com", "doda.jp", "type.jp", "wantedly.com",
+    "shigoto100.com", "job-medley.com", "guppy.jp",
+    # 電話帳・地図・企業DB・比較
+    "itp.ne.jp", "ekiten.jp", "mapion.co.jp", "navitime.co.jp", "its-mo.com",
+    "mapfan.com", "baseconnect.in", "buffett-code.com", "alarmbox.jp",
+    "kakaku.com", "prtimes.jp", "value-press.com", "atpress.ne.jp",
+    "ourly.jp", "salesnow.jp", "musubu.in",
+    # 公的・教育（TLDセグメントで限定。.co.jp 等の事業者は除外しない）
+    ".go.jp", ".lg.jp", ".ac.jp", ".ed.jp",
 }
 
 
