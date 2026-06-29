@@ -26,6 +26,10 @@ EXCLUDE_DOMAINS = {
     "mapfan.com", "baseconnect.in", "buffett-code.com", "alarmbox.jp",
     "kakaku.com", "prtimes.jp", "value-press.com", "atpress.ne.jp",
     "ourly.jp", "salesnow.jp", "musubu.in",
+    # 業種別ポータル・予約・求人（事業者本体ではなく運営会社のサイト）
+    "beauty-park.jp", "mitsuraku.jp", "relax-job.com", "salon-de-job.com",
+    "esthe-de-job", "beauty-navi.com", "rejob.me", "minimodel.jp",
+    "monodukuri-kyoto.jp",
     # 公的・教育（TLDセグメントで限定。.co.jp 等の事業者は除外しない）
     ".go.jp", ".lg.jp", ".ac.jp", ".ed.jp",
 }

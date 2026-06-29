@@ -27,12 +27,43 @@ JUNK_EMAIL_SUBSTR = [
     ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".css", ".js",
     "example.com", "example.co", "example.org", "yourdomain", "your-domain",
     "domain.com", "sentry", "wixpress", "googlemail.com", "@2x", "@3x",
-    "u003e", "u0040", "test@test", "name@", "mail@mail", "@email",
+    "u003e", "u0040", "@email", "xyz.co", "xyz.com", "abc.com",
 ]
+# ダミー/プレースホルダのローカルパート（abc@ / sample@ / test@ 等は実在しない）
+PLACEHOLDER_LOCALPARTS = {
+    "abc", "xyz", "sample", "test", "example", "dummy", "foo", "bar",
+    "aaa", "bbb", "ccc", "hoge", "your", "yourname", "name", "mailaddress",
+    "username", "mail-address", "address", "email", "yyy", "xxx", "mail",
+}
 PRIORITY_LOCALPARTS = (
-    "info", "contact", "sales", "mail", "support", "shop", "office",
+    "info", "contact", "sales", "support", "shop", "office",
     "inquiry", "order", "webmaster", "mailmag", "service",
 )
+# 個人事業主がよく使うフリーメール（同一ドメインでなくても採用してよい）
+FREEMAIL_DOMAINS = {
+    "gmail.com", "yahoo.co.jp", "yahoo.com", "outlook.com", "outlook.jp",
+    "hotmail.com", "hotmail.co.jp", "icloud.com", "me.com", "aol.com",
+    "ymail.com", "live.jp", "msn.com", "nifty.com", "ezweb.ne.jp",
+}
+# ドメイン照合で無視するラベル
+_TLDISH = {
+    "co", "ne", "or", "go", "ac", "ed", "gr", "lg", "jp", "com", "net",
+    "org", "info", "biz", "shop", "store", "online", "site", "tokyo", "work",
+}
+
+
+def _domain_core(domain: str) -> set[str]:
+    """ドメインの主要ラベル(4文字以上, TLD除く)集合を返す。"""
+    d = domain.lower().replace("www.", "")
+    return {p for p in d.split(".") if len(p) >= 4 and p not in _TLDISH}
+
+
+def _is_same_site(email_domain: str, site_domain: str) -> bool:
+    e = email_domain.lower().replace("www.", "")
+    s = site_domain.lower().replace("www.", "")
+    if e == s or e.endswith("." + s) or s.endswith("." + e):
+        return True
+    return bool(_domain_core(e) & _domain_core(s))
 
 # 難読化（info＠example.com / info[at]example.com 等）を素のメールに戻す
 _DEOBF = [
@@ -71,7 +102,7 @@ def _emails_from_html(html: str, page_domain: str) -> list[str]:
     text = _deobfuscate(soup.get_text(" ")) + "\n" + _deobfuscate(html)
     found.extend(EMAIL_PATTERN.findall(text))
 
-    # 重複排除 + ゴミ除外
+    # 重複排除 + ゴミ/ダミー/第三者ドメイン 除外
     out: list[str] = []
     seen: set[str] = set()
     for em in found:
@@ -79,21 +110,28 @@ def _emails_from_html(html: str, page_domain: str) -> list[str]:
         low = e.lower()
         if low in seen or len(e) > 100:
             continue
+        local, _, edom = low.partition("@")
         if any(j in low for j in JUNK_EMAIL_SUBSTR):
+            continue
+        if local in PLACEHOLDER_LOCALPARTS:
+            continue
+        # サイトと同一ドメイン or フリーメール以外は第三者(埋め込み/ポータル運営者/例示)
+        # の可能性が高いので採用しない
+        if page_domain and not (_is_same_site(edom, page_domain) or edom in FREEMAIL_DOMAINS):
             continue
         seen.add(low)
         out.append(e)
 
-    # 並べ替え: 同一ドメイン > info等 > no-reply は後ろ
-    base_dom = (page_domain or "").replace("www.", "")
-
+    # 並べ替え: 同一ドメイン > info等 > no-reply/フリーメールは後ろ
     def rank(e: str) -> int:
         local, _, edom = e.lower().partition("@")
         r = 0
-        if base_dom and base_dom in edom:
+        if page_domain and _is_same_site(edom, page_domain):
             r -= 10
         if local in PRIORITY_LOCALPARTS:
             r -= 5
+        if edom in FREEMAIL_DOMAINS:
+            r += 3
         if local.startswith(("no-reply", "noreply", "donotreply")):
             r += 8
         return r
