@@ -27,28 +27,43 @@ def enqueue(job_id: int) -> None:
     _queue.put_nowait(job_id)
 
 
-def _recover_orphaned_jobs() -> None:
-    """前回のワーカーが再起動(デプロイ等)で落ちて残った『分析中のまま』を回復する。"""
+# 検索ジョブの進捗更新(共有 db セッションへの commit)を直列化するロック。
+# process_lead が並列実行され同一 Session に同時 commit すると壊れるため。
+_progress_lock = asyncio.Lock()
+
+
+def _recover_orphaned_jobs() -> list[int]:
+    """前回のワーカーが再起動(デプロイ等)で落ちて残ったジョブを回復する。
+
+    - 実行中(running)だったジョブは中断扱いで failed に（途中まで分析済みのため再実行しない）
+    - 未着手(pending/queued)はメモリキューが消えただけなので failed にせず再投入する
+    返り値: 再投入すべき pending/queued の job_id リスト
+    """
     from sqlalchemy import text
     db = SessionLocal()
+    requeue: list[int] = []
     try:
         db.execute(text(
             "UPDATE leads SET status='error', analysis_error='中断(再起動)' "
             "WHERE status='analyzing'"
         ))
-        db.execute(text(
-            "UPDATE search_jobs SET status='failed' WHERE status IN ('running','pending','queued')"
-        ))
+        db.execute(text("UPDATE search_jobs SET status='failed' WHERE status='running'"))
+        rows = db.execute(text(
+            "SELECT id FROM search_jobs WHERE status IN ('pending','queued') ORDER BY id"
+        )).fetchall()
+        requeue = [r[0] for r in rows]
         db.commit()
     except Exception:
         db.rollback()
     finally:
         db.close()
+    return requeue
 
 
 async def worker() -> None:
     """アプリ起動時から常駐するバックグラウンドワーカー"""
-    _recover_orphaned_jobs()  # 起動時に孤児ジョブを回復
+    for jid in _recover_orphaned_jobs():  # 未着手ジョブは再投入、中断分は failed
+        _queue.put_nowait(jid)
     while True:
         job_id = await _queue.get()
         try:
@@ -205,9 +220,11 @@ async def _run_search_job(job_id: int) -> None:
                         )
                         eta = int(avg * remaining / concurrency) if remaining > 0 else 0
 
-                        job.analyzed_count = lead_count
-                        job.total_urls = target
-                        db.commit()
+                        # 共有 db への commit は並列コルーチン間で直列化する
+                        async with _progress_lock:
+                            job.analyzed_count = lead_count
+                            job.total_urls = target
+                            db.commit()
 
                         await progress_store.update(
                             job_id,

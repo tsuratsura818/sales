@@ -36,8 +36,17 @@ EXCLUDE_DOMAINS = {
 
 
 def _is_excluded(url: str) -> bool:
+    # 部分文字列ではなくホスト名境界で判定する。
+    # （"x.com" が box.com に、"note.com" が keynote.com に誤マッチするのを防ぐ）
+    from urllib.parse import urlparse
+    host = (urlparse(url).hostname or "").lower()
+    if not host:
+        return False
     for domain in EXCLUDE_DOMAINS:
-        if domain in url:
+        d = domain.lstrip(".").lower()
+        if not d:
+            continue
+        if host == d or host.endswith("." + d):
             return True
     return False
 

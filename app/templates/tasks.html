@@ -200,7 +200,7 @@
                 <label class="task-modal-label">ステータス</label>
                 <select id="pmStatus" class="task-modal-input">
                     {% for s in project_statuses %}
-                    <option value="{{ s }}" {% if s == '見込み' %}selected{% endif %}>{{ s }}</option>
+                    <option value="{{ s }}" {% if s == '提案前' %}selected{% endif %}>{{ s }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -863,7 +863,7 @@ function onProjectSelectChange(sel) {
 function openProjectModal() {
     document.getElementById('pmName').value = '';
     document.getElementById('pmClient').value = '';
-    document.getElementById('pmStatus').value = '見込み';
+    document.getElementById('pmStatus').value = '提案前';
     const ct = document.getElementById('pmContract');
     if (ct.options.length) ct.selectedIndex = 0;
     document.getElementById('projectModal').style.display = 'flex';

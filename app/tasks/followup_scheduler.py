@@ -45,8 +45,10 @@ async def followup_scheduler() -> None:
                             logger.info(
                                 f"フォローアップ生成: lead={step.lead_id} step={step.step_number}"
                             )
-                            await followup_service.generate_step_email(
-                                step.lead, step, db
+                            # 1件のハングで全フォローアップが止まらないようタイムアウト
+                            await asyncio.wait_for(
+                                followup_service.generate_step_email(step.lead, step, db),
+                                timeout=120,
                             )
 
                         # ready なら送信
@@ -54,7 +56,9 @@ async def followup_scheduler() -> None:
                             logger.info(
                                 f"フォローアップ送信: lead={step.lead_id} step={step.step_number}"
                             )
-                            await followup_service.send_step(step, db)
+                            await asyncio.wait_for(
+                                followup_service.send_step(step, db), timeout=90
+                            )
 
                         # 連続送信を避けるため少し待つ
                         await asyncio.sleep(5)

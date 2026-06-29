@@ -3,7 +3,18 @@
 営業日ベースの進捗率 × 日次平均実績で月末/期末の着地を予測
 """
 import logging
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
+
+# Render等はサーバー時刻がUTC。JST早朝に月初/週初がズレるのを防ぐ。
+JST = timezone(timedelta(hours=9))
+
+
+def _jst_now() -> datetime:
+    return datetime.now(JST).replace(tzinfo=None)
+
+
+def _jst_today() -> date:
+    return datetime.now(JST).date()
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -37,7 +48,7 @@ def _business_days_in_month(year: int, month: int) -> int:
 def _business_days_elapsed(year: int, month: int) -> int:
     """月初から今日までの営業日数"""
     d = date(year, month, 1)
-    today = date.today()
+    today = _jst_today()
     if today.month != month or today.year != year:
         return _business_days_in_month(year, month)
     count = 0
@@ -50,7 +61,7 @@ def _business_days_elapsed(year: int, month: int) -> int:
 
 def get_monthly_forecast(db: Session) -> dict:
     """今月の着地予測を計算"""
-    now = datetime.now()
+    now = _jst_now()
     year, month = now.year, now.month
 
     # 今月の期間
@@ -148,7 +159,7 @@ def get_monthly_forecast(db: Session) -> dict:
 
 def get_weekly_comparison(db: Session) -> dict:
     """今週 vs 先週の比較データ（週次レポート用）"""
-    now = datetime.now()
+    now = _jst_now()
     # 今週（月曜始まり）
     this_monday = now - timedelta(days=now.weekday())
     this_monday = this_monday.replace(hour=0, minute=0, second=0, microsecond=0)

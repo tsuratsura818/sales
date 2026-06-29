@@ -175,7 +175,8 @@ async def api_update_memo(memo_id: int, data: MemoUpdate, db: Session = Depends(
         # タイトル自動更新
         if not data.title:
             memo.title = data.content.split("\n")[0][:100] or "無題"
-    if data.title is not None:
+    # 空文字のタイトルは自動生成を打ち消さない（明示的な値のときだけ反映）
+    if data.title:
         memo.title = data.title
     if data.pinned is not None:
         memo.pinned = 1 if data.pinned else 0

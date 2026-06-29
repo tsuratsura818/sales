@@ -214,7 +214,8 @@ async def api_create_project(data: ProjectCreate):
 @router.patch("/api/projects/{project_id}")
 async def api_update_project(project_id: str, data: ProjectUpdate, suppress_tasks: bool = Query(False)):
     """案件更新API（suppress_tasks=True で案件化時のタスク自動生成を抑制）"""
-    updates = {k: v for k, v in data.model_dump().items() if v is not None}
+    # 送信されたフィールドのみ反映（null/空も尊重）。タスク更新と同じ堅牢化。
+    updates = data.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="更新内容がありません")
     try:
