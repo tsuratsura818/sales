@@ -33,6 +33,9 @@ class AppSettings(Base):
     weekly_outreach_send_cap: Mapped[int] = mapped_column(Integer, default=50)  # 週あたり送信上限の目安
     weekly_outreach_last_week: Mapped[str] = mapped_column(String(10), nullable=True)  # 例 2026-W26
 
+    # 週次レポート（Renderが再起動しても同週に二重送信しないためのDB永続ガード）
+    weekly_report_last_week: Mapped[str | None] = mapped_column(String(10), nullable=True)  # 例 2026-W26
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now()
     )

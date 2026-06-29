@@ -64,12 +64,14 @@ def get_monthly_forecast(db: Session) -> dict:
     now = _jst_now()
     year, month = now.year, now.month
 
-    # 今月の期間
-    month_start = datetime(year, month, 1)
+    # DB は UTC naive で保存しているため、JST月初/月末を UTC に変換して比較する。
+    # JST 00:00 = UTC 前日 15:00 (JST - 9h) なのでそれぞれ9時間引く。
+    _jst_offset = timedelta(hours=9)
+    month_start = datetime(year, month, 1) - _jst_offset
     if month == 12:
-        month_end = datetime(year + 1, 1, 1)
+        month_end = datetime(year + 1, 1, 1) - _jst_offset
     else:
-        month_end = datetime(year, month + 1, 1)
+        month_end = datetime(year, month + 1, 1) - _jst_offset
 
     # 営業日
     biz_total = _business_days_in_month(year, month)
@@ -160,9 +162,9 @@ def get_monthly_forecast(db: Session) -> dict:
 def get_weekly_comparison(db: Session) -> dict:
     """今週 vs 先週の比較データ（週次レポート用）"""
     now = _jst_now()
-    # 今週（月曜始まり）
-    this_monday = now - timedelta(days=now.weekday())
-    this_monday = this_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+    # 今週（月曜始まり）。DB は UTC naive なので JST 00:00 → UTC 15:00(-1d) に変換。
+    _jst_offset = timedelta(hours=9)
+    this_monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0) - _jst_offset
     this_sunday = this_monday + timedelta(days=7)
 
     # 先週

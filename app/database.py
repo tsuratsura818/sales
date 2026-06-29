@@ -138,6 +138,8 @@ def _migrate_sqlite():
         # メモ: ピン留め・タグ
         ("memos", "pinned", "INTEGER DEFAULT 0"),
         ("memos", "tags",   "TEXT DEFAULT ''"),
+        # 週次レポート DB 永続ガード（再起動二重送信防止）
+        ("app_settings", "weekly_report_last_week", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
@@ -202,6 +204,8 @@ def _migrate_postgres():
         # メモ: ピン留め・タグ
         ("memos", "pinned", "INTEGER DEFAULT 0"),
         ("memos", "tags",   "TEXT DEFAULT ''"),
+        # 週次レポート DB 永続ガード（再起動二重送信防止）
+        ("app_settings", "weekly_report_last_week", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
