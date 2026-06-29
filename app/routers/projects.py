@@ -319,7 +319,9 @@ async def api_create_task(data: TaskCreate):
 @router.patch("/api/tasks/{task_id}")
 async def api_update_task(task_id: str, data: TaskUpdate):
     """タスク更新API"""
-    updates = {k: v for k, v in data.model_dump().items() if v is not None}
+    # 送信されたフィールドだけを反映（null も「クリア」の意思として尊重する）。
+    # ※ if v is not None で弾くと、期日やメモを空にしても元の値に戻ってしまう。
+    updates = data.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="更新内容がありません")
     try:
