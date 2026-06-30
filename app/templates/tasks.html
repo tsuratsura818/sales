@@ -115,7 +115,7 @@
         <p style="font-size:12px; color:#888; margin:0 0 12px;">指定した曜日・日付になると、自動で「進行中」にタスクが作成されます（完了するまで残ります）。毎月は「末日」も選べます。</p>
         <div id="recurringList" class="te-attach-list"></div>
         <hr style="border:none; border-top:1px solid #eee; margin:14px 0;">
-        <div style="font-size:13px; font-weight:600; margin-bottom:8px;">＋ 新規登録</div>
+        <div id="recFormTitle" style="font-size:13px; font-weight:600; margin-bottom:8px;">＋ 新規登録</div>
         <input type="text" id="recName" class="task-modal-input" placeholder="タスク名（例: 請求書処理 / 週次レポート提出）">
         <div style="display:flex; gap:10px; margin-top:8px;">
             <div style="flex:1;">
@@ -262,7 +262,10 @@
 .wr-add { cursor:pointer; color:#98a2b3; font-weight:700; font-size:13px; line-height:1; }
 .wr-add:hover { color:#4a90d9; }
 .wr-task { font-size:11.5px; background:#fff; border:1px solid #e9eef3; border-left:3px solid #cbd5e1; border-radius:5px;
-    padding:3px 6px; margin-bottom:4px; line-height:1.35; position:relative; cursor:default; word-break:break-word; }
+    padding:3px 6px; margin-bottom:4px; line-height:1.35; position:relative; cursor:grab; word-break:break-word; }
+.wr-task:active { cursor:grabbing; }
+.wr-task.wr-dragging { opacity:.4; }
+.wr-day.wr-drop { background:#eef6ff; border-color:#4a90d9; box-shadow:0 0 0 1px #4a90d9 inset; }
 .wr-task.pr-高 { border-left-color:#e74c3c; }
 .wr-task.pr-中 { border-left-color:#f39c12; }
 .wr-task.pr-低 { border-left-color:#95a5a6; }
@@ -533,6 +536,7 @@ async function loadWeekRoutine() {
     let list = [];
     try { list = (await (await fetch('/api/recurring-tasks')).json()).recurring_tasks || []; }
     catch (e) { grid.innerHTML = '<div class="wr-empty">読み込みに失敗しました</div>'; return; }
+    _recurringList = list;
     const byDay = [[], [], [], [], [], [], []];
     const monthly = [];
     list.forEach(r => {
@@ -542,19 +546,93 @@ async function loadWeekRoutine() {
     const todayIdx = (new Date().getDay() + 6) % 7; // Mon=0..Sun=6
     grid.innerHTML = byDay.map((tasks, i) => {
         const chips = tasks.length ? tasks.map(r => `
-            <div class="wr-task pr-${r.priority || '中'}" title="${escapeHtml(r.name)}${r.enabled ? '' : '（無効）'}" style="${r.enabled ? '' : 'opacity:.45;'}">
+            <div class="wr-task pr-${r.priority || '中'}" draggable="true" ondragstart="wrDragStart(event, ${r.id})" ondragend="wrDragEnd(event)"
+                 title="${escapeHtml(r.name)}${r.enabled ? '' : '（無効）'} — ドラッグで曜日を移動" style="${r.enabled ? '' : 'opacity:.45;'}">
                 ${escapeHtml(r.name)}
                 ${r.project_name ? `<span class="wr-proj">📁 ${escapeHtml(r.project_name)}</span>` : ''}
                 <span class="wr-del" onclick="deleteRecurring(${r.id})" title="削除">✕</span>
             </div>`).join('') : '<div class="wr-empty">—</div>';
         const cls = (i === todayIdx ? 'wr-today ' : '') + (i >= 5 ? 'wr-weekend ' : '');
-        return `<div class="wr-day ${cls}">
+        return `<div class="wr-day ${cls}" ondragover="wrDragOver(event)" ondragleave="wrDragLeave(event)" ondrop="wrDrop(event, ${i})">
             <div class="wr-head"><span>${WEEKDAY_LABELS[i]}</span><span class="wr-add" title="この曜日に固定タスクを追加" onclick="openRecurringForDay(${i})">＋</span></div>
             ${chips}
         </div>`;
     }).join('');
     const note = document.getElementById('monthlyRoutineNote');
     if (note) note.textContent = monthly.length ? ('毎月: ' + monthly.map(m => `${m.schedule_label} ${m.name}`).join(' / ')) : '';
+}
+
+// 週課ボードのドラッグ&ドロップ（チップを別の曜日へ移動）
+let _wrDragId = null;
+let _recurringList = [];
+
+function wrDragStart(e, id) {
+    _wrDragId = id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.currentTarget.classList.add('wr-dragging');
+}
+function wrDragEnd(e) {
+    e.currentTarget.classList.remove('wr-dragging');
+    document.querySelectorAll('.wr-day.wr-drop').forEach(d => d.classList.remove('wr-drop'));
+}
+function wrDragOver(e) {
+    if (_wrDragId == null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    e.currentTarget.classList.add('wr-drop');
+}
+function wrDragLeave(e) {
+    e.currentTarget.classList.remove('wr-drop');
+}
+async function wrDrop(e, weekday) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('wr-drop');
+    const id = _wrDragId;
+    _wrDragId = null;
+    if (id == null) return;
+    const r = _recurringList.find(x => x.id === id);
+    if (!r || (r.freq || 'weekly') === 'monthly' || r.weekday === weekday) return;
+    // 楽観的に即時反映
+    r.weekday = weekday;
+    loadWeekRoutineLocal();
+    try {
+        await fetch(`/api/recurring-tasks/${id}`, {
+            method: 'PATCH', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name: r.name, freq: 'weekly', weekday, day_of_month: r.day_of_month || 0,
+                priority: r.priority, project_id: r.project_id, project_name: r.project_name,
+                create_status: r.create_status, enabled: r.enabled,
+            }),
+        });
+    } catch (err) {
+        alert('移動に失敗しました');
+    }
+    loadWeekRoutine();
+}
+
+// キャッシュ(_recurringList)だけで再描画（サーバ往復なしの即時反映用）
+function loadWeekRoutineLocal() {
+    const grid = document.getElementById('weekRoutineGrid');
+    if (!grid) return;
+    const byDay = [[], [], [], [], [], [], []];
+    _recurringList.forEach(r => {
+        if ((r.freq || 'weekly') !== 'monthly' && r.weekday >= 0 && r.weekday <= 6) byDay[r.weekday].push(r);
+    });
+    const todayIdx = (new Date().getDay() + 6) % 7;
+    grid.innerHTML = byDay.map((tasks, i) => {
+        const chips = tasks.length ? tasks.map(r => `
+            <div class="wr-task pr-${r.priority || '中'}" draggable="true" ondragstart="wrDragStart(event, ${r.id})" ondragend="wrDragEnd(event)"
+                 title="${escapeHtml(r.name)} — ドラッグで曜日を移動" style="${r.enabled ? '' : 'opacity:.45;'}">
+                ${escapeHtml(r.name)}
+                ${r.project_name ? `<span class="wr-proj">📁 ${escapeHtml(r.project_name)}</span>` : ''}
+                <span class="wr-del" onclick="deleteRecurring(${r.id})" title="削除">✕</span>
+            </div>`).join('') : '<div class="wr-empty">—</div>';
+        const cls = (i === todayIdx ? 'wr-today ' : '') + (i >= 5 ? 'wr-weekend ' : '');
+        return `<div class="wr-day ${cls}" ondragover="wrDragOver(event)" ondragleave="wrDragLeave(event)" ondrop="wrDrop(event, ${i})">
+            <div class="wr-head"><span>${WEEKDAY_LABELS[i]}</span><span class="wr-add" title="この曜日に固定タスクを追加" onclick="openRecurringForDay(${i})">＋</span></div>
+            ${chips}
+        </div>`;
+    }).join('');
 }
 
 function toggleWeekRoutine() {
@@ -576,6 +654,7 @@ function openRecurringForDay(weekday) {
 
 function openRecurringModal() {
     document.getElementById('recurringModal').style.display = 'flex';
+    if (typeof cancelEditRecurring === 'function') cancelEditRecurring();  // 編集モードをリセット
     loadRecurring();
 }
 function closeRecurringModal() {
@@ -588,6 +667,7 @@ async function loadRecurring() {
     try {
         const data = await (await fetch('/api/recurring-tasks')).json();
         const list = data.recurring_tasks || [];
+        _recurringList = list;
         if (!list.length) { box.innerHTML = '<div class="te-attach-empty">まだ登録がありません</div>'; return; }
         box.innerHTML = list.map(r => `
             <div class="te-attach-item">
@@ -598,12 +678,41 @@ async function loadRecurring() {
                 <label style="font-size:11px; display:flex; align-items:center; gap:3px; white-space:nowrap;">
                     <input type="checkbox" ${r.enabled ? 'checked' : ''} onchange="toggleRecurring(${r.id}, this.checked)"> 有効
                 </label>
+                <a class="te-attach-open" style="cursor:pointer;" onclick="editRecurring(${r.id})">編集</a>
                 <a class="te-attach-open" style="cursor:pointer;" onclick="runRecurringNow(${r.id})">今すぐ作成</a>
                 <button class="te-attach-del" onclick="deleteRecurring(${r.id})" title="削除">🗑</button>
             </div>`).join('');
     } catch (e) {
         box.innerHTML = '<div class="te-attach-empty">読み込みに失敗しました</div>';
     }
+}
+
+// 編集中の定期タスクID（null=新規登録モード）
+let _editingRecurringId = null;
+
+function editRecurring(id) {
+    const r = _recurringList.find(x => x.id === id);
+    if (!r) return;
+    _editingRecurringId = id;
+    document.getElementById('recName').value = r.name || '';
+    const f = document.getElementById('recFreq'); f.value = (r.freq || 'weekly'); onRecFreqChange();
+    document.getElementById('recWeekday').value = String(r.weekday ?? 2);
+    document.getElementById('recDom').value = String(r.day_of_month ?? 0);
+    document.getElementById('recPriority').value = r.priority || '中';
+    const psel = document.getElementById('recProject');
+    psel.value = r.project_id || '';
+    if (psel.value !== (r.project_id || '')) psel.value = '';  // 選択肢に無い場合は案件なし
+    const btn = document.getElementById('recAddBtn');
+    btn.textContent = '更新';
+    document.getElementById('recFormTitle').innerHTML = '✎ 編集中 <a style="cursor:pointer;color:#4a90d9;font-weight:400;margin-left:6px;" onclick="cancelEditRecurring()">キャンセル</a>';
+    document.getElementById('recName').focus();
+}
+
+function cancelEditRecurring() {
+    _editingRecurringId = null;
+    document.getElementById('recName').value = '';
+    document.getElementById('recAddBtn').textContent = '追加';
+    document.getElementById('recFormTitle').textContent = '＋ 新規登録';
 }
 
 function onRecFreqChange() {
@@ -617,27 +726,31 @@ async function addRecurring() {
     if (!name) { document.getElementById('recName').focus(); return; }
     const psel = document.getElementById('recProject');
     const freq = document.getElementById('recFreq').value;
+    const editing = _editingRecurringId;
     const btn = document.getElementById('recAddBtn');
-    btn.disabled = true; btn.textContent = '追加中...';
+    btn.disabled = true; btn.textContent = editing ? '更新中...' : '追加中...';
+    const payload = {
+        name,
+        freq,
+        weekday: parseInt(document.getElementById('recWeekday').value),
+        day_of_month: parseInt(document.getElementById('recDom').value),
+        priority: document.getElementById('recPriority').value,
+        project_id: psel.value || null,
+        project_name: psel.value ? psel.options[psel.selectedIndex].text : null,
+    };
     try {
-        const resp = await fetch('/api/recurring-tasks', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                name,
-                freq,
-                weekday: parseInt(document.getElementById('recWeekday').value),
-                day_of_month: parseInt(document.getElementById('recDom').value),
-                priority: document.getElementById('recPriority').value,
-                project_id: psel.value || null,
-                project_name: psel.value ? psel.options[psel.selectedIndex].text : null,
-            }),
+        const url = editing ? `/api/recurring-tasks/${editing}` : '/api/recurring-tasks';
+        const resp = await fetch(url, {
+            method: editing ? 'PATCH' : 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
         });
         if (!resp.ok) throw new Error();
-        document.getElementById('recName').value = '';
+        cancelEditRecurring();  // フォームを新規登録モードに戻す
         loadRecurring();
         loadWeekRoutine();
-    } catch (e) { alert('追加に失敗しました'); }
-    finally { btn.disabled = false; btn.textContent = '追加'; }
+    } catch (e) { alert(editing ? '更新に失敗しました' : '追加に失敗しました'); }
+    finally { btn.disabled = false; btn.textContent = editing ? '更新' : '追加'; }
 }
 
 async function toggleRecurring(id, enabled) {
