@@ -140,6 +140,10 @@ def _migrate_sqlite():
         ("memos", "tags",   "TEXT DEFAULT ''"),
         # 週次レポート DB 永続ガード（再起動二重送信防止）
         ("app_settings", "weekly_report_last_week", "TEXT"),
+        # 毎月の定期タスク対応
+        ("recurring_tasks", "freq",               "TEXT DEFAULT 'weekly'"),
+        ("recurring_tasks", "day_of_month",       "INTEGER DEFAULT 0"),
+        ("recurring_tasks", "last_created_month", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
@@ -206,6 +210,10 @@ def _migrate_postgres():
         ("memos", "tags",   "TEXT DEFAULT ''"),
         # 週次レポート DB 永続ガード（再起動二重送信防止）
         ("app_settings", "weekly_report_last_week", "TEXT"),
+        # 毎月の定期タスク対応
+        ("recurring_tasks", "freq",               "TEXT DEFAULT 'weekly'"),
+        ("recurring_tasks", "day_of_month",       "INTEGER DEFAULT 0"),
+        ("recurring_tasks", "last_created_month", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:

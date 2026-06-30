@@ -450,7 +450,9 @@ WEEKDAY_LABELS = ["月", "火", "水", "木", "金", "土", "日"]
 
 class RecurringTaskIn(BaseModel):
     name: str
-    weekday: int = 2  # 月=0..日=6（水=2）
+    freq: str = "weekly"          # weekly=毎週 / monthly=毎月
+    weekday: int = 2              # 月=0..日=6（水=2）weekly時
+    day_of_month: int = 0         # monthly時: 0=末日, 1-31=指定日
     priority: str = "中"
     project_id: Optional[str] = None
     project_name: Optional[str] = None
@@ -459,17 +461,28 @@ class RecurringTaskIn(BaseModel):
 
 
 def _recurring_dict(r: RecurringTask) -> dict:
+    freq = getattr(r, "freq", "weekly") or "weekly"
+    dom = getattr(r, "day_of_month", 0) or 0
+    if freq == "monthly":
+        schedule_label = "毎月末" if dom <= 0 else f"毎月{dom}日"
+    else:
+        wl = WEEKDAY_LABELS[r.weekday] if 0 <= r.weekday <= 6 else ""
+        schedule_label = f"毎週{wl}"
     return {
         "id": r.id,
         "name": r.name,
+        "freq": freq,
         "weekday": r.weekday,
         "weekday_label": WEEKDAY_LABELS[r.weekday] if 0 <= r.weekday <= 6 else "",
+        "day_of_month": dom,
+        "schedule_label": schedule_label,
         "priority": r.priority,
         "project_id": r.project_id,
         "project_name": r.project_name,
         "create_status": r.create_status,
         "enabled": r.enabled,
         "last_created_week": r.last_created_week,
+        "last_created_month": getattr(r, "last_created_month", None),
     }
 
 
@@ -486,15 +499,19 @@ async def api_list_recurring():
 
 @router.post("/api/recurring-tasks")
 async def api_create_recurring(data: RecurringTaskIn):
-    """毎週のタスクを登録"""
+    """定期タスク（毎週/毎月）を登録"""
     if not data.name.strip():
         raise HTTPException(status_code=400, detail="タスク名は必須です")
-    if not (0 <= data.weekday <= 6):
+    freq = data.freq if data.freq in ("weekly", "monthly") else "weekly"
+    if freq == "weekly" and not (0 <= data.weekday <= 6):
         raise HTTPException(status_code=400, detail="曜日が不正です")
+    if freq == "monthly" and not (0 <= data.day_of_month <= 31):
+        raise HTTPException(status_code=400, detail="日付が不正です")
     db = SessionLocal()
     try:
         row = RecurringTask(
-            name=data.name.strip()[:300], weekday=data.weekday,
+            name=data.name.strip()[:300], freq=freq, weekday=data.weekday,
+            day_of_month=data.day_of_month,
             priority=data.priority or "中", project_id=data.project_id or None,
             project_name=data.project_name or None, create_status=data.create_status or "進行中",
             enabled=data.enabled,
@@ -516,7 +533,9 @@ async def api_update_recurring(rid: int, data: RecurringTaskIn):
         if not row:
             raise HTTPException(status_code=404, detail="見つかりません")
         row.name = data.name.strip()[:300]
+        row.freq = data.freq if data.freq in ("weekly", "monthly") else "weekly"
         row.weekday = data.weekday
+        row.day_of_month = data.day_of_month
         row.priority = data.priority or "中"
         row.project_id = data.project_id or None
         row.project_name = data.project_name or None
