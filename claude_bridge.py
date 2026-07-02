@@ -29,6 +29,9 @@ ALLOWED_ORIGINS = {
     "https://sales-6g78.onrender.com",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
+    # Tsumugi（いとをかしマーケ管理）も同じローカルブリッジを利用
+    "https://itowocashi-seo-admin.vercel.app",
+    "http://localhost:3000",
 }
 
 
