@@ -199,7 +199,7 @@ async def update_project(project_id: str, updates: dict) -> dict:
         "start_date": ("開始日", lambda v: {"date": {"start": v}} if v else {"date": None}),
         "end_date": ("期日", lambda v: {"date": {"start": v}} if v else {"date": None}),
         "url": ("URL", lambda v: {"url": v or None}),
-        "memo": ("メモ", lambda v: {"rich_text": [{"text": {"content": v}}]}),
+        "memo": ("メモ", lambda v: {"rich_text": [{"text": {"content": v}}]} if v is not None else {"rich_text": []}),
         "contract_type": ("契約タイプ", lambda v: {"select": {"name": v}} if v else {"select": None}),
         "billing_cycle": ("請求サイクル", lambda v: {"select": {"name": v}} if v else {"select": None}),
     }
@@ -376,10 +376,10 @@ async def update_task(task_id: str, updates: dict) -> dict:
         "status": ("ステータス", lambda v: {"select": {"name": v}}),
         "priority": ("優先度", lambda v: {"select": {"name": v}}),
         "due_date": ("期日", lambda v: {"date": {"start": v}} if v else {"date": None}),
-        "memo": ("メモ", lambda v: {"rich_text": [{"text": {"content": v}}]}),
+        "memo": ("メモ", lambda v: {"rich_text": [{"text": {"content": v}}]} if v is not None else {"rich_text": []}),
         "project_id": ("案件", lambda v: {"relation": [{"id": v}]} if v else {"relation": []}),
         "recurring": ("繰り返し", lambda v: {"checkbox": bool(v)}),
-        "target_month": ("対象年月", lambda v: {"rich_text": [{"text": {"content": v}}]}),
+        "target_month": ("対象年月", lambda v: {"rich_text": [{"text": {"content": v}}]} if v is not None else {"rich_text": []}),
     }
 
     for key, value in updates.items():
