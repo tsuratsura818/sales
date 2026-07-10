@@ -332,6 +332,17 @@ async def api_update_task(task_id: str, data: TaskUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/api/tasks/cleanup-done")
+async def api_cleanup_done_tasks(days: int = Query(14), dry_run: bool = Query(False)):
+    """完了から一定日数(既定14日)経過したタスクを自動アーカイブ。dry_run=1で対象確認のみ。"""
+    from app.tasks.task_cleanup_scheduler import cleanup_done_tasks
+    try:
+        result = await cleanup_done_tasks(days=days, dry_run=dry_run)
+        return {"success": True, **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.delete("/api/tasks/{task_id}")
 async def api_delete_task(task_id: str):
     """タスク削除（アーカイブ）API"""
