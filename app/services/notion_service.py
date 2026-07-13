@@ -194,7 +194,7 @@ async def update_project(project_id: str, updates: dict) -> dict:
     field_map = {
         "name": ("案件名", lambda v: {"title": [{"text": {"content": v}}]}),
         "status": ("ステータス", lambda v: {"select": {"name": v}}),
-        "client": ("クライアント", lambda v: {"rich_text": [{"text": {"content": v}}]}),
+        "client": ("クライアント", lambda v: {"rich_text": [{"text": {"content": v}}]} if v is not None else {"rich_text": []}),
         "amount": ("金額", lambda v: {"number": v}),
         "start_date": ("開始日", lambda v: {"date": {"start": v}} if v else {"date": None}),
         "end_date": ("期日", lambda v: {"date": {"start": v}} if v else {"date": None}),

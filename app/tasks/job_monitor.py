@@ -59,8 +59,8 @@ def _log_run(
     duration_sec: float | None = None,
 ) -> None:
     """モニター実行ログをDBに保存"""
+    db = SessionLocal()
     try:
-        db = SessionLocal()
         log = MonitorLog(
             run_at=datetime.now(),
             status=status,
@@ -72,9 +72,10 @@ def _log_run(
         )
         db.add(log)
         db.commit()
-        db.close()
     except Exception as e:
         logger.error(f"モニターログ保存失敗: {e}")
+    finally:
+        db.close()
 
 
 async def _monitor_cycle() -> tuple[int, int, int]:
