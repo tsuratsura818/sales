@@ -164,7 +164,8 @@ def get_weekly_comparison(db: Session) -> dict:
     now = _jst_now()
     # 今週（月曜始まり）。DB は UTC naive なので JST 00:00 → UTC 15:00(-1d) に変換。
     _jst_offset = timedelta(hours=9)
-    this_monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0) - _jst_offset
+    monday_jst = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    this_monday = monday_jst - _jst_offset  # UTC naive: DBクエリ用
     this_sunday = this_monday + timedelta(days=7)
 
     # 先週
@@ -233,7 +234,7 @@ def get_weekly_comparison(db: Session) -> dict:
     forecast = get_monthly_forecast(db)
 
     return {
-        "period": f"{this_monday.strftime('%m/%d')}〜{(this_sunday - timedelta(days=1)).strftime('%m/%d')}",
+        "period": f"{monday_jst.strftime('%m/%d')}〜{(monday_jst + timedelta(days=6)).strftime('%m/%d')}",
         "leads": this_week["leads"],
         "sent": this_week["sent"],
         "replies": this_week["replies"],

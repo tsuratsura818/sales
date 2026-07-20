@@ -67,7 +67,18 @@ async def followup_scheduler() -> None:
                         logger.error(
                             f"フォローアップエラー: lead={step.lead_id} step={step.step_number}: {e}"
                         )
-                        # step.statusはサービス側でerrorに設定済み
+                        # 通常例外はサービス側でerrorに設定済み。
+                        # ただしTimeoutError(asyncio.wait_for)の場合はCancelledErrorが
+                        # except Exceptionに引っかからずstatus="generating"のまま残る。
+                        # 次のポーリングで["pending","ready"]クエリに引っかからず永久スタックするため
+                        # ここで明示的にerrorへ落とす。
+                        try:
+                            if getattr(step, "status", None) == "generating":
+                                step.status = "error"
+                                step.error_message = f"タイムアウトまたは中断: {str(e)[:200]}"
+                                db.commit()
+                        except Exception:
+                            pass
             finally:
                 db.close()
         except Exception as e:
