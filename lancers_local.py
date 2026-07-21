@@ -7,12 +7,16 @@ Lancers案件取得スクリプト（ローカルPC実行用）
 """
 import asyncio
 import json
+import os
 import re
 import sys
 from pathlib import Path
 
 import httpx
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent / ".env")
 
 if sys.stdout is None or sys.stderr is None:
     _log_path = Path(__file__).parent / "logs" / "lancers_local.log"
@@ -22,6 +26,12 @@ if sys.stdout is None or sys.stderr is None:
 
 SERVER_URL = "https://sales-6g78.onrender.com"
 HEARTBEAT_URL = SERVER_URL + "/api/heartbeat/lancers_local"
+
+# サーバー側の認証(Basic/APIキー)を通すためのヘッダ。
+# HEADERS は Lancers スクレイピング用の User-Agent なので混同しないこと。
+API_HEADERS = (
+    {"X-API-Key": os.environ["SALES_API_KEY"]} if os.environ.get("SALES_API_KEY") else {}
+)
 
 
 def send_heartbeat(status="ok", message="", count=None):
@@ -148,7 +158,7 @@ async def main():
     print("\n[1/3] サーバーから既知案件を取得中...")
     async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
         try:
-            resp = await client.get(f"{SERVER_URL}/api/job-monitor/known")
+            resp = await client.get(f"{SERVER_URL}/api/job-monitor/known", headers=API_HEADERS)
             resp.raise_for_status()
             known = resp.json()
             known_ids = set(known["external_ids"])
@@ -194,6 +204,7 @@ async def main():
             resp = await client.post(
                 f"{SERVER_URL}/api/job-monitor/import",
                 json={"jobs": jobs},
+                headers=API_HEADERS,
             )
             resp.raise_for_status()
             result = resp.json()

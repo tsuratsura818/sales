@@ -36,6 +36,12 @@ MARK_OPENED_URL = f"{SERVER_URL}/api/jobs/{{}}/mark-opened"
 HEARTBEAT_URL = f"{SERVER_URL}/api/heartbeat/apply_helper"
 POLL_INTERVAL = 10
 
+# サーバー側の認証(Basic/APIキー)を通すためのヘッダ。
+# 未設定なら空 = ローカル開発サーバー(認証なし)向け。
+API_HEADERS = (
+    {"X-API-Key": os.environ["SALES_API_KEY"]} if os.environ.get("SALES_API_KEY") else {}
+)
+
 _LOG_DIR = ROOT / "logs"
 _LOG_DIR.mkdir(exist_ok=True)
 logging.basicConfig(
@@ -62,7 +68,7 @@ def send_heartbeat(status="ok", message="", count=None):
 
 def fetch_queue():
     try:
-        r = httpx.get(QUEUE_URL, timeout=15, follow_redirects=True)
+        r = httpx.get(QUEUE_URL, timeout=15, follow_redirects=True, headers=API_HEADERS)
         r.raise_for_status()
         return r.json()
     except Exception as e:
@@ -72,7 +78,9 @@ def fetch_queue():
 
 def mark_opened(job_id: int):
     try:
-        httpx.post(MARK_OPENED_URL.format(job_id), timeout=10, follow_redirects=True)
+        httpx.post(
+            MARK_OPENED_URL.format(job_id), timeout=10, follow_redirects=True, headers=API_HEADERS
+        )
     except Exception as e:
         logger.warning(f"mark-opened error (job_id={job_id}): {e}")
 
