@@ -67,7 +67,8 @@ def _scan_inbox_sync() -> list[dict]:
         ids = (data[0] or b"").split()
         for msg_id in ids[-50:]:  # 直近50件
             try:
-                _, msg_data = mail.fetch(msg_id, "(RFC822)")
+                # PEEK で取得(既読フラグを付けない)。RFC822 だと読んだメールが既読になる。
+                _, msg_data = mail.fetch(msg_id, "(BODY.PEEK[])")
                 raw = msg_data[0][1]
                 msg = email_parser.message_from_bytes(raw)
                 subj = str(msg.get("Subject", "")).lower()

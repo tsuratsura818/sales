@@ -93,7 +93,8 @@ def _fetch_verification_code_sync(
                 # 最新のメールから確認
                 id_list = msg_ids[0].split()
                 for msg_id in reversed(id_list[-5:]):
-                    _, msg_data = mail.fetch(msg_id, "(RFC822)")
+                    # PEEK で取得(既読フラグを付けない)。RFC822 だと読んだメールが既読になる。
+                    _, msg_data = mail.fetch(msg_id, "(BODY.PEEK[])")
                     raw = msg_data[0][1]
                     msg = email.message_from_bytes(raw)
 

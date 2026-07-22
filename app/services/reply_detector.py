@@ -125,7 +125,10 @@ def _check_replies_sync() -> list[dict]:
         # 最新100件を処理
         for msg_id in id_list[-100:]:
             try:
-                _, msg_data = mail_conn.fetch(msg_id, "(RFC822)")
+                # BODY.PEEK[] で取得。RFC822 だと取得と同時に \Seen が付き、
+                # 返信検知のために読んだ受信メールが軒並み既読になってしまう
+                # (2026-07-22 修正: 「受信しただけで既読」の原因)。
+                _, msg_data = mail_conn.fetch(msg_id, "(BODY.PEEK[])")
                 raw = msg_data[0][1]
                 msg = email.message_from_bytes(raw)
 
