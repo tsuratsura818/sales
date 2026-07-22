@@ -27,7 +27,7 @@ from app.tasks.recurring_task_scheduler import recurring_task_scheduler
 from app.tasks.wip_reminder_scheduler import wip_reminder_scheduler
 from app.tasks.weekly_outreach_scheduler import weekly_outreach_scheduler
 from app.tasks.task_cleanup_scheduler import task_cleanup_scheduler
-from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects, today, memos, mail, goals, pipeline, webhook, tracking, clients, infra, assistant
+from app.routers import dashboard, search, leads, emails, events, followups, competitors, dashboard_api, portfolios, jobs, line_webhook, projects, today, memos, mail, goals, pipeline, webhook, tracking, clients, infra, assistant, activities
 
 STATUS_JA = {
     # リードステータス
@@ -131,6 +131,7 @@ app.include_router(clients.router)
 app.include_router(tracking.router)
 app.include_router(infra.router)
 app.include_router(assistant.router)
+app.include_router(activities.router)
 
 
 @app.get("/health")
