@@ -19,11 +19,15 @@ router = APIRouter(tags=["activities"])
 
 
 def _parse_dt(value: str | None) -> datetime:
-    """ISO8601 をパース。失敗/未指定は現在時刻。"""
+    """ISO8601 をパース。タイムゾーン付きは UTC に変換してから naive で返す。失敗/未指定は現在時刻。"""
     if not value:
         return datetime.utcnow()
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        from datetime import timezone
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
     except (ValueError, TypeError):
         return datetime.utcnow()
 

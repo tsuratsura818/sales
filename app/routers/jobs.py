@@ -97,6 +97,23 @@ async def list_jobs(
     ]
 
 
+@router.get("/api/jobs/open-queue")
+async def get_open_queue(db: Session = Depends(get_db)):
+    """ローカルapply_helperが定期取得するキュー"""
+    jobs = db.query(JobListing).filter(JobListing.status == "open_requested").all()
+    result = []
+    for j in jobs:
+        application = db.query(JobApplication).filter(JobApplication.job_listing_id == j.id).first()
+        result.append({
+            "id": j.id,
+            "platform": j.platform,
+            "title": j.title,
+            "url": j.url,
+            "proposal_text": application.proposal_text if application else "",
+        })
+    return result
+
+
 @router.get("/api/jobs/{job_id}")
 async def get_job(job_id: int, db: Session = Depends(get_db)):
     """案件詳細を返す"""
@@ -407,23 +424,6 @@ async def request_open(job_id: int, db: Session = Depends(get_db)):
     job.status = "open_requested"
     db.commit()
     return {"success": True}
-
-
-@router.get("/api/jobs/open-queue")
-async def get_open_queue(db: Session = Depends(get_db)):
-    """ローカルapply_helperが定期取得するキュー"""
-    jobs = db.query(JobListing).filter(JobListing.status == "open_requested").all()
-    result = []
-    for j in jobs:
-        application = db.query(JobApplication).filter(JobApplication.job_listing_id == j.id).first()
-        result.append({
-            "id": j.id,
-            "platform": j.platform,
-            "title": j.title,
-            "url": j.url,
-            "proposal_text": application.proposal_text if application else "",
-        })
-    return result
 
 
 @router.post("/api/jobs/{job_id}/mark-opened")
