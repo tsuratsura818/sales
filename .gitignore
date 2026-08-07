@@ -28,3 +28,6 @@ output/
 # 開発基盤ダッシュボードの機微情報（Git管理外）
 infra_credentials.json
 .basic_auth_generated.txt
+
+# .env のローカルバックアップ（シークレット・Git管理外）
+.env.bak-*

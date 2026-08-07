@@ -32,6 +32,9 @@ ALLOWED_ORIGINS = {
     # Tsumugi（いとをかしマーケ管理）も同じローカルブリッジを利用
     "https://itowocashi-seo-admin.vercel.app",
     "http://localhost:3000",
+    # systemプロモート 組織診断（counseling）も同じローカルブリッジを利用
+    "https://counseling.systempromote-kitao.com",
+    "https://systempromote-counseling.vercel.app",
 }
 
 
