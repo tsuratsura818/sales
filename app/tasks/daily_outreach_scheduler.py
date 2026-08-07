@@ -30,6 +30,8 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import and_, or_
+
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models.app_settings import AppSettings
@@ -46,14 +48,18 @@ BASE_URL = "https://sales-6g78.onrender.com"
 
 # 収集は無料スクレイパーのみ。google(SerpAPI=従量課金)は使わない。
 DAILY_SOURCES = ["category"]
-CATEGORY_ROTATION = ["A", "B", "C", "D"]
-# 1日分の収集量。Render無料枠で時間内に終わる程度に抑える。
-MAX_QUERIES_PER_CATEGORY = 15
-MAX_URLS_PER_CATEGORY = 40
+CATEGORIES = ["A", "B", "C", "D"]
+# 1日分の収集量。1カテゴリ×6県で114秒だったので、この程度なら Render無料枠でも収まる。
+MAX_QUERIES_PER_CATEGORY = 20
+MAX_URLS_PER_CATEGORY = 60
 # 1日にあたる都道府県の数（全47件を日ごとにスライドさせる）
-PREFS_PER_DAY = 6
-# 送信対象にするランク
+PREFS_PER_DAY = 10
+
+# 送信対象の条件。EC出店状況が取れる Yahoo/楽天由来のリードは rank S/A になるが、
+# category コレクター由来は EC状況が付かないため構造的に rank B 止まりになる。
+# そこで _import_to_mailforge と同じく「rank S/A」または「カテゴリ分類済み」を条件にする。
 SEND_RANKS = ("S", "A")
+MIN_CATEGORY_CONFIDENCE = 0.4
 
 # 送信ウィンドウ（MailForge 側の送信cronが参照する）
 SEND_START_TIME = "09:00"
@@ -88,10 +94,17 @@ def _stock_query(db):
         db.query(PipelineResult)
         .filter(
             PipelineResult.queued_at.is_(None),
+            PipelineResult.excluded_reason.is_(None),
             PipelineResult.email.isnot(None),
             PipelineResult.personalized_subject.isnot(None),
             PipelineResult.personalized_body.isnot(None),
-            PipelineResult.rank.in_(SEND_RANKS),
+            or_(
+                PipelineResult.rank.in_(SEND_RANKS),
+                and_(
+                    PipelineResult.category.isnot(None),
+                    PipelineResult.confidence >= MIN_CATEGORY_CONFIDENCE,
+                ),
+            ),
         )
         .order_by(PipelineResult.score.desc(), PipelineResult.id)
     )
@@ -108,13 +121,12 @@ async def _collect(day_index: int) -> int:
     from app.services.pipeline.runner import run_pipeline
     from app.services.pipeline.category_collector import PREFECTURES
 
-    category = CATEGORY_ROTATION[day_index % len(CATEGORY_ROTATION)]
     # 全都道府県を PREFS_PER_DAY 件ずつスライドさせながら回す
     offset = (day_index * PREFS_PER_DAY) % len(PREFECTURES)
     prefs = [PREFECTURES[(offset + i) % len(PREFECTURES)] for i in range(PREFS_PER_DAY)]
 
     category_config = {
-        "categories": [category],
+        "categories": CATEGORIES,
         "prefectures": prefs,
         "max_queries_per_category": MAX_QUERIES_PER_CATEGORY,
         "max_urls_per_category": MAX_URLS_PER_CATEGORY,
@@ -144,7 +156,7 @@ async def _collect(day_index: int) -> int:
     finally:
         db.close()
 
-    logger.info(f"日次アウトリーチ: 収集開始 run_id={run_id} category={category}")
+    logger.info(f"日次アウトリーチ: 収集開始 run_id={run_id} prefs={prefs}")
     await run_pipeline(run_id)
 
     db = SessionLocal()
@@ -158,18 +170,18 @@ async def _collect(day_index: int) -> int:
     return found
 
 
-def _pick_targets(cap: int) -> list[dict]:
-    """送信対象を上限まで選ぶ。配信停止リストに載っている宛先は除外する。
+def _pick_candidates(limit: int) -> list[dict]:
+    """選別にかける候補を集める。配信停止リストに載っている宛先はここで除外する。
 
+    この後 _screen_targets で落ちる分があるので、送信上限より多めに取ること。
     セッションを跨いで使うので ORM オブジェクトではなく dict にして返す。
     """
     db = SessionLocal()
     try:
         picked: list[dict] = []
         seen_emails: set[str] = set()
-        # 除外分を見込んで多めに取る
-        for r in _stock_query(db).limit(cap * 3).all():
-            if len(picked) >= cap:
+        for r in _stock_query(db).limit(limit * 3).all():
+            if len(picked) >= limit:
                 break
             email = (r.email or "").strip().lower()
             if not email or email in seen_emails:
@@ -194,6 +206,102 @@ def _pick_targets(cap: int) -> list[dict]:
                 "body": r.personalized_body,
             })
         return picked
+    finally:
+        db.close()
+
+
+SCREEN_SYSTEM_PROMPT = """あなたは営業リストの品質チェック担当です。
+Web制作・EC構築の営業メールを送る相手として適切かどうかを1件ずつ判定してください。
+
+【送ってよい】
+- 事業者・店舗・士業・クリニック等が自分で運営している「自社サイト」
+
+【送ってはいけない】
+- メディア/ポータル/まとめ記事/観光ガイド/求人サイト/口コミサイトのページ
+  （会社名の欄に記事タイトルが入っているものは、ほぼこれ）
+- 大手プラットフォームや自治体・学校
+- Web制作会社・広告代理店・デザイン事務所（同業）
+- 会社の実体が読み取れないもの
+
+迷ったら送らない（ok=false）側に倒してください。誤送信の方が損害が大きいためです。
+
+入力と同じ順序・同じ要素数のJSON配列だけを返してください。
+各要素: {"ok": true/false, "reason": "20文字程度の理由"}
+プリアンブルやコードフェンスは付けないこと。"""
+
+
+async def _screen_targets(targets: list[dict]) -> tuple[list[dict], list[dict]]:
+    """送信直前にローカルClaudeで1件ずつ「営業して良い相手か」を判定する。
+
+    収集コレクターは事業者の自社サイトと媒体記事ページを区別しきれず、
+    会社名の欄に記事タイトルが入ったリードが混ざる。レビュー無しで送るため、
+    ここで足切りする。ローカルClaude（定額枠）なので追加コストは発生しない。
+
+    判定に失敗した場合は「送らない」側に倒す（fail-closed）。
+    返り値: (通過したもの, 弾いたもの[reasonを付与])
+    """
+    from app.services import local_claude
+
+    if not targets:
+        return [], []
+
+    items = []
+    for i, t in enumerate(targets, 1):
+        items.append(
+            f"[{i}] 会社名として保存された値: {t['company'] or '(不明)'}"
+            f"\n    URL: {t['website'] or '(なし)'}"
+            f"\n    メール: {t['email']}"
+            f"\n    業種: {t['industry'] or '不明'} / 分類: {t['category'] or '-'}"
+        )
+    prompt = (
+        f"以下の{len(targets)}件を判定してください。\n\n"
+        + "\n\n".join(items)
+        + f"\n\n要素数ちょうど{len(targets)}個のJSON配列で返してください。"
+    )
+
+    try:
+        raw = await local_claude.invoke(
+            prompt, system_prompt=SCREEN_SYSTEM_PROMPT, timeout=600
+        )
+        verdicts = local_claude.extract_json(raw)
+        if not isinstance(verdicts, list):
+            raise ValueError(f"配列以外が返された: {type(verdicts).__name__}")
+    except Exception as e:
+        logger.error(f"日次アウトリーチ: 選別に失敗したため全件見送り: {e}")
+        return [], []
+
+    passed: list[dict] = []
+    rejected: list[dict] = []
+    for t, v in zip(targets, verdicts):
+        ok = isinstance(v, dict) and v.get("ok") is True
+        reason = (v.get("reason") if isinstance(v, dict) else "") or "判定不能"
+        if ok:
+            passed.append(t)
+        else:
+            rejected.append({**t, "reason": reason[:200]})
+    # 返り値が足りない分は見送り扱い
+    for t in targets[len(verdicts):]:
+        rejected.append({**t, "reason": "判定結果が返らなかった"})
+
+    logger.info(f"日次アウトリーチ: 選別 {len(passed)}件通過 / {len(rejected)}件除外")
+    for r in rejected:
+        logger.info(f"  除外: {r['email']} ({r['company'][:30]}) — {r['reason']}")
+    return passed, rejected
+
+
+def _mark_excluded(rejected: list[dict]) -> None:
+    """選別で弾いたリードに理由を記録し、以後の対象から外す"""
+    if not rejected:
+        return
+    db = SessionLocal()
+    try:
+        by_id = {r["id"]: r["reason"] for r in rejected}
+        for r in db.query(PipelineResult).filter(PipelineResult.id.in_(by_id)).all():
+            r.excluded_reason = by_id.get(r.id, "除外")
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"excluded_reason 記録エラー: {e}")
     finally:
         db.close()
 
@@ -333,8 +441,9 @@ async def run_daily_outreach() -> dict:
     else:
         logger.info(f"日次アウトリーチ: 在庫{stock}件で足りるため収集はスキップ")
 
-    targets = _pick_targets(cap)
-    if not targets:
+    # 選別で落ちる分を見込んで、上限の3倍を候補に取る
+    candidates = _pick_candidates(cap * 3)
+    if not candidates:
         await _notify_text(
             "📭 日次アウトリーチ: 送信できる新規リードがありませんでした\n\n"
             f"・今回の収集: {collected}件\n"
@@ -342,6 +451,22 @@ async def run_daily_outreach() -> dict:
             f"{BASE_URL}/pipeline で状況を確認してください。"
         )
         return {"started": True, "collected": collected, "sent": 0}
+
+    # レビュー無しで送るので、ここで「営業して良い相手か」を1件ずつ判定する
+    passed, rejected = await _screen_targets(candidates)
+    _mark_excluded(rejected)
+    targets = passed[:cap]
+    if not targets:
+        await _notify_text(
+            "📭 日次アウトリーチ: 選別を通過したリードがありませんでした\n\n"
+            f"・今回の収集: {collected}件\n"
+            f"・候補: {len(candidates)}件 → 選別で全件除外\n\n"
+            f"{BASE_URL}/pipeline で状況を確認してください。"
+        )
+        return {
+            "started": True, "collected": collected, "sent": 0,
+            "screened_out": len(rejected),
+        }
 
     campaign_name = f"日次アウトリーチ {now.strftime('%Y-%m-%d')}"
     try:
@@ -357,11 +482,12 @@ async def run_daily_outreach() -> dict:
     if sent > 0:
         _mark_queued(result.get("queued_ids", []), result["campaign_id"])
 
-    await _notify(collected, sent, cap, result.get("campaign_id"), result.get("error"))
+    await _notify(collected, sent, cap, len(rejected), result.get("campaign_id"), result.get("error"))
     return {
         "started": True,
         "collected": collected,
         "sent": sent,
+        "screened_out": len(rejected),
         "campaign_id": result.get("campaign_id"),
     }
 
@@ -375,11 +501,15 @@ async def _notify_text(text: str) -> None:
         logger.error(f"日次アウトリーチ通知エラー: {e}")
 
 
-async def _notify(collected: int, sent: int, cap: int, campaign_id: str | None, error: str | None) -> None:
+async def _notify(
+    collected: int, sent: int, cap: int, screened_out: int,
+    campaign_id: str | None, error: str | None,
+) -> None:
     lines = [
         "📨 本日の営業メールを送信キューに投入しました",
         "",
         f"・新規収集: {collected}件",
+        f"・選別で除外: {screened_out}件",
         f"・送信: {sent}件（上限 {cap}件/日）",
     ]
     if error:

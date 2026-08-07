@@ -153,8 +153,9 @@ def _migrate_sqlite():
         ("app_settings", "daily_outreach_daily_cap",      "INTEGER DEFAULT 20"),
         ("app_settings", "daily_outreach_weekdays_only",  "BOOLEAN DEFAULT 1"),
         ("app_settings", "daily_outreach_last_date",      "TEXT"),
-        ("pipeline_results", "queued_at",   "TIMESTAMP"),
-        ("pipeline_results", "campaign_id", "TEXT"),
+        ("pipeline_results", "queued_at",       "TIMESTAMP"),
+        ("pipeline_results", "campaign_id",     "TEXT"),
+        ("pipeline_results", "excluded_reason", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
@@ -234,8 +235,9 @@ def _migrate_postgres():
         ("app_settings", "daily_outreach_daily_cap",      "INTEGER DEFAULT 20"),
         ("app_settings", "daily_outreach_weekdays_only",  "BOOLEAN DEFAULT TRUE"),
         ("app_settings", "daily_outreach_last_date",      "TEXT"),
-        ("pipeline_results", "queued_at",   "TIMESTAMP"),
-        ("pipeline_results", "campaign_id", "TEXT"),
+        ("pipeline_results", "queued_at",       "TIMESTAMP"),
+        ("pipeline_results", "campaign_id",     "TEXT"),
+        ("pipeline_results", "excluded_reason", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:

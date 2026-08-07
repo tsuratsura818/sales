@@ -78,6 +78,8 @@ class PipelineResult(Base):
     # 日次自動アウトリーチで送信キューに投入した日時とキャンペーンID（二重送信ガード）
     queued_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     campaign_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # 自動送信の選別で弾いた理由（媒体サイト等）。入っていれば以後の対象から外す
+    excluded_reason: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
 
