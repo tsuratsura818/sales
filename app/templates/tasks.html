@@ -7,14 +7,14 @@
         <h1>✅ タスク一覧</h1>
         <p>全案件のタスクを横断表示。ステータス・優先度・期日で絞り込めます。</p>
     </div>
-    <div style="display:flex; gap:8px; align-items:center;">
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
         <div class="report-toggle" id="viewToggle">
             <button class="active" data-view="board">🗂 ボード</button>
             <button data-view="list">📋 リスト</button>
         </div>
-        <button class="btn btn-secondary" onclick="openRecurringModal()">🔁 定期タスク</button>
-        <a href="/projects" class="btn btn-secondary">📋 カンバン</a>
-        <a href="/gantt" class="btn btn-secondary">📊 ガント</a>
+        <button class="btn btn-secondary" style="white-space:nowrap;" onclick="openRecurringModal()">🔁 定期タスク</button>
+        <a href="/projects" class="btn btn-secondary" style="white-space:nowrap;">📋 カンバン</a>
+        <a href="/gantt" class="btn btn-secondary" style="white-space:nowrap;">📊 ガント</a>
     </div>
 </div>
 

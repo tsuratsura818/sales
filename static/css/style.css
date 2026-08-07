@@ -1090,6 +1090,7 @@ textarea.form-control { resize: vertical; font-family: inherit; }
     cursor: pointer;
     font-size: 13px;
     color: #666;
+    white-space: nowrap;
     transition: all 0.2s;
 }
 .report-toggle button.active {
