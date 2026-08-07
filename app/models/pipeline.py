@@ -75,6 +75,9 @@ class PipelineResult(Base):
 
     # MailForge連携
     imported_to_mailforge: Mapped[int] = mapped_column(Integer, default=0)  # 0/1
+    # 日次自動アウトリーチで送信キューに投入した日時とキャンペーンID（二重送信ガード）
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    campaign_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
 

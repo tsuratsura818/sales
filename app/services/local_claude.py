@@ -1,8 +1,14 @@
-"""ローカルの Claude Code CLI (`claude -p`) を subprocess で呼び出すラッパー。
+"""ローカルの Claude Code サブスクリプションで文章生成を行うラッパー。
 
-Anthropic API を直接叩かず、ユーザーのローカル Claude Code 認証を利用して
-文章生成を行う。Render等の本番環境では CLI が存在しないため、
-`is_available()` で事前チェックして呼び出し側で graceful degrade すること。
+Anthropic API(従量課金)は一切使わない。経路は2つ:
+
+1. ローカル実行時: `claude -p` を subprocess で直接呼ぶ
+2. Render 等 CLI 不在の環境: Mac に常駐しているブリッジ
+   (`claude_bridge.py` + cloudflared トンネル。URLは app_settings.local_bridge_url)
+   に HTTP で依頼する
+
+どちらも定額サブスクの枠内で動くため追加課金は発生しない。両方使えない場合は
+`is_available()` が False を返すので、呼び出し側で graceful degrade すること。
 """
 from __future__ import annotations
 
@@ -12,7 +18,10 @@ import logging
 import os
 import shutil
 import subprocess
+import time
 from typing import Any
+
+import httpx
 
 log = logging.getLogger("local_claude")
 
@@ -21,13 +30,16 @@ CLAUDE_BIN = os.environ.get("CLAUDE_CLI_PATH") or shutil.which("claude") or "cla
 # 1バッチあたりの安全支出上限(USD)。暴走時のセーフティネット
 DEFAULT_MAX_BUDGET_USD = float(os.environ.get("CLAUDE_CLI_MAX_BUDGET_USD", "3.0"))
 
+# ブリッジ経由のポーリング間隔
+_BRIDGE_POLL_SEC = 5
+
 
 class ClaudeCliError(RuntimeError):
     """Claude CLI 呼び出しの失敗を示す例外"""
 
 
-def is_available() -> bool:
-    """claude CLI が実行可能か軽くチェックする(本番環境判定用)"""
+def _cli_available() -> bool:
+    """claude CLI が実行可能か軽くチェックする"""
     try:
         r = subprocess.run(
             [CLAUDE_BIN, "--version"],
@@ -38,6 +50,149 @@ def is_available() -> bool:
         return False
 
 
+def bridge_endpoint() -> tuple[str, str] | None:
+    """Mac 常駐ブリッジの (URL, 共有シークレット)。未登録なら None。
+
+    URL は Mac 側が起動/再接続のたびに /api/bridge/register で更新している。
+    """
+    try:
+        from app.config import get_settings
+        from app.database import SessionLocal
+        from app.models.app_settings import AppSettings
+    except Exception:
+        return None
+
+    db = SessionLocal()
+    try:
+        cfg = db.query(AppSettings).first()
+        url = (getattr(cfg, "local_bridge_url", None) or "").rstrip("/") if cfg else ""
+    except Exception as e:
+        log.debug(f"bridge URL 取得失敗: {e}")
+        return None
+    finally:
+        db.close()
+
+    if not url:
+        return None
+    return url, (get_settings().BRIDGE_SHARED_SECRET or "")
+
+
+def _bridge_alive(url: str, secret: str) -> bool:
+    try:
+        r = httpx.get(f"{url}/ping", headers=_bridge_headers(secret), timeout=8)
+        return r.status_code == 200
+    except Exception as e:
+        log.debug(f"bridge ping 失敗 ({url}): {e}")
+        return False
+
+
+def _bridge_headers(secret: str) -> dict:
+    h = {"Content-Type": "application/json"}
+    if secret:
+        h["X-Bridge-Secret"] = secret
+    return h
+
+
+def is_available() -> bool:
+    """ローカルCLI もしくは Mac常駐ブリッジ のどちらかが使えるか"""
+    if _cli_available():
+        return True
+    ep = bridge_endpoint()
+    return bool(ep and _bridge_alive(*ep))
+
+
+async def _invoke_via_bridge(
+    user_prompt: str,
+    *,
+    system_prompt: str | None = None,
+    timeout: int = 600,
+) -> str:
+    """Mac 常駐ブリッジに生成を依頼する(投入 → ポーリング)。
+
+    Cloudflare トンネルは1リクエスト100秒で 524 を返すため、長い生成は
+    `POST /claude/async` で job_id を受け取り `GET /claude/job/<id>` を叩いて待つ。
+    ブリッジが旧版(非同期未対応)なら同期 `POST /claude` にフォールバックする。
+    """
+    ep = bridge_endpoint()
+    if not ep:
+        raise ClaudeCliError(
+            "claude CLI が見つからず、Mac常駐ブリッジのURLも未登録です。"
+            "Mac側の com.tsuratsura.sellbuddy-bridge が動いているか確認してください。"
+        )
+    url, secret = ep
+    # ブリッジは system prompt を受け取れないので本文に前置きする
+    prompt = f"{system_prompt}\n\n---\n\n{user_prompt}" if system_prompt else user_prompt
+    headers = _bridge_headers(secret)
+    loop = asyncio.get_event_loop()
+
+    def _submit():
+        return httpx.post(
+            f"{url}/claude/async", headers=headers,
+            json={"prompt": prompt, "timeout": timeout}, timeout=30,
+        )
+
+    try:
+        resp = await loop.run_in_executor(None, _submit)
+    except Exception as e:
+        raise ClaudeCliError(f"bridge 接続失敗 ({url}): {e}") from e
+
+    if resp.status_code == 404:
+        log.info("bridge が非同期未対応(旧版)のため同期呼び出しにフォールバック")
+        return await _invoke_via_bridge_sync(prompt, url, headers, timeout)
+    if resp.status_code >= 400:
+        raise ClaudeCliError(f"bridge submit error {resp.status_code}: {resp.text[:200]}")
+
+    job_id = (resp.json() or {}).get("job_id")
+    if not job_id:
+        raise ClaudeCliError(f"bridge が job_id を返しませんでした: {resp.text[:200]}")
+
+    def _poll():
+        return httpx.get(f"{url}/claude/job/{job_id}", headers=headers, timeout=30)
+
+    deadline = time.monotonic() + timeout + 60
+    while time.monotonic() < deadline:
+        await asyncio.sleep(_BRIDGE_POLL_SEC)
+        try:
+            r = await loop.run_in_executor(None, _poll)
+        except Exception as e:
+            log.debug(f"bridge poll 失敗(継続): {e}")
+            continue
+        if r.status_code == 404:
+            raise ClaudeCliError("bridge job が消えました(ブリッジ再起動?)")
+        if r.status_code >= 400:
+            raise ClaudeCliError(f"bridge poll error {r.status_code}: {r.text[:200]}")
+        body = r.json() or {}
+        status = body.get("status")
+        if status == "done":
+            return body.get("result", "") or ""
+        if status == "error":
+            raise ClaudeCliError(f"bridge job failed: {body.get('error', '')[:300]}")
+
+    raise ClaudeCliError(f"bridge job timeout after {timeout}s")
+
+
+async def _invoke_via_bridge_sync(prompt: str, url: str, headers: dict, timeout: int) -> str:
+    """旧版ブリッジ向けの同期呼び出し(Cloudflareの100秒制限を受ける)"""
+    loop = asyncio.get_event_loop()
+
+    def _post():
+        return httpx.post(
+            f"{url}/claude", headers=headers, json={"prompt": prompt},
+            timeout=min(timeout, 95),
+        )
+
+    try:
+        r = await loop.run_in_executor(None, _post)
+    except Exception as e:
+        raise ClaudeCliError(f"bridge 同期呼び出し失敗: {e}") from e
+    if r.status_code >= 400:
+        raise ClaudeCliError(f"bridge error {r.status_code}: {r.text[:200]}")
+    body = r.json() or {}
+    if body.get("error"):
+        raise ClaudeCliError(f"bridge error: {str(body['error'])[:300]}")
+    return body.get("result", "") or ""
+
+
 async def invoke(
     user_prompt: str,
     *,
@@ -46,12 +201,17 @@ async def invoke(
     max_budget_usd: float | None = None,
     model: str | None = None,
 ) -> str:
-    """Claude CLI を headless 実行して `result` フィールドの文字列を返す。
+    """Claude を headless 実行して生成テキストを返す。
+
+    ローカルに CLI があれば subprocess、無ければ Mac 常駐ブリッジ経由。
 
     - tools はすべて無効化(生成のみ)
     - session 永続化は行わない
     - 権限プロンプトはスキップ
     """
+    if not _cli_available():
+        return await _invoke_via_bridge(user_prompt, system_prompt=system_prompt, timeout=timeout)
+
     args: list[str] = [
         CLAUDE_BIN,
         "-p", user_prompt,

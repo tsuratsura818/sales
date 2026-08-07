@@ -107,6 +107,11 @@ async def today_page(request: Request):
         weekly_outreach_hour = getattr(app_cfg, "weekly_outreach_hour_jst", 9)
         weekly_outreach_send_cap = getattr(app_cfg, "weekly_outreach_send_cap", 50)
         weekly_outreach_last_week = getattr(app_cfg, "weekly_outreach_last_week", None)
+        daily_outreach_enabled = getattr(app_cfg, "daily_outreach_enabled", False)
+        daily_outreach_hour = getattr(app_cfg, "daily_outreach_hour_jst", 10)
+        daily_outreach_daily_cap = getattr(app_cfg, "daily_outreach_daily_cap", 20)
+        daily_outreach_weekdays_only = getattr(app_cfg, "daily_outreach_weekdays_only", True)
+        daily_outreach_last_date = getattr(app_cfg, "daily_outreach_last_date", None)
 
     finally:
         db.close()
@@ -132,6 +137,11 @@ async def today_page(request: Request):
         "weekly_outreach_hour": weekly_outreach_hour,
         "weekly_outreach_send_cap": weekly_outreach_send_cap,
         "weekly_outreach_last_week": weekly_outreach_last_week,
+        "daily_outreach_enabled": daily_outreach_enabled,
+        "daily_outreach_hour": daily_outreach_hour,
+        "daily_outreach_daily_cap": daily_outreach_daily_cap,
+        "daily_outreach_weekdays_only": daily_outreach_weekdays_only,
+        "daily_outreach_last_date": daily_outreach_last_date,
         "cal_events": cal_events,
         "today_tasks": today_tasks,
         "active_projects": active_projects,
@@ -332,6 +342,11 @@ async def api_get_settings():
             "weekly_outreach_hour": getattr(cfg, "weekly_outreach_hour_jst", 9),
             "weekly_outreach_send_cap": getattr(cfg, "weekly_outreach_send_cap", 50),
             "weekly_outreach_last_week": getattr(cfg, "weekly_outreach_last_week", None),
+            "daily_outreach_enabled": getattr(cfg, "daily_outreach_enabled", False),
+            "daily_outreach_hour": getattr(cfg, "daily_outreach_hour_jst", 10),
+            "daily_outreach_daily_cap": getattr(cfg, "daily_outreach_daily_cap", 20),
+            "daily_outreach_weekdays_only": getattr(cfg, "daily_outreach_weekdays_only", True),
+            "daily_outreach_last_date": getattr(cfg, "daily_outreach_last_date", None),
         }
     finally:
         db.close()
@@ -356,6 +371,18 @@ async def api_run_weekly_outreach():
     from app.tasks.weekly_outreach_scheduler import run_weekly_outreach
     asyncio.create_task(run_weekly_outreach())
     return {"success": True, "message": "アウトリーチを開始しました。完了時にLINE通知します（数分かかります）。"}
+
+
+@router.post("/api/today/run-daily-outreach")
+async def api_run_daily_outreach():
+    """日次自動アウトリーチを今すぐ1回実行（テスト用）。
+
+    収集〜提案文生成で数分かかるためバックグラウンド起動して即返す。
+    実際にメールが送信キューに入るので注意。
+    """
+    from app.tasks.daily_outreach_scheduler import run_daily_outreach
+    asyncio.create_task(run_daily_outreach())
+    return {"success": True, "message": "日次アウトリーチを開始しました。完了時にLINE通知します（数分かかります）。"}
 
 
 @router.post("/api/today/send-task-reminder")
@@ -414,6 +441,18 @@ async def api_update_settings(request: Request):
             cap = int(body["weekly_outreach_send_cap"])
             if 1 <= cap <= 500:
                 cfg.weekly_outreach_send_cap = cap
+        if "daily_outreach_enabled" in body:
+            cfg.daily_outreach_enabled = bool(body["daily_outreach_enabled"])
+        if "daily_outreach_hour" in body:
+            hour = int(body["daily_outreach_hour"])
+            if 0 <= hour <= 23:
+                cfg.daily_outreach_hour_jst = hour
+        if "daily_outreach_daily_cap" in body:
+            cap = int(body["daily_outreach_daily_cap"])
+            if 1 <= cap <= 200:
+                cfg.daily_outreach_daily_cap = cap
+        if "daily_outreach_weekdays_only" in body:
+            cfg.daily_outreach_weekdays_only = bool(body["daily_outreach_weekdays_only"])
         db.commit()
         return {
             "success": True,
@@ -428,6 +467,10 @@ async def api_update_settings(request: Request):
             "weekly_outreach_weekday": cfg.weekly_outreach_weekday,
             "weekly_outreach_hour": cfg.weekly_outreach_hour_jst,
             "weekly_outreach_send_cap": cfg.weekly_outreach_send_cap,
+            "daily_outreach_enabled": cfg.daily_outreach_enabled,
+            "daily_outreach_hour": cfg.daily_outreach_hour_jst,
+            "daily_outreach_daily_cap": cfg.daily_outreach_daily_cap,
+            "daily_outreach_weekdays_only": cfg.daily_outreach_weekdays_only,
         }
     finally:
         db.close()

@@ -15,6 +15,9 @@ import platform
 import shutil
 import subprocess
 import tempfile
+import threading
+import time
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("CLAUDE_BRIDGE_PORT", "3939"))
@@ -38,6 +41,47 @@ ALLOWED_ORIGINS = {
     "https://counseling.systempromote-kitao.com",
     "https://systempromote-counseling.vercel.app",
 }
+
+
+# ── 非同期ジョブ ────────────────────────────────────────────
+# Cloudflare のトンネルは1リクエスト100秒で 524 を返すため、Render 等の
+# サーバー側から長い生成(バッチ提案文など)を依頼する経路は「投入 → ポーリング」
+# の2段構えにする。ブラウザからの短い依頼は従来どおり同期 POST /claude を使う。
+_JOBS: dict[str, dict] = {}
+_JOBS_LOCK = threading.Lock()
+JOB_TTL_SEC = 1800          # 完了ジョブの保持時間
+MAX_JOB_TIMEOUT_SEC = 1800  # 1ジョブあたりの上限
+
+
+def _sweep_jobs() -> None:
+    """TTLを過ぎた完了ジョブを捨てる(メモリ肥大防止)"""
+    now = time.time()
+    with _JOBS_LOCK:
+        stale = [
+            jid for jid, j in _JOBS.items()
+            if j["status"] != "running" and now - j["finished_at"] > JOB_TTL_SEC
+        ]
+        for jid in stale:
+            del _JOBS[jid]
+
+
+def _start_job(prompt: str, timeout: int) -> str:
+    job_id = uuid.uuid4().hex
+    with _JOBS_LOCK:
+        _JOBS[job_id] = {"status": "running", "result": "", "error": "", "finished_at": 0.0}
+
+    def _work():
+        try:
+            result = run_claude(prompt, timeout=timeout)
+            with _JOBS_LOCK:
+                _JOBS[job_id].update(status="done", result=result, finished_at=time.time())
+        except Exception as e:
+            with _JOBS_LOCK:
+                _JOBS[job_id].update(status="error", error=str(e)[:400], finished_at=time.time())
+
+    threading.Thread(target=_work, daemon=True).start()
+    _sweep_jobs()
+    return job_id
 
 
 def run_claude(prompt: str, timeout: int = 240) -> str:
@@ -84,18 +128,38 @@ class Handler(BaseHTTPRequestHandler):
         self._cors()
         self.end_headers()
 
+    def _authorized(self) -> bool:
+        """トンネル経由で公開される場合はシークレット必須（未設定時はローカル利用として素通し）"""
+        return not BRIDGE_SECRET or self.headers.get("X-Bridge-Secret", "") == BRIDGE_SECRET
+
     def do_GET(self):
-        if self.path.rstrip("/") in ("/ping", ""):
+        path = self.path.rstrip("/")
+        if path in ("/ping", ""):
             self._json(200, {"ok": True, "service": "claude-bridge"})
-        else:
-            self._json(404, {"error": "not found"})
+            return
+        # 非同期ジョブの状態取得: GET /claude/job/<job_id>
+        if path.startswith("/claude/job/"):
+            if not self._authorized():
+                self._json(401, {"error": "unauthorized"})
+                return
+            job_id = path.rsplit("/", 1)[-1]
+            with _JOBS_LOCK:
+                job = _JOBS.get(job_id)
+                payload = dict(job) if job else None
+            if not payload:
+                self._json(404, {"error": "job not found (expired?)"})
+                return
+            payload.pop("finished_at", None)
+            self._json(200, payload)
+            return
+        self._json(404, {"error": "not found"})
 
     def do_POST(self):
-        if self.path.rstrip("/") != "/claude":
+        path = self.path.rstrip("/")
+        if path not in ("/claude", "/claude/async"):
             self._json(404, {"error": "not found"})
             return
-        # トンネル経由で公開される場合はシークレット必須（未設定時はローカル利用として素通し）
-        if BRIDGE_SECRET and self.headers.get("X-Bridge-Secret", "") != BRIDGE_SECRET:
+        if not self._authorized():
             self._json(401, {"error": "unauthorized"})
             return
         try:
@@ -105,6 +169,15 @@ class Handler(BaseHTTPRequestHandler):
             if not prompt:
                 self._json(400, {"error": "prompt is empty"})
                 return
+
+            # 非同期: すぐ job_id を返し、生成はバックグラウンドスレッドで走らせる。
+            # Cloudflare の100秒制限を受けずに長い生成ができる。
+            if path == "/claude/async":
+                timeout = int(data.get("timeout") or 240)
+                timeout = max(30, min(timeout, MAX_JOB_TIMEOUT_SEC))
+                self._json(202, {"job_id": _start_job(prompt, timeout), "status": "running"})
+                return
+
             result = run_claude(prompt)
             self._json(200, {"result": result})
         except subprocess.TimeoutExpired:

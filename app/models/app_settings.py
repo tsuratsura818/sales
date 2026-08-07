@@ -33,6 +33,14 @@ class AppSettings(Base):
     weekly_outreach_send_cap: Mapped[int] = mapped_column(Integer, default=50)  # 週あたり送信上限の目安
     weekly_outreach_last_week: Mapped[str] = mapped_column(String(10), nullable=True)  # 例 2026-W26
 
+    # 日次自動アウトリーチ（毎日: 収集→提案文生成(ローカルClaude)→MailForgeキャンペーン→自動送信）
+    # weekly_outreach がリスト作成止まりなのに対し、こちらは送信まで完全自動。
+    daily_outreach_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    daily_outreach_hour_jst: Mapped[int] = mapped_column(Integer, default=10)
+    daily_outreach_daily_cap: Mapped[int] = mapped_column(Integer, default=20)  # 1日の送信上限
+    daily_outreach_weekdays_only: Mapped[bool] = mapped_column(Boolean, default=True)
+    daily_outreach_last_date: Mapped[str | None] = mapped_column(String(10), nullable=True)  # 例 2026-08-08
+
     # 週次レポート（Renderが再起動しても同週に二重送信しないためのDB永続ガード）
     weekly_report_last_week: Mapped[str | None] = mapped_column(String(10), nullable=True)  # 例 2026-W26
 

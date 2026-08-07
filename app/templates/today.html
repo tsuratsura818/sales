@@ -148,6 +148,53 @@
     </div>
 </div>
 
+<div class="card" style="margin-bottom:16px; padding:16px; border-left:3px solid #e57373;">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+            <span style="font-weight:600; font-size:0.9rem;">📨 日次 自動送信</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="dailyOutreachToggle"
+                       {% if daily_outreach_enabled %}checked{% endif %}
+                       onchange="toggleDailyOutreach(this.checked)">
+                <span class="toggle-slider"></span>
+            </label>
+            <span id="dailyOutreachStatus" style="font-size:0.85rem; color:{% if daily_outreach_enabled %}#c62828{% else %}#999{% endif %};">
+                {{ 'ON（自動送信中）' if daily_outreach_enabled else 'OFF' }}
+            </span>
+            <button onclick="runDailyOutreachNow()" class="btn btn-secondary" style="font-size:0.78rem; padding:3px 10px;">今すぐ実行</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <label style="font-size:0.85rem; color:#666;">毎日</label>
+            <select id="dailyOutreachHour" onchange="updateDailyOutreach()"
+                    style="padding:4px 6px; border:1px solid #ddd; border-radius:6px; font-size:0.85rem;">
+                {% for h in range(6, 22) %}
+                <option value="{{ h }}" {% if daily_outreach_hour == h %}selected{% endif %}>{{ '%02d'|format(h) }}:00</option>
+                {% endfor %}
+            </select>
+            <label style="font-size:0.85rem; color:#666; margin-left:6px;">送信上限</label>
+            <select id="dailyOutreachCap" onchange="updateDailyOutreach()"
+                    style="padding:4px 6px; border:1px solid #ddd; border-radius:6px; font-size:0.85rem;">
+                {% for c in [5, 10, 20, 30, 50] %}
+                <option value="{{ c }}" {% if daily_outreach_daily_cap == c %}selected{% endif %}>{{ c }}件/日</option>
+                {% endfor %}
+            </select>
+            <label style="font-size:0.85rem; color:#666; margin-left:6px; display:flex; align-items:center; gap:4px;">
+                <input type="checkbox" id="dailyOutreachWeekdaysOnly"
+                       {% if daily_outreach_weekdays_only %}checked{% endif %}
+                       onchange="updateDailyOutreach()">
+                平日のみ
+            </label>
+        </div>
+    </div>
+    <div style="margin-top:8px; font-size:0.78rem; color:#888;">
+        毎日自動で「リスト収集→サイト分析→提案文生成（ローカルClaude）→MailForge投入→<b>送信開始</b>」まで実行します。
+        <b style="color:#c62828;">レビューなしで実際にメールが送られます。</b>
+        配信停止リストの宛先は除外し、送信済みは記録して二重送信しません。
+        提案文はMac常駐のローカルClaude（定額枠）のみで生成し、繋がらない場合は送信せず中止します。
+        {% if daily_outreach_last_date %}<span style="color:#aaa;">／前回実行: {{ daily_outreach_last_date }}</span>{% endif %}
+    </div>
+</div>
+
 <style>
 .toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; }
 .toggle-switch input { opacity: 0; width: 0; height: 0; }
@@ -584,6 +631,58 @@ async function runWeeklyOutreachNow() {
     if (!confirm('今すぐ週次アウトリーチを実行しますか？\n（企業検索→リスト化→メール下書き生成。送信はしません。数分かかり、完了時にLINE通知します）')) return;
     try {
         const resp = await fetch('/api/today/run-weekly-outreach', { method: 'POST' });
+        const data = await resp.json();
+        alert(data.message || '開始しました');
+    } catch (e) {
+        alert('エラー: ' + e.message);
+    }
+}
+
+async function toggleDailyOutreach(enabled) {
+    // 実際に送信が始まるので、ONにするときだけ確認を挟む
+    if (enabled && !confirm('日次の自動送信をONにします。\n\n毎日きまった時刻に、レビューなしで新規の営業メールが自動送信されます。\nよろしいですか？')) {
+        document.getElementById('dailyOutreachToggle').checked = false;
+        return;
+    }
+    const status = document.getElementById('dailyOutreachStatus');
+    try {
+        const resp = await fetch('/api/today/settings', {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({daily_outreach_enabled: enabled}),
+        });
+        const data = await resp.json();
+        if (data.success) {
+            status.textContent = data.daily_outreach_enabled ? 'ON（自動送信中）' : 'OFF';
+            status.style.color = data.daily_outreach_enabled ? '#c62828' : '#999';
+        }
+    } catch (e) {
+        document.getElementById('dailyOutreachToggle').checked = !enabled;
+        alert('設定の更新に失敗しました');
+    }
+}
+
+async function updateDailyOutreach() {
+    try {
+        await fetch('/api/today/settings', {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                daily_outreach_hour: parseInt(document.getElementById('dailyOutreachHour').value),
+                daily_outreach_daily_cap: parseInt(document.getElementById('dailyOutreachCap').value),
+                daily_outreach_weekdays_only: document.getElementById('dailyOutreachWeekdaysOnly').checked,
+            }),
+        });
+    } catch (e) {
+        alert('設定の更新に失敗しました');
+    }
+}
+
+async function runDailyOutreachNow() {
+    const cap = document.getElementById('dailyOutreachCap').value;
+    if (!confirm('今すぐ日次アウトリーチを実行しますか？\n\n収集→提案文生成→最大' + cap + '件の営業メールを実際に送信キューへ投入します。\n数分かかり、完了時にLINE通知します。')) return;
+    try {
+        const resp = await fetch('/api/today/run-daily-outreach', { method: 'POST' });
         const data = await resp.json();
         alert(data.message || '開始しました');
     } catch (e) {

@@ -202,7 +202,8 @@ async def _enrich_with_proposals(leads: list[PipelineResult], db: Session) -> No
     if not analyzed_pairs:
         return
 
-    use_local_claude = local_claude.is_available()
+    # is_available() は subprocess 実行やブリッジへのHTTPを伴うので別スレッドで
+    use_local_claude = await asyncio.to_thread(local_claude.is_available)
     engine = "local_claude" if use_local_claude else "template"
     log.info(f"提案文生成: {len(analyzed_pairs)}件 engine={engine}")
 

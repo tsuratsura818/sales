@@ -147,6 +147,14 @@ def _migrate_sqlite():
         # ローカルClaudeブリッジURL
         ("app_settings", "local_bridge_url",        "TEXT"),
         ("app_settings", "local_bridge_updated_at", "TEXT"),
+        # 日次自動アウトリーチ
+        ("app_settings", "daily_outreach_enabled",        "BOOLEAN DEFAULT 0"),
+        ("app_settings", "daily_outreach_hour_jst",       "INTEGER DEFAULT 10"),
+        ("app_settings", "daily_outreach_daily_cap",      "INTEGER DEFAULT 20"),
+        ("app_settings", "daily_outreach_weekdays_only",  "BOOLEAN DEFAULT 1"),
+        ("app_settings", "daily_outreach_last_date",      "TEXT"),
+        ("pipeline_results", "queued_at",   "TIMESTAMP"),
+        ("pipeline_results", "campaign_id", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
@@ -220,6 +228,14 @@ def _migrate_postgres():
         # ローカルClaudeブリッジURL
         ("app_settings", "local_bridge_url",        "TEXT"),
         ("app_settings", "local_bridge_updated_at", "TEXT"),
+        # 日次自動アウトリーチ
+        ("app_settings", "daily_outreach_enabled",        "BOOLEAN DEFAULT FALSE"),
+        ("app_settings", "daily_outreach_hour_jst",       "INTEGER DEFAULT 10"),
+        ("app_settings", "daily_outreach_daily_cap",      "INTEGER DEFAULT 20"),
+        ("app_settings", "daily_outreach_weekdays_only",  "BOOLEAN DEFAULT TRUE"),
+        ("app_settings", "daily_outreach_last_date",      "TEXT"),
+        ("pipeline_results", "queued_at",   "TIMESTAMP"),
+        ("pipeline_results", "campaign_id", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
