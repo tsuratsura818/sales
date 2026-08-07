@@ -9,6 +9,7 @@ Mac側の常駐スクリプトが、cloudflaredの公開URLを起動/再接続�
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse
 
 from app.config import get_settings
 from app.database import SessionLocal
@@ -27,6 +28,13 @@ def _get_cfg(db) -> AppSettings:
         db.commit()
         db.refresh(cfg)
     return cfg
+
+
+@router.get("/status", response_class=HTMLResponse)
+async def status_page(request: Request):
+    """Mac常駐サービス(ブリッジ/比較ビズ)の状態ページ（スマホからも確認可）"""
+    from main import templates
+    return templates.TemplateResponse(request, "status.html", {})
 
 
 @router.post("/api/bridge/register")

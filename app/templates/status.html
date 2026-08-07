@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}システム状態 - SellBuddy{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>🩺 システム状態</h1>
+    <p>Mac(24/7)で動くサービスのヘルスチェック。スマホからも確認できます。</p>
+</div>
+<div id="statusCards"><div style="color:#888;">読み込み中...</div></div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+    <span id="lastCheck" style="font-size:12px;color:#999;"></span>
+    <button class="btn btn-secondary" onclick="loadStatus()" style="font-size:13px;">🔄 更新</button>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function fmtAge(sec){
+    if (sec == null) return '不明';
+    if (sec < 60) return sec + '秒前';
+    if (sec < 3600) return Math.floor(sec/60) + '分前';
+    if (sec < 86400) return Math.floor(sec/3600) + '時間前';
+    return Math.floor(sec/86400) + '日前';
+}
+function card(title, ok, sub, rows){
+    const dot = ok ? '#2e9e5b' : '#e74c3c';
+    const badge = ok ? '🟢 正常' : '🔴 要確認';
+    const bc = ok ? '#2e9e5b' : '#e74c3c';
+    return `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:8px;font-weight:700;flex-wrap:wrap;">
+            <span style="width:11px;height:11px;border-radius:50%;background:${dot};display:inline-block;"></span>
+            ${title} <span style="font-weight:600;color:${bc};font-size:13px;">${badge}</span>
+        </div>
+        <div style="font-size:12px;color:#666;margin:5px 0 8px 19px;">${sub}</div>
+        <table style="font-size:12px;margin-left:19px;color:#555;">
+            ${rows.map(r=>`<tr><td style="padding:1px 12px 1px 0;color:#999;white-space:nowrap;vertical-align:top;">${r[0]}</td><td style="word-break:break-all;">${r[1]||'-'}</td></tr>`).join('')}
+        </table>
+    </div>`;
+}
+function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
+
+async function loadStatus(){
+    const box = document.getElementById('statusCards');
+    const cards = [];
+
+    // 1) ローカルClaudeブリッジ（Mac）: 現在のトンネルURLへライブping
+    let bcfg = {};
+    try { bcfg = await (await fetch('/api/bridge/config', {cache:'no-store'})).json(); } catch(e){}
+    let bridgeOk = false;
+    try { bridgeOk = (await bridgeFetch('/ping')).ok; } catch(e){}
+    cards.push(card(
+        '🤖 ローカルClaudeブリッジ',
+        bridgeOk,
+        bridgeOk ? '接続OK — 秘書チャット・AI機能が使えます' : '応答なし — Macのブリッジを確認してください',
+        [['トンネルURL', esc(bcfg.url)], ['最終URL登録', esc(bcfg.updated_at)]]
+    ));
+
+    // 2) 各種heartbeat（比較ビズ等のMac常駐）
+    let hbs = [];
+    try { hbs = await (await fetch('/api/heartbeat', {cache:'no-store'})).json(); } catch(e){}
+    const labels = { hikakubiz_watcher: '📮 比較ビズ 自動応募' };
+    if (!hbs.length) {
+        cards.push('<div style="color:#999;font-size:13px;">heartbeat記録なし</div>');
+    }
+    hbs.forEach(h => {
+        const fresh = h.age_sec != null && h.age_sec < 300; // 5分以内なら稼働中
+        cards.push(card(
+            labels[h.name] || ('⚙ ' + esc(h.name)),
+            fresh,
+            fresh ? ('稼働中 — 最終応答 ' + fmtAge(h.age_sec)) : ('停止の可能性 — 最終応答 ' + fmtAge(h.age_sec)),
+            [['最終応答', fmtAge(h.age_sec)], ['状態', esc(h.last_status)], ['メッセージ', esc(h.last_message)], ['件数', h.last_count]]
+        ));
+    });
+
+    box.innerHTML = cards.join('');
+    document.getElementById('lastCheck').textContent = '確認時刻: ' + new Date().toLocaleTimeString('ja-JP');
+}
+loadStatus();
+setInterval(loadStatus, 20000);
+</script>
+{% endblock %}
