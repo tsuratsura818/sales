@@ -144,6 +144,9 @@ def _migrate_sqlite():
         ("recurring_tasks", "freq",               "TEXT DEFAULT 'weekly'"),
         ("recurring_tasks", "day_of_month",       "INTEGER DEFAULT 0"),
         ("recurring_tasks", "last_created_month", "TEXT"),
+        # ローカルClaudeブリッジURL
+        ("app_settings", "local_bridge_url",        "TEXT"),
+        ("app_settings", "local_bridge_updated_at", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
@@ -214,6 +217,9 @@ def _migrate_postgres():
         ("recurring_tasks", "freq",               "TEXT DEFAULT 'weekly'"),
         ("recurring_tasks", "day_of_month",       "INTEGER DEFAULT 0"),
         ("recurring_tasks", "last_created_month", "TEXT"),
+        # ローカルClaudeブリッジURL
+        ("app_settings", "local_bridge_url",        "TEXT"),
+        ("app_settings", "local_bridge_updated_at", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:

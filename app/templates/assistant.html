@@ -44,7 +44,7 @@
 
 {% block scripts %}
 <script>
-const BRIDGE_URL = 'http://127.0.0.1:3939';
+// BRIDGE_URL は base.html の bridgeFetch に統合
 const history = [];  // {role, content}
 let bridgeOk = false;
 
@@ -69,7 +69,7 @@ function addNote(text) {
 async function checkBridge(verbose) {
     const status = document.getElementById('bridgeStatus');
     try {
-        const r = await fetch(BRIDGE_URL + '/ping', {cache: 'no-store'});
+        const r = await bridgeFetch('/ping', {cache: 'no-store'});
         bridgeOk = r.ok;
     } catch (e) { bridgeOk = false; }
     status.textContent = bridgeOk ? '🟢 ローカルブリッジ接続中' : '🔴 ブリッジ未接続';
@@ -111,7 +111,7 @@ async function sendChat() {
         })).json();
 
         // 2) ローカルの claude をブリッジ経由で実行（API課金なし）
-        const bridgeResp = await fetch(BRIDGE_URL + '/claude', {
+        const bridgeResp = await bridgeFetch('/claude', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({prompt: prep.prompt}),
         });

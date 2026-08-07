@@ -18,6 +18,8 @@ import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("CLAUDE_BRIDGE_PORT", "3939"))
+# トンネル公開時の共有シークレット（設定時は POST /claude で X-Bridge-Secret 必須）
+BRIDGE_SECRET = os.environ.get("CLAUDE_BRIDGE_SECRET", "")
 CLAUDE_BIN = (
     os.environ.get("CLAUDE_CLI_PATH")
     or shutil.which("claude")
@@ -63,7 +65,7 @@ class Handler(BaseHTTPRequestHandler):
         allow = origin if origin in ALLOWED_ORIGINS else "https://sellbuddy.tsuratsura.com"
         self.send_header("Access-Control-Allow-Origin", allow)
         self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Bridge-Secret")
         # Chrome の Private Network Access 対策（公開HTTPS→localhost を許可）
         self.send_header("Access-Control-Allow-Private-Network", "true")
         self.send_header("Access-Control-Max-Age", "86400")
@@ -91,6 +93,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path.rstrip("/") != "/claude":
             self._json(404, {"error": "not found"})
+            return
+        # トンネル経由で公開される場合はシークレット必須（未設定時はローカル利用として素通し）
+        if BRIDGE_SECRET and self.headers.get("X-Bridge-Secret", "") != BRIDGE_SECRET:
+            self._json(401, {"error": "unauthorized"})
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))

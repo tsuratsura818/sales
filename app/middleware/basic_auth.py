@@ -30,6 +30,7 @@ DEFAULT_EXEMPT_PREFIXES: tuple[str, ...] = (
     "/api/webhook/inbound",   # 外部webhook（X-Webhook-Secret検証あり）
     "/track/",                # 開封/クリック追跡（トークンで保護）
     "/api/heartbeat/",        # ローカルバッチからの生存通知（ネット越し）
+    "/api/bridge/register",   # Mac常駐ブリッジのURL登録（X-Bridge-Secret検証あり）
     "/static/",               # 静的アセット（必要なら個別保護）
     "/health",
     "/favicon.ico",

@@ -353,7 +353,7 @@
 
 {% block scripts %}
 <script>
-const PLAN_BRIDGE = 'http://127.0.0.1:3939';
+// PLAN_BRIDGE は base.html の bridgeFetch に統合
 
 async function generatePlan() {
     const btn = document.getElementById('generateBtn');
@@ -362,13 +362,13 @@ async function generatePlan() {
     try {
         // ローカルブリッジが使えるか確認（使えれば課金ゼロのローカルClaude）
         let bridgeOk = false;
-        try { bridgeOk = (await fetch(PLAN_BRIDGE + '/ping', {cache:'no-store'})).ok; } catch (e) {}
+        try { bridgeOk = (await bridgeFetch('/ping', {cache:'no-store'})).ok; } catch (e) {}
 
         if (bridgeOk) {
             // 1) プロンプト生成（サーバー）
             const prep = await (await fetch('/api/today/plan-prepare', {method:'POST'})).json();
             // 2) ローカルClaude実行（ブリッジ）
-            const br = await fetch(PLAN_BRIDGE + '/claude', {
+            const br = await bridgeFetch('/claude', {
                 method:'POST', headers:{'Content-Type':'application/json'},
                 body: JSON.stringify({prompt: prep.prompt}),
             });

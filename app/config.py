@@ -4,6 +4,8 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     SERPAPI_KEY: str = ""
+    # ローカルClaudeブリッジ(Mac 24/7 + cloudflaredトンネル)の共有シークレット
+    BRIDGE_SHARED_SECRET: str = ""
     ANTHROPIC_API_KEY: str = ""
     PAGESPEED_API_KEY: str = ""
     GEMINI_API_KEY: str = ""

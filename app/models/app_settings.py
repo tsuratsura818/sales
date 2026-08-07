@@ -36,6 +36,11 @@ class AppSettings(Base):
     # 週次レポート（Renderが再起動しても同週に二重送信しないためのDB永続ガード）
     weekly_report_last_week: Mapped[str | None] = mapped_column(String(10), nullable=True)  # 例 2026-W26
 
+    # ローカルClaudeブリッジ(Mac 24/7 + cloudflaredトンネル)の現在の公開URL。
+    # Mac側が起動/再接続のたびに /api/bridge/register で更新する。
+    local_bridge_url: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    local_bridge_updated_at: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now()
     )

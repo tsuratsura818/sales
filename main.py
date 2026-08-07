@@ -132,6 +132,8 @@ app.include_router(tracking.router)
 app.include_router(infra.router)
 app.include_router(assistant.router)
 app.include_router(activities.router)
+from app.routers import bridge  # noqa: E402
+app.include_router(bridge.router)
 
 
 @app.get("/health")
