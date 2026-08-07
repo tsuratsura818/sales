@@ -61,6 +61,10 @@ PREFS_PER_DAY = 10
 SEND_RANKS = ("S", "A")
 MIN_CATEGORY_CONFIDENCE = 0.4
 
+# running のまま何分放置されたら「中断された」とみなすか。
+# Render が再起動すると実行中の asyncio タスクは死ぬが status は running のまま残る。
+STALE_RUN_MINUTES = 90
+
 # 送信ウィンドウ（MailForge 側の送信cronが参照する）
 SEND_START_TIME = "09:00"
 SEND_END_TIME = "18:00"
@@ -135,11 +139,25 @@ async def _collect(day_index: int) -> int:
 
     db = SessionLocal()
     try:
-        # 既に走っているパイプラインがあれば重ねない
-        running = db.query(PipelineRun).filter(PipelineRun.status == "running").first()
-        if running:
-            logger.warning(f"パイプライン実行中のため収集をスキップ: run_id={running.id}")
-            return 0
+        # 既に走っているパイプラインがあれば重ねない。
+        # ただし Render の再起動で asyncio タスクが死ぬと running のまま残り、
+        # そのままだと以後ずっと収集がスキップされてしまうので、
+        # STALE_RUN_MINUTES を過ぎたものは失敗扱いにして先へ進む。
+        stale_before = datetime.now() - timedelta(minutes=STALE_RUN_MINUTES)
+        for running in db.query(PipelineRun).filter(PipelineRun.status == "running").all():
+            started = running.created_at
+            if started and started < stale_before:
+                logger.warning(
+                    f"停止したままのパイプラインを失敗扱いにします: run_id={running.id} "
+                    f"(開始 {started})"
+                )
+                running.status = "failed"
+                running.error_message = "実行中に中断（Render再起動等）"
+                running.completed_at = datetime.now()
+                db.commit()
+            else:
+                logger.warning(f"パイプライン実行中のため収集をスキップ: run_id={running.id}")
+                return 0
 
         run = PipelineRun(
             sources=json.dumps(DAILY_SOURCES),

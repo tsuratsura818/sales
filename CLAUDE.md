@@ -69,9 +69,32 @@ launchctl kickstart -k gui/501/com.tsuratsura.sellbuddy-bridge
 
 `app/tasks/daily_outreach_scheduler.py`。**レビューなしで実際に送信する**ので設定は既定OFF。
 
-フロー: リスト収集 → サイト分析 → 提案文生成（ローカルClaude） → MailForge に
-contacts + campaign_contacts(`status=queued`) 投入 → campaign を `status=sending` に
-→ MailForge の送信cronが配信 → LINE通知。
+フロー: リスト収集 → サイト分析 → 提案文生成（ローカルClaude） → **送信前の選別** →
+MailForge に contacts + campaign_contacts(`status=queued`) 投入 → campaign を
+`status=sending` に → MailForge の送信cronが配信 → LINE通知。
+
+### 送信前の選別（`_screen_targets`）
+
+収集コレクターは事業者の自社サイトと媒体の記事ページを区別しきれない。実際に
+run#9 では観光メディアの記事ページ2件が収集され、`company` に記事タイトルが
+入った状態でカテゴリ分類も通過していた（つまりランク条件だけでは弾けない）。
+
+レビュー無しで送るため、送信直前にローカルClaudeで1件ずつ
+「営業して良い相手か」を判定する。定額枠なので追加コストはゼロ。
+
+- 除外対象: メディア/ポータル/まとめ記事/求人/口コミ、自治体・学校、
+  Web制作会社等の同業、実体が読み取れないもの
+- **判定に失敗したら送らない**（fail-closed）
+- 弾いたものは `pipeline_results.excluded_reason` に記録し、以後の対象から外す
+
+### 送信対象の条件
+
+`rank in (S, A)` **または** `category が付いていて confidence >= 0.4`。
+
+rank だけで絞らないのは、`_score_lead` の rank A が60点を要求し、その配点の中心が
+EC出店状況（Yahoo/楽天コレクター由来）のため。category コレクター由来のリードは
+EC状況が付かず構造的に rank B 止まりになり、S/A だけだと対象が常に空になる。
+`_import_to_mailforge` と同じ条件に揃えてある。
 
 - 設定UI: `/today` の「📨 日次 自動送信」カード（ON/OFF・実行時刻・1日の送信上限・平日のみ）
 - 手動実行: `POST /api/today/run-daily-outreach`
