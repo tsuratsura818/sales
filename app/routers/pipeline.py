@@ -208,6 +208,31 @@ async def system_info():
     }
 
 
+@router.get("/api/system/search-check")
+async def search_check(q: str = "秋田 和菓子 メーカー"):
+    """実行環境から DuckDuckGo 検索が使えるかを測る診断用。
+
+    収集が進まないときに「検索が返らないのか、その後の処理が遅いのか」を
+    切り分けるために使う。Render のようなデータセンターIPからは
+    DuckDuckGo に絞られることがあるため。
+    """
+    import time
+    from app.services.pipeline.category_collector import _search_ddg_sync
+
+    t0 = time.time()
+    results = await asyncio.to_thread(_search_ddg_sync, q, 10)
+    elapsed = round(time.time() - t0, 1)
+    return {
+        "query": q,
+        "count": len(results),
+        "elapsed_sec": elapsed,
+        "sample": [
+            {"title": (r.get("title") or "")[:60], "href": (r.get("href") or "")[:80]}
+            for r in results[:3]
+        ],
+    }
+
+
 @router.post("/api/pipeline/runs/{run_id}/regenerate-proposals")
 async def regenerate_run_proposals(
     run_id: int,
