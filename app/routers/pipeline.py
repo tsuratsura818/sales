@@ -28,6 +28,9 @@ from app.services.pipeline.config import SEARCH_KEYWORDS
 
 router = APIRouter(tags=["pipeline"])
 
+# このワーカープロセスが起動した時刻（再起動検知用。/api/system/info で返す）
+PROCESS_STARTED_AT = __import__("time").time()
+
 # 実行中タスクの追跡
 _running_tasks: dict[int, asyncio.Task] = {}
 
@@ -198,13 +201,19 @@ async def pipeline_results(
 async def system_info():
     """実行環境の情報(Claude CLI が利用可能か等)を返す。
     UI が「ローカル限定機能」を出し分けるために使う。
+
+    uptime_sec は「このプロセスが起動してから何秒経ったか」。
+    長い収集が途中で消える原因が Render の再起動なのかを切り分けるために出している
+    （収集を跨いで uptime が巻き戻っていれば、再起動でタスクが殺されている）。
     """
     import os
+    import time
     from app.services import local_claude
     is_render = bool(os.environ.get("RENDER"))
     return {
         "environment": "render" if is_render else "local",
         "local_claude_available": local_claude.is_available(),
+        "uptime_sec": int(time.time() - PROCESS_STARTED_AT),
     }
 
 
