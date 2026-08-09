@@ -48,8 +48,13 @@ BASE_URL = "https://sales-6g78.onrender.com"
 
 # 収集は無料スクレイパーのみ。google(SerpAPI=従量課金)は使わない。
 DAILY_SOURCES = ["category"]
-CATEGORIES = ["A", "B", "C", "D"]
-# 1日分の収集量。1カテゴリ×6県で114秒だったので、この程度なら Render無料枠でも収まる。
+# 1日に回すカテゴリは1つだけ。日ごとに A→B→C→D とローテーションする。
+#
+# Render無料プランは10分程度でインスタンスを再起動し、実行中の asyncio タスクを
+# 殺す（run#12 で uptime 610秒→28秒 の巻き戻りを実測）。パイプラインは最後まで
+# 走り切らないと結果を保存しないため、途中で殺されると収集がまるごと無駄になる。
+# 4カテゴリ(実測 約3分/カテゴリ)では確実に間に合わないので1カテゴリに絞る。
+CATEGORY_ROTATION = ["A", "B", "C", "D"]
 MAX_QUERIES_PER_CATEGORY = 20
 MAX_URLS_PER_CATEGORY = 60
 # 1日にあたる都道府県の数（全47件を日ごとにスライドさせる）
@@ -61,8 +66,12 @@ PREFS_PER_DAY = 10
 SEND_RANKS = ("S", "A")
 MIN_CATEGORY_CONFIDENCE = 0.4
 
-# running のまま何分放置されたら「中断された」とみなすか。
 # Render が再起動すると実行中の asyncio タスクは死ぬが status は running のまま残る。
+# このモジュールはアプリ起動時に import されるので、ここで採った時刻 ≒ プロセス起動時刻。
+# 「今のプロセスより前に始まった run」は、そのタスクを持っていたプロセスが
+# もう居ないので確実に死んでいる、と判定できる（時間しきい値より正確）。
+PROCESS_STARTED_AT = datetime.now()
+# プロセス内で本当に固まった場合の保険（再起動を挟まないケース）
 STALE_RUN_MINUTES = 90
 
 # 送信ウィンドウ（MailForge 側の送信cronが参照する）
@@ -129,8 +138,9 @@ async def _collect(day_index: int) -> int:
     offset = (day_index * PREFS_PER_DAY) % len(PREFECTURES)
     prefs = [PREFECTURES[(offset + i) % len(PREFECTURES)] for i in range(PREFS_PER_DAY)]
 
+    category = CATEGORY_ROTATION[day_index % len(CATEGORY_ROTATION)]
     category_config = {
-        "categories": CATEGORIES,
+        "categories": [category],
         "prefectures": prefs,
         "max_queries_per_category": MAX_QUERIES_PER_CATEGORY,
         "max_urls_per_category": MAX_URLS_PER_CATEGORY,
@@ -146,13 +156,17 @@ async def _collect(day_index: int) -> int:
         stale_before = datetime.now() - timedelta(minutes=STALE_RUN_MINUTES)
         for running in db.query(PipelineRun).filter(PipelineRun.status == "running").all():
             started = running.created_at
-            if started and started < stale_before:
+            # 今のプロセスより前に始まったものは、実行していたプロセスが既に居ない
+            died_with_old_process = started and started < PROCESS_STARTED_AT
+            timed_out = started and started < stale_before
+            if died_with_old_process or timed_out:
+                why = "プロセス再起動で中断" if died_with_old_process else "実行が長すぎるため打ち切り"
                 logger.warning(
                     f"停止したままのパイプラインを失敗扱いにします: run_id={running.id} "
-                    f"(開始 {started})"
+                    f"(開始 {started} / {why})"
                 )
                 running.status = "failed"
-                running.error_message = "実行中に中断（Render再起動等）"
+                running.error_message = f"実行中に中断（{why}）"
                 running.completed_at = datetime.now()
                 db.commit()
             else:
@@ -174,7 +188,7 @@ async def _collect(day_index: int) -> int:
     finally:
         db.close()
 
-    logger.info(f"日次アウトリーチ: 収集開始 run_id={run_id} prefs={prefs}")
+    logger.info(f"日次アウトリーチ: 収集開始 run_id={run_id} category={category} prefs={prefs}")
     await run_pipeline(run_id)
 
     db = SessionLocal()
