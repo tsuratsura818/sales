@@ -48,17 +48,33 @@ BASE_URL = "https://sales-6g78.onrender.com"
 
 # 収集は無料スクレイパーのみ。google(SerpAPI=従量課金)は使わない。
 DAILY_SOURCES = ["category"]
-# 1日に回すカテゴリは1つだけ。日ごとに A→B→C→D とローテーションする。
+CATEGORY_ROTATION = ["A", "B", "C", "D"]
+
+# 収集量は実行環境で変える。
 #
 # Render無料プランは10分程度でインスタンスを再起動し、実行中の asyncio タスクを
 # 殺す（run#12 で uptime 610秒→28秒 の巻き戻りを実測）。パイプラインは最後まで
 # 走り切らないと結果を保存しないため、途中で殺されると収集がまるごと無駄になる。
-# 4カテゴリ(実測 約3分/カテゴリ)では確実に間に合わないので1カテゴリに絞る。
-CATEGORY_ROTATION = ["A", "B", "C", "D"]
+# 実測 約3分/カテゴリなので、Render では1カテゴリに絞らないと完走できない。
+#
+# Mac常駐（launchd）にはこの制限が無いので、全カテゴリを回して量を稼ぐ。
+# 毎日20件送るにはこちらが前提になる。
+def _is_render() -> bool:
+    import os
+    return bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"))
+
+
+def _collect_scope(day_index: int) -> tuple[list[str], int]:
+    """(回すカテゴリ, 1日あたりの都道府県数) を実行環境に応じて決める"""
+    if _is_render():
+        # 10分で殺されるため1カテゴリ（日替わりローテーション）
+        return [CATEGORY_ROTATION[day_index % len(CATEGORY_ROTATION)]], 10
+    # Mac常駐: 時間制限が無いので全カテゴリ×広めの都道府県
+    return list(CATEGORY_ROTATION), 16
+
+
 MAX_QUERIES_PER_CATEGORY = 20
 MAX_URLS_PER_CATEGORY = 60
-# 1日にあたる都道府県の数（全47件を日ごとにスライドさせる）
-PREFS_PER_DAY = 10
 
 # 送信対象の条件。EC出店状況が取れる Yahoo/楽天由来のリードは rank S/A になるが、
 # category コレクター由来は EC状況が付かないため構造的に rank B 止まりになる。
@@ -134,13 +150,13 @@ async def _collect(day_index: int) -> int:
     from app.services.pipeline.runner import run_pipeline
     from app.services.pipeline.category_collector import PREFECTURES
 
-    # 全都道府県を PREFS_PER_DAY 件ずつスライドさせながら回す
-    offset = (day_index * PREFS_PER_DAY) % len(PREFECTURES)
-    prefs = [PREFECTURES[(offset + i) % len(PREFECTURES)] for i in range(PREFS_PER_DAY)]
+    categories, prefs_per_day = _collect_scope(day_index)
+    # 全都道府県を prefs_per_day 件ずつスライドさせながら回す
+    offset = (day_index * prefs_per_day) % len(PREFECTURES)
+    prefs = [PREFECTURES[(offset + i) % len(PREFECTURES)] for i in range(prefs_per_day)]
 
-    category = CATEGORY_ROTATION[day_index % len(CATEGORY_ROTATION)]
     category_config = {
-        "categories": [category],
+        "categories": categories,
         "prefectures": prefs,
         "max_queries_per_category": MAX_QUERIES_PER_CATEGORY,
         "max_urls_per_category": MAX_URLS_PER_CATEGORY,
@@ -188,7 +204,10 @@ async def _collect(day_index: int) -> int:
     finally:
         db.close()
 
-    logger.info(f"日次アウトリーチ: 収集開始 run_id={run_id} category={category} prefs={prefs}")
+    logger.info(
+        f"日次アウトリーチ: 収集開始 run_id={run_id} "
+        f"env={'render' if _is_render() else 'local'} cat={categories} prefs={prefs}"
+    )
     await run_pipeline(run_id)
 
     db = SessionLocal()
@@ -553,8 +572,22 @@ async def _notify(
 
 
 async def daily_outreach_scheduler() -> None:
-    """10分ごとにチェックし、指定時刻を過ぎていてその日が未実行なら実行する。"""
+    """10分ごとにチェックし、指定時刻を過ぎていてその日が未実行なら実行する。
+
+    ただし Render 上では実行しない。無料プランは10分程度でインスタンスを
+    再起動して実行中タスクを殺すため、収集を完走できないまま
+    `daily_outreach_last_date` だけ進めてその日を潰してしまう。
+    実行主体は Mac 常駐（launchd → scripts/run_daily_outreach.py）に一本化する。
+    """
     await asyncio.sleep(60)
+
+    if _is_render():
+        logger.info(
+            "日次アウトリーチ: Render では実行しません"
+            "（10分で再起動され完走できないため、Mac常駐 launchd が実行します）"
+        )
+        return
+
     logger.info("日次アウトリーチスケジューラ開始（DB設定で有効/無効を制御）")
 
     while True:

@@ -190,6 +190,13 @@ async def pipeline_results(
                 "score": r.score,
                 "rank": r.rank,
                 "imported_to_mailforge": r.imported_to_mailforge,
+                # 日次自動アウトリーチの状態（なぜ送られた/送られなかったかの切り分け用）
+                "category": r.category,
+                "confidence": r.confidence,
+                "has_proposal": bool(r.personalized_subject and r.personalized_body),
+                "queued_at": r.queued_at.isoformat() if r.queued_at else None,
+                "campaign_id": r.campaign_id,
+                "excluded_reason": r.excluded_reason,
             }
             for r in results
         ],
