@@ -127,7 +127,20 @@ EXCLUDED_DOMAINS = {
     "facebook.com", "twitter.com", "x.com", "instagram.com",
     "wikipedia.org", "note.com", "ameblo.jp", "hatenablog.com",
     "prtimes.jp", "biglobe.ne.jp", "mynavi.jp", "doda.jp",
+    # 検索結果に頻出する旅行・まとめ・企業DB系ポータル
+    "rtrp.jp", "baseconnect.in", "jalan.net", "rurubu.jp", "ikyu.com",
+    "kkday.com", "arukikata.co.jp", "travel.co.jp", "tripadvisor.jp",
+    "veltra.com", "asoview.com", "livejapan.com", "matcha-jp.com",
 }
+# serpapi_service で運用実績のある除外リスト（求人・地図・比較・公的機関等）も併用する。
+# こちらの方が網羅的なので、片方だけメンテされてザルになるのを避ける。
+try:  # 循環importを避けるため遅延せず単純に取り込む（serpapi_service は軽い）
+    from app.services.serpapi_service import EXCLUDE_DOMAINS as _SERP_EXCLUDE
+    EXCLUDED_DOMAINS |= {d for d in _SERP_EXCLUDE if not d.startswith(".")}
+    # ".go.jp" 等のTLDセグメント指定はそのまま部分一致で使える
+    EXCLUDED_DOMAINS |= {d for d in _SERP_EXCLUDE if d.startswith(".")}
+except Exception:  # pragma: no cover - 取り込めなくても収集自体は動く
+    pass
 
 CATEGORY_KEYWORDS = {
     "A": [
