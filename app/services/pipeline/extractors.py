@@ -78,6 +78,40 @@ def extract_emails(text: str) -> list[str]:
     return list(dict.fromkeys(result))
 
 
+# 会社名の前後に紛れ込む項目ラベル。
+# 特商法ページは表組みが多く、テキスト化すると
+# 「販売業者：（商号）株式会社◯◯郵便番号〒141-0021」のように
+# 前後のセルが繋がってしまう。会社名は営業メールの宛名に使うので必ず落とす。
+_COMPANY_LEADING_LABELS = re.compile(
+    r"^[\s　]*(?:[（(]\s*(?:商号|屋号|名称|会社名|法人名)\s*[）)]|"
+    r"(?:商号|屋号|名称|会社名|法人名|販売業者|事業者)[：:\s]*)"
+)
+_COMPANY_TRAILING_LABELS = re.compile(
+    r"\s*(?:郵便番号|〒|所在地|住所|代表者|代表取締役|責任者|電話番号|電話|TEL|Tel|FAX|Fax|"
+    r"メールアドレス|メール|E-?mail|URL|ホームページ|事業内容|運営統括|運営|"
+    r"販売価格|支払|送料|返品|お問い合わせ).*$",
+    re.IGNORECASE,
+)
+
+
+def clean_company_name(name: str) -> str:
+    """抽出した会社名から前後のラベル・住所等のノイズを落とす"""
+    if not name:
+        return ""
+    name = name.strip()
+    # 前置ラベルは複数付くことがある（「販売業者（商号）◯◯」等）
+    for _ in range(3):
+        new = _COMPANY_LEADING_LABELS.sub("", name).strip()
+        if new == name:
+            break
+        name = new
+    name = _COMPANY_TRAILING_LABELS.sub("", name).strip()
+    # 記号のみの残骸や区切り文字を落とす
+    name = re.sub(r"^[\s　:：\-–—|｜/]+", "", name)
+    name = re.sub(r"[\s　:：\-–—|｜/]+$", "", name)
+    return name.strip()
+
+
 def extract_company(text: str) -> str:
     """特商法ページから販売業者名を抽出"""
     patterns = [
@@ -87,8 +121,7 @@ def extract_company(text: str) -> str:
     for p in patterns:
         m = re.search(p, text)
         if m:
-            name = m.group(1).strip()
-            name = re.sub(r"\s*(所在地|住所|代表|電話|メール|運営).*$", "", name)
+            name = clean_company_name(m.group(1))
             if len(name) > 1:
                 return name
     return ""
