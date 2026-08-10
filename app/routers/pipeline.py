@@ -217,9 +217,10 @@ async def system_info():
     import time
     from app.services import local_claude
     is_render = bool(os.environ.get("RENDER"))
+    is_claude_avail = await asyncio.to_thread(local_claude.is_available)
     return {
         "environment": "render" if is_render else "local",
-        "local_claude_available": local_claude.is_available(),
+        "local_claude_available": is_claude_avail,
         "uptime_sec": int(time.time() - PROCESS_STARTED_AT),
     }
 
@@ -701,6 +702,14 @@ async def bulk_create_keywords(keywords: list[KeywordCreate], db: Session = Depe
     return {"success": True, "added": added}
 
 
+@router.patch("/api/pipeline/keywords/toggle-all")
+async def toggle_all_keywords(enabled: int = Query(...), db: Session = Depends(get_db)):
+    """全キーワードの有効/無効を一括切り替え"""
+    db.query(PipelineKeyword).update({"enabled": enabled})
+    db.commit()
+    return {"success": True}
+
+
 @router.patch("/api/pipeline/keywords/{keyword_id}")
 async def update_keyword(keyword_id: int, data: KeywordUpdate, db: Session = Depends(get_db)):
     """キーワード更新"""
@@ -772,12 +781,4 @@ async def cancel_pipeline(run_id: int, db: Session = Depends(get_db)):
         from datetime import datetime
         run.completed_at = datetime.now()
         db.commit()
-    return {"success": True}
-
-
-@router.patch("/api/pipeline/keywords/toggle-all")
-async def toggle_all_keywords(enabled: int = Query(...), db: Session = Depends(get_db)):
-    """全キーワードの有効/無効を一括切り替え"""
-    db.query(PipelineKeyword).update({"enabled": enabled})
-    db.commit()
     return {"success": True}

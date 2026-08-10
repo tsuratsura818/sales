@@ -289,7 +289,7 @@ async def _auto_generate_proposals(job_id: int, min_score: int, db: Session) -> 
     from app.services import local_claude, proposal_service
     from app.services.portfolio_service import get_portfolios_for_lead, format_portfolio_for_prompt
 
-    if not local_claude.is_available():
+    if not await asyncio.to_thread(local_claude.is_available):
         return
 
     targets = (
