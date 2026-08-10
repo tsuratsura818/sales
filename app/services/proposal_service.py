@@ -18,7 +18,12 @@ from datetime import datetime
 from typing import Any
 
 from app.models.lead import Lead
-from app.services.local_claude import ClaudeCliError, extract_json, invoke
+from app.services.local_claude import (
+    ClaudeCliError,
+    ClaudeQuotaError,
+    extract_json,
+    invoke,
+)
 
 log = logging.getLogger("proposal_service")
 
@@ -501,6 +506,12 @@ async def generate_batch_proposals(
             if ok_in_chunk > 0:
                 consecutive_fail = 0  # 1件でも成功ならカウンタリセット
             log.info(f"  [{min(start + chunk_size, total)}/{total}] batch chunk done ({ok_in_chunk}/{len(chunk)} OK)")
+        except ClaudeQuotaError as e:
+            # サブスクの利用上限。待っても短時間では回復しないので、
+            # バックオフを積まずに即打ち切る（課金経路には落とさない）。
+            log.error(f"利用上限に到達したため中断します: {e}")
+            results.extend([{"subject": "", "body": ""}] * (total - len(results)))
+            break
         except ClaudeCliError as e:
             log.error(f"batch chunk {start}-{start+len(chunk)} failed: {e}")
             results.extend([{"subject": "", "body": ""}] * len(chunk))

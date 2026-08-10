@@ -251,20 +251,54 @@ async def invoke(
     loop = asyncio.get_event_loop()
     returncode, stdout_b, stderr_b = await loop.run_in_executor(None, _run_blocking)
 
-    if returncode != 0:
-        err = stderr_b.decode("utf-8", errors="replace")[:400]
-        raise ClaudeCliError(f"claude CLI exit {returncode}: {err}")
-
     stdout = stdout_b.decode("utf-8", errors="replace")
+    stderr = stderr_b.decode("utf-8", errors="replace")
+
+    # 失敗理由は stderr ではなく stdout の JSON に入ることがある
+    # （例: 利用上限に当たると exit 1 + stdout に "Credit balance is too low"、stderr は空）。
+    # stderr だけ見ていると「claude CLI exit 1: 」と理由が空のまま延々リトライしてしまう。
+    detail = ""
     try:
         envelope = json.loads(stdout)
-    except json.JSONDecodeError as e:
-        raise ClaudeCliError(f"claude CLI stdout is not JSON: {stdout[:200]}") from e
+    except json.JSONDecodeError:
+        envelope = None
+    else:
+        if envelope.get("is_error") or returncode != 0:
+            detail = str(envelope.get("result", ""))[:300]
+
+    if returncode != 0:
+        reason = detail or stderr[:400] or stdout[:200] or "(理由なし)"
+        raise _classify_error(f"claude CLI exit {returncode}: {reason}", reason)
+
+    if envelope is None:
+        raise ClaudeCliError(f"claude CLI stdout is not JSON: {stdout[:200]}")
 
     if envelope.get("is_error"):
-        raise ClaudeCliError(f"claude returned error: {envelope.get('result', '')[:300]}")
+        raise _classify_error(f"claude returned error: {detail}", detail)
 
     return envelope.get("result", "") or ""
+
+
+# サブスクの利用上限に当たったことを示す文言。これが出たら課金経路には
+# 一切フォールバックせず、処理を止めて時間を空ける。
+_QUOTA_MARKERS = (
+    "credit balance is too low",
+    "usage limit",
+    "rate limit",
+    "quota",
+    "too many requests",
+)
+
+
+class ClaudeQuotaError(ClaudeCliError):
+    """サブスクの利用上限に到達したことを示す"""
+
+
+def _classify_error(message: str, reason: str) -> ClaudeCliError:
+    low = (reason or "").lower()
+    if any(marker in low for marker in _QUOTA_MARKERS):
+        return ClaudeQuotaError(message)
+    return ClaudeCliError(message)
 
 
 def extract_json(text: str) -> Any:

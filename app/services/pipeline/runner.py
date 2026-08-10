@@ -221,7 +221,12 @@ async def _enrich_with_proposals(leads: list[PipelineResult], db: Session) -> No
             for lead, analysis in analyzed_pairs
         ]
         try:
-            proposals = await proposal_service.generate_batch_proposals(targets)
+            # 1回のリクエストを小さくし、間隔も空ける。
+            # 69件を12件ずつ一気に投げたときサブスクの利用上限に当たり、
+            # 全件が空のまま返ってきたため（run#14）。
+            proposals = await proposal_service.generate_batch_proposals(
+                targets, chunk_size=6, sleep_between_chunks=5.0,
+            )
         except Exception as e:
             log.exception(f"Claude CLI バッチ生成エラー (type={type(e).__name__}): {e!r}")
             proposals = [{"subject": "", "body": ""}] * len(analyzed_pairs)

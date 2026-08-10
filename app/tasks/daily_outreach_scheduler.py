@@ -473,8 +473,56 @@ def _mark_queued(result_ids: list[int], campaign_id: str) -> None:
         db.close()
 
 
-async def run_daily_outreach() -> dict:
-    """日次アウトリーチを1回実行。収集→提案文→キャンペーン→送信開始まで。"""
+async def _backfill_proposals(limit: int) -> int:
+    """提案文が未生成のまま残っているリードを拾って生成する。
+
+    Claude Max の利用枠を使い切ると生成だけが失敗し、収集済みのリードが
+    提案文なしで取り残される（run#14 で69件が該当）。パイプラインは自分の
+    実行分しか面倒を見ないので、翌日以降にここで拾い直す。
+    """
+    from app.models.pipeline import PipelineResult
+    from app.services.pipeline.runner import _enrich_with_proposals
+
+    db = SessionLocal()
+    try:
+        targets = (
+            db.query(PipelineResult)
+            .filter(
+                PipelineResult.personalized_subject.is_(None),
+                PipelineResult.queued_at.is_(None),
+                PipelineResult.excluded_reason.is_(None),
+                PipelineResult.website.isnot(None),
+                PipelineResult.email.isnot(None),
+                or_(
+                    PipelineResult.rank.in_(SEND_RANKS),
+                    and_(
+                        PipelineResult.category.isnot(None),
+                        PipelineResult.confidence >= MIN_CATEGORY_CONFIDENCE,
+                    ),
+                ),
+            )
+            .order_by(PipelineResult.score.desc(), PipelineResult.id)
+            .limit(limit)
+            .all()
+        )
+        if not targets:
+            return 0
+        logger.info(f"日次アウトリーチ: 提案文が未生成のリード{len(targets)}件を先に生成します")
+        await _enrich_with_proposals(targets, db)
+        return sum(1 for t in targets if t.personalized_subject and t.personalized_body)
+    except Exception as e:
+        logger.exception(f"提案文の追い生成でエラー: {e}")
+        return 0
+    finally:
+        db.close()
+
+
+async def run_daily_outreach(collect: bool = True) -> dict:
+    """日次アウトリーチを1回実行。収集→提案文→キャンペーン→送信開始まで。
+
+    collect=False にすると収集を行わず、既にある在庫から選別・送信だけ行う
+    （収集は済んでいるが生成や送信で失敗した場合のやり直し用）。
+    """
     from app.services import local_claude
 
     cfg = _get_cfg()
@@ -498,6 +546,12 @@ async def run_daily_outreach() -> dict:
         logger.error("日次アウトリーチ: ローカルClaude利用不可のため中止")
         return {"started": False, "reason": "local_claude 利用不可", "sent": 0}
 
+    # 収集より先に、提案文が未生成のまま残っているリードを拾う。
+    # 新しく集める前に手持ちを使い切る方が速いし、利用枠も無駄にしない。
+    backfilled = await _backfill_proposals(cap * 3)
+    if backfilled:
+        logger.info(f"日次アウトリーチ: 追い生成で{backfilled}件が送信可能になりました")
+
     # 在庫（提案文まで揃った未送信リード）が足りなければ収集する
     db = SessionLocal()
     try:
@@ -506,7 +560,9 @@ async def run_daily_outreach() -> dict:
         db.close()
 
     collected = 0
-    if stock >= cap:
+    if not collect:
+        logger.info(f"日次アウトリーチ: 収集をスキップ（在庫{stock}件から選別・送信）")
+    elif stock >= cap:
         logger.info(f"日次アウトリーチ: 在庫{stock}件で足りるため収集はスキップ")
     else:
         # 在庫が上限に届くまで収集を繰り返す。

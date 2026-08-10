@@ -46,6 +46,8 @@ async def main() -> int:
                         help="その日が実行済みでも強制的に実行する")
     parser.add_argument("--ignore-enabled", action="store_true",
                         help="daily_outreach_enabled が OFF でも実行する")
+    parser.add_argument("--no-collect", action="store_true",
+                        help="収集を行わず、既にある在庫から選別・送信だけ行う")
     args = parser.parse_args()
 
     if not os.environ.get("DATABASE_URL"):
@@ -106,7 +108,7 @@ async def main() -> int:
 
     log.info(f"日次アウトリーチ開始（上限 {cap}件/日）")
     try:
-        result = await run_daily_outreach()
+        result = await run_daily_outreach(collect=not args.no_collect)
     except Exception:
         log.exception("日次アウトリーチが失敗しました")
         # 失敗した日はやり直せるようにフラグを戻す
