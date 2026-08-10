@@ -79,14 +79,19 @@ def _is_render() -> bool:
 
 
 def _collect_scope(day_index: int) -> tuple[list[str], int, int, int]:
-    """(カテゴリ, 都道府県数, クエリ上限/カテゴリ, URL上限/カテゴリ) を環境で決める"""
+    """(カテゴリ, 都道府県数, クエリ上限/カテゴリ, URL上限/カテゴリ) を環境で決める。
+
+    毎日の必要数は「収集20・提案文20・送信20」。集めすぎても提案文を作らない
+    ぶんは寝かせるだけで、収集にかかる時間も無駄になる。
+    実測の目安: 1カテゴリ×10県/クエリ20/URL60 → 7件、
+    4カテゴリ×16県/クエリ20/URL60 → 69件、4カテゴリ×24県/クエリ100/URL300 → 164件。
+    1カテゴリ×24県/クエリ30/URL80 で 20〜30件になる見込み。
+    """
     if _is_render():
-        # 10分で殺されるため1カテゴリ（日替わりローテーション）＆小さめ
+        # 10分で殺されるため小さめ
         return [CATEGORY_ROTATION[day_index % len(CATEGORY_ROTATION)]], 10, 20, 60
-    # Mac常駐: 時間制限が無いので母数を大きく取る。
-    # 選別(_screen_targets)は媒体・ポータル・同業・自治体を厳しめに落とすため
-    # 通過率が低く、毎日50件送るにはこれくらいの母数が要る。
-    return list(CATEGORY_ROTATION), 24, 100, 300
+    # Mac常駐でも、1日に必要なぶんだけ集める。カテゴリは日替わり。
+    return [CATEGORY_ROTATION[day_index % len(CATEGORY_ROTATION)]], 24, 30, 80
 
 
 # 在庫が上限に届かないとき、収集を何回まで繰り返すか（Mac常駐のみ）。
@@ -659,8 +664,9 @@ async def run_daily_outreach(collect: bool = True, send: bool = True) -> dict:
                 logger.info(f"日次アウトリーチ: 在庫{stock}件に到達したので収集終了")
                 break
 
-    # 選別で落ちる分を見込んで、上限の3倍を候補に取る
-    candidates = _pick_candidates(cap * 3, require_proposal=False)
+    # 選別で落ちる分だけ余裕を持たせる（生成は選別後なので、ここが増えても
+    # 生成件数は増えない。選別1回の入力が長くなるだけ）。
+    candidates = _pick_candidates(cap * 2, require_proposal=False)
     if not candidates:
         await _notify_text(
             "📭 日次アウトリーチ: 送信できる新規リードがありませんでした\n\n"
