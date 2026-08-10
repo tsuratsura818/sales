@@ -306,6 +306,8 @@ async def invoke(
 # 一切フォールバックせず、処理を止めて時間を空ける。
 _QUOTA_MARKERS = (
     "credit balance is too low",
+    "hit your limit",       # 例: "You've hit your limit · resets 1pm (Asia/Tokyo)"
+    "limit reached",
     "usage limit",
     "rate limit",
     "quota",

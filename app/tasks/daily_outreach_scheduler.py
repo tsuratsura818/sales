@@ -338,6 +338,16 @@ async def _screen_targets(targets: list[dict]) -> tuple[list[dict], list[dict]]:
         verdicts = local_claude.extract_json(raw)
         if not isinstance(verdicts, list):
             raise ValueError(f"配列以外が返された: {type(verdicts).__name__}")
+    except local_claude.ClaudeQuotaError as e:
+        # 利用枠切れ。送らずに見送り、リセット時刻を通知に載せる。
+        logger.error(f"日次アウトリーチ: 利用枠に達したため選別できず全件見送り: {e}")
+        await _notify_text(
+            "⏸ 日次アウトリーチを見送りました\n\n"
+            "ローカルClaudeの利用枠に達したため、送信先の選別ができませんでした。\n"
+            f"{str(e)[:200]}\n\n"
+            "枠が戻れば次回の実行で自動的に再開します（収集済みのリードは残っています）。"
+        )
+        return [], []
     except Exception as e:
         logger.error(f"日次アウトリーチ: 選別に失敗したため全件見送り: {e}")
         return [], []

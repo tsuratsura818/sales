@@ -44,6 +44,28 @@ uvicorn main:app --reload          # 開発サーバー
 Mac常駐ブリッジにフォールバックし、それも不可なら `is_available()` が False を返すので、
 呼び出し側は課金経路に落ちるのではなく処理を中止すること。
 
+### 落とし穴: 環境変数の ANTHROPIC_API_KEY
+
+**`claude` CLI は環境に `ANTHROPIC_API_KEY` があると、定額サブスクではなく
+従量課金のAPIで動く。** `.env` にキーがあると `load_dotenv()` が `os.environ` に
+載せてしまうため、サブスクのつもりで API 課金していた、という事故が起きた。
+
+対策として `local_claude` / `claude_bridge` はどちらも CLI 起動時に
+`ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_URL` /
+`ANTHROPIC_BASE_URL` を環境から取り除いている（`_subscription_env()`）。
+**新たに CLI を subprocess で叩くコードを書くときは必ずこれを通すこと。**
+
+症状は `claude CLI exit 1` + `"Credit balance is too low"`。
+なお失敗理由は stderr ではなく **stdout の JSON** に入るので、
+stderr だけ見ていると理由が空のまま延々リトライすることになる。
+
+### アカウントの前提
+
+Claude Max 5x（`organizationType: claude_max`）の定額契約。超過時の従量課金は
+組織設定で無効（`hasExtraUsageEnabled: false`）なので、枠を超えると課金ではなく
+エラーになる。利用枠到達は `ClaudeQuotaError` として分類され、バックオフを積まずに
+即中断する（待っても短時間では回復しないため）。
+
 ## ローカルClaudeブリッジ（Mac 24/7）
 
 Mac に常駐している `claude_bridge.py` を cloudflared トンネルで公開し、
