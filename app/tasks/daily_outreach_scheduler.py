@@ -70,9 +70,14 @@ def _collect_scope(day_index: int) -> tuple[list[str], int, int, int]:
         # 10分で殺されるため1カテゴリ（日替わりローテーション）＆小さめ
         return [CATEGORY_ROTATION[day_index % len(CATEGORY_ROTATION)]], 10, 20, 60
     # Mac常駐: 時間制限が無いので母数を大きく取る。
-    # 選別(_screen_targets)は媒体・ポータル・同業を厳しめに落とすため通過率が低く、
-    # 毎日20件送るにはこれくらいの母数が要る。
-    return list(CATEGORY_ROTATION), 16, 60, 200
+    # 選別(_screen_targets)は媒体・ポータル・同業・自治体を厳しめに落とすため
+    # 通過率が低く、毎日50件送るにはこれくらいの母数が要る。
+    return list(CATEGORY_ROTATION), 24, 100, 300
+
+
+# 在庫が上限に届かないとき、収集を何回まで繰り返すか（Mac常駐のみ）。
+# 1回あたり20〜40分かかるので、回しすぎない範囲で。
+MAX_COLLECT_ROUNDS = 3
 
 # 送信対象の条件。EC出店状況が取れる Yahoo/楽天由来のリードは rank S/A になるが、
 # category コレクター由来は EC状況が付かないため構造的に rank B 止まりになる。
@@ -483,14 +488,33 @@ async def run_daily_outreach() -> dict:
         db.close()
 
     collected = 0
-    if stock < cap:
-        logger.info(f"日次アウトリーチ: 在庫{stock}件 < 上限{cap}件 → 収集を実行")
-        try:
-            collected = await _collect(day_index)
-        except Exception as e:
-            logger.exception(f"日次アウトリーチ: 収集エラー: {e}")
-    else:
+    if stock >= cap:
         logger.info(f"日次アウトリーチ: 在庫{stock}件で足りるため収集はスキップ")
+    else:
+        # 在庫が上限に届くまで収集を繰り返す。
+        # 選別の通過率が低いので1回では届かないことが多い。都道府県は
+        # ラウンドごとにずらして同じ母集団を掘り返さないようにする。
+        # Render は10分で殺されるため1回だけにする。
+        rounds = 1 if _is_render() else MAX_COLLECT_ROUNDS
+        for rnd in range(rounds):
+            logger.info(
+                f"日次アウトリーチ: 在庫{stock}件 < 上限{cap}件 → "
+                f"収集 {rnd + 1}/{rounds} 回目"
+            )
+            try:
+                collected += await _collect(day_index + rnd * 7)
+            except Exception as e:
+                logger.exception(f"日次アウトリーチ: 収集エラー(round {rnd + 1}): {e}")
+                break
+
+            db = SessionLocal()
+            try:
+                stock = _stock_query(db).count()
+            finally:
+                db.close()
+            if stock >= cap:
+                logger.info(f"日次アウトリーチ: 在庫{stock}件に到達したので収集終了")
+                break
 
     # 選別で落ちる分を見込んで、上限の3倍を候補に取る
     candidates = _pick_candidates(cap * 3)
