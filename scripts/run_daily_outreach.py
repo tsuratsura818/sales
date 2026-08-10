@@ -121,6 +121,15 @@ async def main() -> int:
         return 1
 
     log.info(f"完了: {result}")
+
+    # 送信ぶんを専用フォルダに振り分ける（返信ぶんは reply_checker が随時拾う）
+    try:
+        from app.services.mail_folder_service import file_outreach_mail
+        filed = file_outreach_mail()
+        log.info(f"フォルダ振り分け: 送信{filed['sent']}件 / 返信{filed['replies']}件")
+    except Exception as e:
+        log.warning(f"フォルダ振り分けに失敗（送信自体は完了しています）: {e}")
+
     return 0
 
 
