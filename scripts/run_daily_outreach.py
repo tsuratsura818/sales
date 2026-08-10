@@ -59,6 +59,8 @@ async def main() -> int:
                         help="daily_outreach_enabled が OFF でも実行する")
     parser.add_argument("--no-collect", action="store_true",
                         help="収集を行わず、既にある在庫から選別・送信だけ行う")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="送信せず、収集・提案文生成・選別までを行って内容を表示する")
     args = parser.parse_args()
 
     if not os.environ.get("DATABASE_URL"):
@@ -114,36 +116,74 @@ async def main() -> int:
         log.info(f"実行時刻({target_hour}:00 JST)前のため何もしません（現在 {now_hour}時）")
         return 0
 
-    # 先に実行済みを立てる（長い処理中に launchd が重ねて起動しても二重に走らせない）
-    db = SessionLocal()
-    try:
-        cfg = db.query(AppSettings).first()
-        cfg.daily_outreach_last_date = today
-        db.commit()
-    finally:
-        db.close()
-
-    log.info(f"日次アウトリーチ開始（上限 {cap}件/日）")
-    try:
-        result = await run_daily_outreach(collect=not args.no_collect)
-    except Exception:
-        log.exception("日次アウトリーチが失敗しました")
-        # 失敗した日はやり直せるようにフラグを戻す
+    # 先に実行済みを立てる（長い処理中に launchd が重ねて起動しても二重に走らせない）。
+    # ドライランは送信しないので、その日の実行権を消費させない。
+    if not args.dry_run:
         db = SessionLocal()
         try:
             cfg = db.query(AppSettings).first()
-            if cfg and cfg.daily_outreach_last_date == today:
-                cfg.daily_outreach_last_date = last_date
-                db.commit()
+            cfg.daily_outreach_last_date = today
+            db.commit()
         finally:
             db.close()
+
+    log.info(f"日次アウトリーチ開始（上限 {cap}件/日）")
+    try:
+        result = await run_daily_outreach(collect=not args.no_collect, send=not args.dry_run)
+    except Exception:
+        log.exception("日次アウトリーチが失敗しました")
+        # 失敗した日はやり直せるようにフラグを戻す
+        if not args.dry_run:
+            db = SessionLocal()
+            try:
+                cfg = db.query(AppSettings).first()
+                if cfg and cfg.daily_outreach_last_date == today:
+                    cfg.daily_outreach_last_date = last_date
+                    db.commit()
+            finally:
+                db.close()
         return 1
+
+    if result.get("dry_run"):
+        _print_dry_run(result)
+        return 0
 
     log.info(f"完了: {result}")
 
     # 送信直後のぶんを拾う。残りは以降30分ごとの起動で順次ラベルが付く。
     _file_outreach_mail()
     return 0
+
+
+def _print_dry_run(result: dict) -> None:
+    """ドライランの結果を読める形で出す（送信はしていない）"""
+    import json
+    from app.services.company_profile import append_boilerplate
+
+    print("\n" + "=" * 72)
+    print("ドライラン結果（送信していません）")
+    print(f"  収集: {result['collected']}件 / 候補: {result['candidates']}件 / "
+          f"選別除外: {result['screened_out']}件 / 送信対象: {result['would_send']}件")
+    print("=" * 72)
+
+    if result.get("rejected"):
+        print("\n【選別で除外】")
+        for r in result["rejected"]:
+            print(f"  × {(r['company'] or '')[:34]:36} {r['reason']}")
+
+    print("\n【送信対象】")
+    for i, t in enumerate(result["targets"], 1):
+        print(f"\n{'-' * 72}\n[{i}] {t['company']}  <{t['email']}>")
+        print(f"    {t['website']}")
+        print(f"    件名: {t['subject']}")
+        print(f"\n{t['body']}")
+
+    out = Path("/tmp/outreach_dryrun.json")
+    out.write_text(json.dumps(
+        {**result, "targets": [{**t, "full_body": append_boilerplate(t["body"])}
+                               for t in result["targets"]]},
+        ensure_ascii=False, indent=2))
+    print(f"\n（定型文を連結した完成形を含む全文: {out}）")
 
 
 if __name__ == "__main__":

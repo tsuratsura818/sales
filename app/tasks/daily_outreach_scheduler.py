@@ -156,7 +156,7 @@ def _stock_query(db):
     )
 
 
-async def _collect(day_index: int) -> int:
+async def _collect(day_index: int, cap: int = 20) -> int:
     """1日分のリード収集を回す。収集できた件数を返す。
 
     カテゴリ(A〜D)と都道府県を日ごとにローテーションさせて、毎日同じ母集団を
@@ -179,6 +179,10 @@ async def _collect(day_index: int) -> int:
         "max_queries_per_category": max_queries,
         "max_urls_per_category": max_urls,
         "generate_proposals": True,  # ローカルClaudeで個別提案文まで作る
+        # 収集は多めに回すが、提案文は必要数だけ作る。
+        # 集めた全件（実測164件）を生成すると Claude の利用枠を一度に使い切る。
+        # 生成しなかったぶんは在庫として残り、翌日以降に追い生成で拾われる。
+        "max_proposals": max(cap * 2, 20),
         # EC系コレクター(yahoo/rakuten/duckduckgo)が使う登録キーワードのローテーション。
         # 全件回すと重いので、日ごとにずらして一部だけ使う。
         "keyword_limit": 12,
@@ -333,8 +337,10 @@ async def _screen_targets(targets: list[dict]) -> tuple[list[dict], list[dict]]:
     )
 
     try:
+        from app.services.proposal_service import _proposal_model
         raw = await local_claude.invoke(
-            prompt, system_prompt=SCREEN_SYSTEM_PROMPT, timeout=600
+            prompt, system_prompt=SCREEN_SYSTEM_PROMPT,
+            model=_proposal_model(), timeout=600,
         )
         verdicts = local_claude.extract_json(raw)
         if not isinstance(verdicts, list):
@@ -530,11 +536,15 @@ async def _backfill_proposals(limit: int) -> int:
         db.close()
 
 
-async def run_daily_outreach(collect: bool = True) -> dict:
+async def run_daily_outreach(collect: bool = True, send: bool = True) -> dict:
     """日次アウトリーチを1回実行。収集→提案文→キャンペーン→送信開始まで。
 
     collect=False にすると収集を行わず、既にある在庫から選別・送信だけ行う
     （収集は済んでいるが生成や送信で失敗した場合のやり直し用）。
+
+    send=False にするとMailForgeへの投入と送信済みマークを行わない。
+    収集・生成・選別まで動かして中身を確認したいときに使う（ドライラン）。
+    リードは在庫として残るので、確認後にそのまま送信できる。
     """
     from app.services import local_claude
 
@@ -589,7 +599,7 @@ async def run_daily_outreach(collect: bool = True) -> dict:
                 f"収集 {rnd + 1}/{rounds} 回目"
             )
             try:
-                collected += await _collect(day_index + rnd * 7)
+                collected += await _collect(day_index + rnd * 7, cap)
             except Exception as e:
                 logger.exception(f"日次アウトリーチ: 収集エラー(round {rnd + 1}): {e}")
                 break
@@ -628,6 +638,30 @@ async def run_daily_outreach(collect: bool = True) -> dict:
         return {
             "started": True, "collected": collected, "sent": 0,
             "screened_out": len(rejected),
+        }
+
+    if not send:
+        # ドライラン: MailForgeへは投入せず、選別を通った内容を返すだけ。
+        # queued_at も付けないので、確認後にそのまま本番送信できる。
+        logger.info(
+            f"日次アウトリーチ[ドライラン]: 送信せず終了。"
+            f"収集{collected}件 / 候補{len(candidates)}件 / 除外{len(rejected)}件 / "
+            f"送信対象{len(targets)}件"
+        )
+        return {
+            "started": True, "dry_run": True, "collected": collected,
+            "candidates": len(candidates), "screened_out": len(rejected),
+            "would_send": len(targets),
+            "targets": [
+                {"company": t["company"], "email": t["email"], "website": t["website"],
+                 "subject": t["subject"], "body": t["body"]}
+                for t in targets
+            ],
+            "rejected": [
+                {"company": r["company"], "email": r["email"], "reason": r["reason"]}
+                for r in rejected
+            ],
+            "sent": 0,
         }
 
     campaign_name = f"日次アウトリーチ {now.strftime('%Y-%m-%d')}"

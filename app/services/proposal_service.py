@@ -27,6 +27,13 @@ from app.services.local_claude import (
 
 log = logging.getLogger("proposal_service")
 
+# 生成に使うモデル。指定しないと CLI 既定の Opus で動き、Claude Max の利用枠を
+# 一気に消費する（1チャンク6件で3〜6分、164件で枠切れを実測）。
+# 営業メールの下書きは Sonnet で十分な品質が出るためこちらを既定にする。
+def _proposal_model() -> str:
+    from app.config import get_settings
+    return get_settings().CLAUDE_MODEL_PROPOSAL or "sonnet"
+
 
 # ============================================================
 # システムプロンプト
@@ -388,7 +395,7 @@ CMS: {lead.cms_type or "不明"} {lead.cms_version or ""}
 例: {{"subject": "【ご提案】〇〇様のホームページリニューアルについて", "body": "..."}}"""
 
     try:
-        raw = await invoke(user_prompt, system_prompt=SYSTEM_PROMPT_EMAIL)
+        raw = await invoke(user_prompt, system_prompt=SYSTEM_PROMPT_EMAIL, model=_proposal_model())
         data = extract_json(raw)
         if isinstance(data, dict):
             return (
@@ -435,7 +442,7 @@ async def generate_followup_email(
 JSON形式で返してください: {{"subject": "件名", "body": "本文"}}"""
 
     try:
-        raw = await invoke(user_prompt, system_prompt=system_prompt)
+        raw = await invoke(user_prompt, system_prompt=system_prompt, model=_proposal_model())
         data = extract_json(raw)
         if isinstance(data, dict):
             return (
@@ -493,7 +500,7 @@ async def generate_competitor_email(
 JSON形式で返してください: {{"subject": "件名", "body": "本文"}}"""
 
     try:
-        raw = await invoke(user_prompt, system_prompt=COMPETITOR_SYSTEM_PROMPT)
+        raw = await invoke(user_prompt, system_prompt=COMPETITOR_SYSTEM_PROMPT, model=_proposal_model())
         data = extract_json(raw)
         if isinstance(data, dict):
             return (
@@ -552,6 +559,7 @@ async def generate_batch_proposals(
             raw = await invoke(
                 user_prompt,
                 system_prompt=SYSTEM_PROMPT_BATCH,
+                model=_proposal_model(),
                 timeout=timeout_per_chunk,
             )
             data = extract_json(raw)

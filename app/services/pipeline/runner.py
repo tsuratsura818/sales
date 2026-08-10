@@ -148,13 +148,19 @@ def _filter_cross_table_duplicates(leads: list, db: Session) -> list:
     return survivors
 
 
-async def _enrich_with_proposals(leads: list[PipelineResult], db: Session) -> None:
+async def _enrich_with_proposals(
+    leads: list[PipelineResult], db: Session, max_proposals: int | None = None,
+) -> None:
     """各リードのサイトを分析し、提案文を生成する。
 
     フロー:
       1) HTMLスクレイピングで site analysis (並列)
       2) ローカル Claude Code が利用可能ならバッチで高品質提案文を生成
       3) Claude CLI不在の環境(Render等)では site_analyzer のテンプレートにフォールバック
+
+    max_proposals を指定すると、スコアの高い順にその件数だけ生成する。
+    日次アウトリーチは20件送るために収集は多めに回すが、集めた全件
+    （実測164件）の提案文を作ると Claude の利用枠を一気に使い切ってしまうため。
     """
     import httpx
     from dataclasses import asdict
@@ -164,6 +170,11 @@ async def _enrich_with_proposals(leads: list[PipelineResult], db: Session) -> No
     cat_leads = [l for l in leads if l.website]
     if not cat_leads:
         return
+
+    if max_proposals and len(cat_leads) > max_proposals:
+        # スコア順に絞る。残りは在庫として残り、翌日以降に追い生成で拾われる。
+        cat_leads = sorted(cat_leads, key=lambda l: (l.score or 0), reverse=True)[:max_proposals]
+        log.info(f"提案文の生成対象を上位{max_proposals}件に絞り込み（利用枠の節約）")
 
     log.info(f"サイト分析開始: {len(cat_leads)}件")
     sem = asyncio.Semaphore(10)
@@ -221,11 +232,11 @@ async def _enrich_with_proposals(leads: list[PipelineResult], db: Session) -> No
             for lead, analysis in analyzed_pairs
         ]
         try:
-            # 1回のリクエストを小さくし、間隔も空ける。
-            # 69件を12件ずつ一気に投げたときサブスクの利用上限に当たり、
-            # 全件が空のまま返ってきたため（run#14）。
+            # 1回の呼び出しごとにシステムプロンプトのキャッシュ生成
+            # （実測1万トークン前後）が発生するので、チャンクを小さくすると
+            # 呼び出し回数が増えて固定費が積み上がる。12件に戻して回数を抑える。
             proposals = await proposal_service.generate_batch_proposals(
-                targets, chunk_size=6, sleep_between_chunks=5.0,
+                targets, chunk_size=12, sleep_between_chunks=3.0,
             )
         except Exception as e:
             log.exception(f"Claude CLI バッチ生成エラー (type={type(e).__name__}): {e!r}")
@@ -505,7 +516,10 @@ async def run_pipeline(run_id: int):
         # ローカル個別提案文生成（categoryモードで収集したリードに対して）
         if cat_config.get("generate_proposals", True) and mode in ("category", "both"):
             update_progress(88, "個別提案文生成中...")
-            await _enrich_with_proposals(pipeline_results, db)
+            await _enrich_with_proposals(
+                pipeline_results, db,
+                max_proposals=cat_config.get("max_proposals"),
+            )
 
         # MailForge非同期インポート（ランクA以上）
         run.progress_pct = 90
