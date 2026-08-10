@@ -170,11 +170,27 @@ CATEGORY_KEYWORDS = {
 }
 
 
+# まとめ記事・ランキング・比較サイトのタイトルに出る強い信号。
+# これらは1つ当たれば事業者の自社サイトではないと判断してよい。
+# （3語一致を待つ従来の判定では「秋田観光スポット12選！…」等が素通りしていた）
+LISTICLE_PATTERNS = [
+    r"\d+\s*選\b", r"ランキング", r"おすすめ", r"人気\s*\d+", r"top\s*\d+",
+    r"比較", r"まとめ", r"口コミ", r"評判", r"徹底解説", r"完全ガイド",
+    r"厳選", r"特集", r"一覧\s*[|｜]", r"とは？", r"メリット・デメリット",
+]
+
+
 def _is_excluded(text_lower: str) -> str | None:
     """除外判定"""
+    # 1語でも当たれば除外する強い信号
+    for pat in LISTICLE_PATTERNS:
+        if re.search(pat, text_lower):
+            return "まとめ・ランキング記事"
+
     for group in ("web_agency", "portal_media", "blog_personal"):
         count = sum(1 for kw in EXCLUDE_KEYWORDS[group] if re.search(kw, text_lower))
-        if count >= 3:
+        # 2語一致で除外（3語は緩すぎて媒体記事が素通りしていた）
+        if count >= 2:
             reasons = {
                 "web_agency": "同業他社(Web制作会社)",
                 "portal_media": "ポータル・メディア",
@@ -204,6 +220,12 @@ def _score_category(text_lower: str, hint_category: str) -> tuple[str, float]:
 # クエリ生成
 # ============================================================
 
+# 検索段階でまとめ・比較サイトを落とすための除外語。
+# 「茨城 プログラミングスクール」のような素のクエリはランキング記事が上位を占め、
+# 事業者の自社サイトが埋もれてしまう（run#13 では7件中7件が媒体・自治体だった）。
+NEGATIVE_TERMS = " -ランキング -おすすめ -比較 -まとめ -口コミ -求人"
+
+
 def generate_queries(
     category: str,
     prefectures: list[str] = None,
@@ -226,7 +248,7 @@ def generate_queries(
                         parts.append(scale)
                     if mod:
                         parts.append(mod)
-                    q = " ".join(parts)
+                    q = " ".join(parts) + NEGATIVE_TERMS
                     queries.append({
                         "query": q,
                         "axis": {

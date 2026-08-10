@@ -64,17 +64,15 @@ def _is_render() -> bool:
     return bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"))
 
 
-def _collect_scope(day_index: int) -> tuple[list[str], int]:
-    """(回すカテゴリ, 1日あたりの都道府県数) を実行環境に応じて決める"""
+def _collect_scope(day_index: int) -> tuple[list[str], int, int, int]:
+    """(カテゴリ, 都道府県数, クエリ上限/カテゴリ, URL上限/カテゴリ) を環境で決める"""
     if _is_render():
-        # 10分で殺されるため1カテゴリ（日替わりローテーション）
-        return [CATEGORY_ROTATION[day_index % len(CATEGORY_ROTATION)]], 10
-    # Mac常駐: 時間制限が無いので全カテゴリ×広めの都道府県
-    return list(CATEGORY_ROTATION), 16
-
-
-MAX_QUERIES_PER_CATEGORY = 20
-MAX_URLS_PER_CATEGORY = 60
+        # 10分で殺されるため1カテゴリ（日替わりローテーション）＆小さめ
+        return [CATEGORY_ROTATION[day_index % len(CATEGORY_ROTATION)]], 10, 20, 60
+    # Mac常駐: 時間制限が無いので母数を大きく取る。
+    # 選別(_screen_targets)は媒体・ポータル・同業を厳しめに落とすため通過率が低く、
+    # 毎日20件送るにはこれくらいの母数が要る。
+    return list(CATEGORY_ROTATION), 16, 60, 200
 
 # 送信対象の条件。EC出店状況が取れる Yahoo/楽天由来のリードは rank S/A になるが、
 # category コレクター由来は EC状況が付かないため構造的に rank B 止まりになる。
@@ -150,7 +148,7 @@ async def _collect(day_index: int) -> int:
     from app.services.pipeline.runner import run_pipeline
     from app.services.pipeline.category_collector import PREFECTURES
 
-    categories, prefs_per_day = _collect_scope(day_index)
+    categories, prefs_per_day, max_queries, max_urls = _collect_scope(day_index)
     # 全都道府県を prefs_per_day 件ずつスライドさせながら回す
     offset = (day_index * prefs_per_day) % len(PREFECTURES)
     prefs = [PREFECTURES[(offset + i) % len(PREFECTURES)] for i in range(prefs_per_day)]
@@ -158,8 +156,8 @@ async def _collect(day_index: int) -> int:
     category_config = {
         "categories": categories,
         "prefectures": prefs,
-        "max_queries_per_category": MAX_QUERIES_PER_CATEGORY,
-        "max_urls_per_category": MAX_URLS_PER_CATEGORY,
+        "max_queries_per_category": max_queries,
+        "max_urls_per_category": max_urls,
         "generate_proposals": True,  # ローカルClaudeで個別提案文まで作る
     }
 
