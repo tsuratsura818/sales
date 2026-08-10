@@ -40,6 +40,18 @@ def _get_templates():
     return templates
 
 
+def _iso_utc(dt) -> str | None:
+    """DBのnaive datetime(=UTC)を、UTCと明示したISO文字列で返す。
+
+    タイムゾーンを付けずに返すと、ブラウザの `new Date()` がローカル時刻として
+    解釈してしまい、実行履歴が9時間ずれて表示される（JSTの9:11が0:11になる）。
+    末尾に Z を付けることで toLocaleString('ja-JP') が正しくJSTへ変換する。
+    """
+    if not dt:
+        return None
+    return dt.isoformat() + ("" if dt.tzinfo else "Z")
+
+
 class PipelineStartRequest(BaseModel):
     sources: list[str] = ["yahoo", "rakuten", "google", "duckduckgo"]
     skip_mx: bool = True
@@ -123,8 +135,8 @@ async def pipeline_status(run_id: int, db: Session = Depends(get_db)):
         "error_message": run.error_message,
         "source_breakdown": json.loads(run.source_breakdown) if run.source_breakdown else {},
         "rank_counts": rank_counts,
-        "created_at": run.created_at.isoformat() if run.created_at else None,
-        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+        "created_at": _iso_utc(run.created_at),
+        "completed_at": _iso_utc(run.completed_at),
     }
 
 
@@ -142,8 +154,8 @@ async def pipeline_runs(db: Session = Depends(get_db)):
                 "total_imported": r.total_imported,
                 "duration_sec": r.duration_sec,
                 "source_breakdown": json.loads(r.source_breakdown) if r.source_breakdown else {},
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-                "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+                "created_at": _iso_utc(r.created_at),
+                "completed_at": _iso_utc(r.completed_at),
             }
             for r in runs
         ]
@@ -194,7 +206,7 @@ async def pipeline_results(
                 "category": r.category,
                 "confidence": r.confidence,
                 "has_proposal": bool(r.personalized_subject and r.personalized_body),
-                "queued_at": r.queued_at.isoformat() if r.queued_at else None,
+                "queued_at": _iso_utc(r.queued_at),
                 "campaign_id": r.campaign_id,
                 "excluded_reason": r.excluded_reason,
             }

@@ -436,7 +436,9 @@ def _mark_queued(result_ids: list[int], campaign_id: str) -> None:
         return
     db = SessionLocal()
     try:
-        now = datetime.now(JST).replace(tzinfo=None)
+        # DBの他の日時列は naive UTC（Postgres の func.now() / datetime.now() on Render）
+        # なのでここも UTC で揃える。JSTで入れると一覧表示が9時間ずれる。
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         for r in db.query(PipelineResult).filter(PipelineResult.id.in_(result_ids)).all():
             r.queued_at = now
             r.campaign_id = campaign_id
