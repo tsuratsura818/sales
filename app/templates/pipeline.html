@@ -450,7 +450,7 @@ function renderHistory(runs) {
         return;
     }
 
-    let html = '<table class="history-table"><thead><tr><th>日時</th><th>ステータス</th><th>ソース</th><th>結果</th><th>MF</th><th>時間</th><th>操作</th></tr></thead><tbody>';
+    let html = '<div class="history-scroll"><table class="history-table"><thead><tr><th>日時</th><th>ステータス</th><th>ソース</th><th>結果</th><th>MF</th><th>時間</th><th>操作</th></tr></thead><tbody>';
     for (const r of runs) {
         const dt = r.created_at ? new Date(r.created_at).toLocaleString('ja-JP') : '-';
         const sources = (r.sources || []).join(', ');
@@ -464,14 +464,14 @@ function renderHistory(runs) {
             <td>${r.total_found}件 ${details ? '(' + details + ')' : ''}</td>
             <td>${r.total_imported || 0}件</td>
             <td>${r.duration_sec ? formatDuration(r.duration_sec) : '-'}</td>
-            <td>
+            <td class="actions-cell"><div class="actions">
                 <button class="btn btn-sm btn-secondary" onclick="viewRun(${r.id})">表示</button>
-                ${completed ? `<button class="btn btn-sm btn-primary" onclick="regenerateProposals(${r.id})" title="提案文をローカル Claude Code で高品質再生成" style="margin-left:4px;">🤖 Claude再生成</button>` : ''}
-                ${completed ? `<button class="btn btn-sm" style="background:#059669;color:white;margin-left:4px;" onclick="openCreateCampaign(${r.id})" title="MailForge キャンペーン作成 → Render UI で送信開始">📧 キャンペーン作成</button>` : ''}
-            </td>
+                ${completed ? `<button class="btn btn-sm btn-primary" onclick="regenerateProposals(${r.id})" title="提案文をローカル Claude Code で高品質再生成">🤖 Claude再生成</button>` : ''}
+                ${completed ? `<button class="btn btn-sm" style="background:#059669;color:white;" onclick="openCreateCampaign(${r.id})" title="MailForge キャンペーン作成 → Render UI で送信開始">📧 キャンペーン作成</button>` : ''}
+            </div></td>
         </tr>`;
     }
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
     area.innerHTML = html;
 }
 

@@ -2586,6 +2586,26 @@ textarea.form-control { resize: vertical; font-family: inherit; }
 .history-table th, .history-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; }
 .history-table th { background: #f8f9fa; font-weight: 600; color: #555; }
 
+/* 操作列: ボタンが折り返して重なるのを防ぐ。
+   幅が足りないときは縦に積み、各ボタンの中身は折り返さない。 */
+.history-table .actions-cell { white-space: nowrap; width: 1%; }
+.history-table .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+.history-table .actions .btn { white-space: nowrap; margin-left: 0; }
+
+/* 横に入りきらない場合はテーブルごと横スクロールさせ、
+   セルの中でボタンが潰れないようにする */
+.history-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 720px) {
+    .history-table .actions { flex-direction: column; align-items: stretch; }
+    .history-table .actions .btn { width: 100%; text-align: center; }
+}
+
 .status-badge {
     display: inline-block;
     padding: 3px 10px;
