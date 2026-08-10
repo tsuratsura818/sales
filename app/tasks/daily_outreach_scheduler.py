@@ -15,7 +15,8 @@
   - 収集: category コレクター = HTML スクレイピング（SerpAPI は使わない）
   - 生成: ローカル Claude（CLI もしくは Mac 常駐ブリッジ）= 定額サブスク枠
   - 送信: MailForge の SMTP = 自前アカウント
-SerpAPI を使う google コレクターは従量課金なので `DAILY_SOURCES` から除外している。
+SerpAPI を使う google コレクターは従量課金なので収集元から常に除外している
+（`_daily_sources()` 参照）。
 
 【安全弁】
   - 既定は無効(`daily_outreach_enabled=False`)。/today のトグルで明示的にONにする
@@ -47,7 +48,19 @@ JST = timezone(timedelta(hours=9))
 BASE_URL = "https://sales-6g78.onrender.com"
 
 # 収集は無料スクレイパーのみ。google(SerpAPI=従量課金)は使わない。
-DAILY_SOURCES = ["category"]
+def _daily_sources() -> tuple[list[str], str]:
+    """(使うコレクター, パイプラインのモード) を実行環境に応じて決める。
+
+    どれも無料。google コレクターだけは SerpAPI（従量課金）なので常に外す。
+
+    Mac常駐では category に加えて EC系コレクター(Yahoo!ショッピング/楽天/DuckDuckGo)
+    も回す。EC出店状況が取れるぶんスコアが上がって rank S/A になりやすく、
+    Web/EC制作の営業先としても狙いが合う。母数も増えるので50件/日に近づく。
+    Render では10分で殺されるため category 1本に絞る。
+    """
+    if _is_render():
+        return ["category"], "category"
+    return ["yahoo", "rakuten", "duckduckgo", "category"], "both"
 CATEGORY_ROTATION = ["A", "B", "C", "D"]
 
 # 収集量は実行環境で変える。
@@ -154,6 +167,7 @@ async def _collect(day_index: int) -> int:
     from app.services.pipeline.category_collector import PREFECTURES
 
     categories, prefs_per_day, max_queries, max_urls = _collect_scope(day_index)
+    sources, mode = _daily_sources()
     # 全都道府県を prefs_per_day 件ずつスライドさせながら回す
     offset = (day_index * prefs_per_day) % len(PREFECTURES)
     prefs = [PREFECTURES[(offset + i) % len(PREFECTURES)] for i in range(prefs_per_day)]
@@ -164,6 +178,10 @@ async def _collect(day_index: int) -> int:
         "max_queries_per_category": max_queries,
         "max_urls_per_category": max_urls,
         "generate_proposals": True,  # ローカルClaudeで個別提案文まで作る
+        # EC系コレクター(yahoo/rakuten/duckduckgo)が使う登録キーワードのローテーション。
+        # 全件回すと重いので、日ごとにずらして一部だけ使う。
+        "keyword_limit": 12,
+        "keyword_offset": day_index * 12,
     }
 
     db = SessionLocal()
@@ -193,11 +211,11 @@ async def _collect(day_index: int) -> int:
                 return 0
 
         run = PipelineRun(
-            sources=json.dumps(DAILY_SOURCES),
+            sources=json.dumps(sources),
             keywords_count=0,
             skip_mx=1,
             status="pending",
-            mode="category",
+            mode=mode,
             category_config=json.dumps(category_config, ensure_ascii=False),
         )
         db.add(run)
