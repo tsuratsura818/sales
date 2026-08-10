@@ -39,6 +39,7 @@ from app.models.app_settings import AppSettings
 from app.models.pipeline import PipelineRun, PipelineResult
 from app.services import line_service
 from app.services import mailforge_client as mf
+from app.services.company_profile import append_boilerplate
 from app.services.suppression_service import is_suppressed
 
 logger = logging.getLogger(__name__)
@@ -440,10 +441,12 @@ def _push_to_mailforge(targets: list[dict], campaign_name: str) -> dict:
         cid = email_to_id.get(t["email"].lower())
         if not cid:
             continue
+        # 会社紹介・実績・CTA・住所・配信停止は生成させず、ここで必ず連結する。
+        # 生成結果が崩れても、法定表記と問い合わせ導線が欠けないようにするため。
         cc_items.append({
             "contact_id": cid,
             "personalized_subject": t["subject"],
-            "personalized_body": t["body"],
+            "personalized_body": append_boilerplate(t["body"]),
         })
         queued_ids.append(t["id"])
 
