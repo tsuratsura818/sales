@@ -178,11 +178,9 @@ async def _collect(day_index: int, cap: int = 20) -> int:
         "prefectures": prefs,
         "max_queries_per_category": max_queries,
         "max_urls_per_category": max_urls,
-        "generate_proposals": True,  # ローカルClaudeで個別提案文まで作る
-        # 収集は多めに回すが、提案文は必要数だけ作る。
-        # 集めた全件（実測164件）を生成すると Claude の利用枠を一度に使い切る。
-        # 生成しなかったぶんは在庫として残り、翌日以降に追い生成で拾われる。
-        "max_proposals": max(cap * 2, 20),
+        # 収集の段階では提案文を作らない。選別を通った相手だけ後から生成する。
+        # 集めた全件（実測164件）を生成すると Claude の利用枠を一度に使い切るため。
+        "generate_proposals": False,
         # EC系コレクター(yahoo/rakuten/duckduckgo)が使う登録キーワードのローテーション。
         # 全件回すと重いので、日ごとにずらして一部だけ使う。
         "keyword_limit": 12,
@@ -247,17 +245,44 @@ async def _collect(day_index: int, cap: int = 20) -> int:
     return found
 
 
-def _pick_candidates(limit: int) -> list[dict]:
+def _screenable_query(db):
+    """選別にかけられるリード（提案文はまだ無くてよい）。
+
+    選別は会社名・URL・業種だけで判定でき、提案文を必要としない。
+    先に選別してから通ったものだけ生成することで、捨てる分の生成を避ける。
+    """
+    return (
+        db.query(PipelineResult)
+        .filter(
+            PipelineResult.queued_at.is_(None),
+            PipelineResult.excluded_reason.is_(None),
+            PipelineResult.email.isnot(None),
+            PipelineResult.website.isnot(None),
+            or_(
+                PipelineResult.rank.in_(SEND_RANKS),
+                and_(
+                    PipelineResult.category.isnot(None),
+                    PipelineResult.confidence >= MIN_CATEGORY_CONFIDENCE,
+                ),
+            ),
+        )
+        .order_by(PipelineResult.score.desc(), PipelineResult.id)
+    )
+
+
+def _pick_candidates(limit: int, require_proposal: bool = True) -> list[dict]:
     """選別にかける候補を集める。配信停止リストに載っている宛先はここで除外する。
 
-    この後 _screen_targets で落ちる分があるので、送信上限より多めに取ること。
+    require_proposal=False にすると提案文が未生成のものも対象にする
+    （選別を先に済ませて、通ったものだけ生成するため）。
     セッションを跨いで使うので ORM オブジェクトではなく dict にして返す。
     """
     db = SessionLocal()
     try:
         picked: list[dict] = []
         seen_emails: set[str] = set()
-        for r in _stock_query(db).limit(limit * 3).all():
+        q = _stock_query(db) if require_proposal else _screenable_query(db)
+        for r in q.limit(limit * 3).all():
             if len(picked) >= limit:
                 break
             email = (r.email or "").strip().lower()
@@ -376,6 +401,32 @@ async def _screen_targets(targets: list[dict]) -> tuple[list[dict], list[dict]]:
     for r in rejected:
         logger.info(f"  除外: {r['email']} ({r['company'][:30]}) — {r['reason']}")
     return passed, rejected
+
+
+async def _generate_for(targets: list[dict]) -> dict[int, tuple[str, str]]:
+    """指定したリードだけ提案文を生成し、{id: (件名, 本文)} を返す。
+
+    選別を通った相手だけを対象にすることで、捨てるぶんの生成を避ける。
+    """
+    from app.models.pipeline import PipelineResult as PR
+    from app.services.pipeline.runner import _enrich_with_proposals
+
+    ids = [t["id"] for t in targets]
+    db = SessionLocal()
+    try:
+        rows = db.query(PR).filter(PR.id.in_(ids)).all()
+        logger.info(f"日次アウトリーチ: 選別通過した{len(rows)}件の提案文を生成します")
+        await _enrich_with_proposals(rows, db)
+        return {
+            r.id: (r.personalized_subject, r.personalized_body)
+            for r in rows
+            if r.personalized_subject and r.personalized_body
+        }
+    except Exception as e:
+        logger.exception(f"日次アウトリーチ: 提案文の生成でエラー: {e}")
+        return {}
+    finally:
+        db.close()
 
 
 def _mark_excluded(rejected: list[dict]) -> None:
@@ -569,16 +620,11 @@ async def run_daily_outreach(collect: bool = True, send: bool = True) -> dict:
         logger.error("日次アウトリーチ: ローカルClaude利用不可のため中止")
         return {"started": False, "reason": "local_claude 利用不可", "sent": 0}
 
-    # 収集より先に、提案文が未生成のまま残っているリードを拾う。
-    # 新しく集める前に手持ちを使い切る方が速いし、利用枠も無駄にしない。
-    backfilled = await _backfill_proposals(cap * 3)
-    if backfilled:
-        logger.info(f"日次アウトリーチ: 追い生成で{backfilled}件が送信可能になりました")
-
     # 在庫（提案文まで揃った未送信リード）が足りなければ収集する
     db = SessionLocal()
     try:
-        stock = _stock_query(db).count()
+        # 提案文は選別後に作るので、在庫は「選別にかけられる件数」で数える
+        stock = _screenable_query(db).count()
     finally:
         db.close()
 
@@ -606,7 +652,7 @@ async def run_daily_outreach(collect: bool = True, send: bool = True) -> dict:
 
             db = SessionLocal()
             try:
-                stock = _stock_query(db).count()
+                stock = _screenable_query(db).count()
             finally:
                 db.close()
             if stock >= cap:
@@ -614,7 +660,7 @@ async def run_daily_outreach(collect: bool = True, send: bool = True) -> dict:
                 break
 
     # 選別で落ちる分を見込んで、上限の3倍を候補に取る
-    candidates = _pick_candidates(cap * 3)
+    candidates = _pick_candidates(cap * 3, require_proposal=False)
     if not candidates:
         await _notify_text(
             "📭 日次アウトリーチ: 送信できる新規リードがありませんでした\n\n"
@@ -624,10 +670,20 @@ async def run_daily_outreach(collect: bool = True, send: bool = True) -> dict:
         )
         return {"started": True, "collected": collected, "sent": 0}
 
-    # レビュー無しで送るので、ここで「営業して良い相手か」を1件ずつ判定する
+    # レビュー無しで送るので、ここで「営業して良い相手か」を1件ずつ判定する。
+    # 生成より先に選別することで、捨てる相手の提案文を作らずに済む。
     passed, rejected = await _screen_targets(candidates)
     _mark_excluded(rejected)
     targets = passed[:cap]
+
+    # 選別を通ったものだけ提案文を作る（未生成のものがあれば生成する）
+    need_generation = [t for t in targets if not t.get("subject")]
+    if need_generation:
+        generated = await _generate_for(need_generation)
+        targets = [t for t in targets if t.get("subject") or t["id"] in generated]
+        for t in targets:
+            if t["id"] in generated:
+                t["subject"], t["body"] = generated[t["id"]]
     if not targets:
         await _notify_text(
             "📭 日次アウトリーチ: 選別を通過したリードがありませんでした\n\n"
