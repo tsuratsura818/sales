@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import httpx
 from bs4 import BeautifulSoup
 
+from .extractors import decode_html
 from .config import RATE_LIMIT_SEC, random_ua
 from .site_analyzer import (
     analyze_html, extract_emails, _same_domain,
@@ -389,7 +390,7 @@ async def collect(
                     r = await client.get(url, headers=random_ua(), timeout=12)
                     if r.status_code != 200:
                         return None
-                    html = r.text
+                    html = decode_html(r)
                 except Exception:
                     return None
 
@@ -419,7 +420,7 @@ async def collect(
                             r2 = await client.get(contact_url, headers=random_ua(), timeout=10)
                             if r2.status_code != 200:
                                 continue
-                            t2 = BeautifulSoup(r2.text, "html.parser").get_text(" ")
+                            t2 = BeautifulSoup(decode_html(r2), "html.parser").get_text(" ")
                             emails2 = extract_emails(t2)
                             email = next((e for e in emails2 if _same_domain(e, url)), None)
                             if email:

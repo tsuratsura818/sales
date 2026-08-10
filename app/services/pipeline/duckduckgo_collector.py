@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup
 from .config import RATE_LIMIT_SEC, random_ua
 from .extractors import (
     extract_emails, extract_company, extract_address,
-    is_kansai, is_excluded, detect_ec_platform,
+    is_kansai, is_excluded, detect_ec_platform, decode_html,
 )
 
 log = logging.getLogger("pipeline.ddg")
@@ -169,7 +169,7 @@ async def collect(
                     resp = await client.get(url, headers=random_ua(), timeout=12)
                     if resp.status_code != 200:
                         continue
-                    html = resp.text
+                    html = decode_html(resp)
                 except (httpx.TimeoutException, httpx.ConnectError):
                     continue
                 except Exception as e:

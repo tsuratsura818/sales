@@ -383,7 +383,9 @@ function renderResults(results) {
     tbody.innerHTML = results.map(r => `
         <tr>
             <td><span class="rank-badge rank-${esc(r.rank)}">${esc(r.rank)}</span></td>
-            <td>${esc(r.company) || '-'}</td>
+            <td>${r.website
+                ? `<a href="${esc(r.website)}" target="_blank" rel="noopener noreferrer" style="color:#4a90d9" title="${esc(r.website)}">${esc(r.company) || esc(r.website)}</a>`
+                : (esc(r.company) || '-')}</td>
             <td><a href="mailto:${encodeURIComponent(r.email)}" style="color:#4a90d9">${esc(r.email)}</a></td>
             <td>${esc(r.ec_status) || '-'}</td>
             <td>${esc(r.platform) || '-'}</td>

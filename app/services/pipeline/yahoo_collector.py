@@ -8,7 +8,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from .config import SEARCH_KEYWORDS, RATE_LIMIT_YAHOO, random_ua
-from .extractors import extract_emails, extract_company, extract_address, is_kansai, is_excluded
+from .extractors import extract_emails, extract_company, extract_address, is_kansai, is_excluded, decode_html
 
 log = logging.getLogger("pipeline.yahoo")
 
@@ -60,7 +60,7 @@ async def collect(
                     if resp.status_code != 200:
                         break
                     consecutive_errors = 0
-                    soup = BeautifulSoup(resp.text, "html.parser")
+                    soup = BeautifulSoup(decode_html(resp), "html.parser")
                     for a in soup.find_all("a", href=re.compile(r"store\.shopping\.yahoo\.co\.jp/([a-z0-9_-]+)/", re.I)):
                         m = re.search(r"store\.shopping\.yahoo\.co\.jp/([a-z0-9_-]+)/", a["href"])
                         if m and m.group(1) not in shop_ids:
@@ -106,7 +106,7 @@ async def collect(
                     async with lock:
                         error_counter[0] = 0
 
-                    text = BeautifulSoup(resp.text, "html.parser").get_text()
+                    text = BeautifulSoup(decode_html(resp), "html.parser").get_text()
                     if not is_kansai(text):
                         return
                     emails = extract_emails(text)

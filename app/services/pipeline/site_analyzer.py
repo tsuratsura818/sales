@@ -12,6 +12,8 @@ from urllib.parse import urlparse, urljoin
 import httpx
 from bs4 import BeautifulSoup
 
+from .extractors import decode_html
+
 
 # ============================================================
 # サイト分析結果
@@ -463,7 +465,7 @@ async def analyze_and_extract_email(
         if r.status_code != 200:
             analysis.error = f"HTTP {r.status_code}"
             return analysis, None
-        html = r.text
+        html = decode_html(r)
     except Exception as e:
         analysis.error = type(e).__name__
         return analysis, None
@@ -486,7 +488,7 @@ async def analyze_and_extract_email(
                 r2 = await client.get(contact_url, headers=headers, timeout=10, follow_redirects=True)
                 if r2.status_code != 200:
                     continue
-                text2 = BeautifulSoup(r2.text, "html.parser").get_text(" ")
+                text2 = BeautifulSoup(decode_html(r2), "html.parser").get_text(" ")
                 emails2 = extract_emails(text2)
                 for e in emails2:
                     if _same_domain(e, url):

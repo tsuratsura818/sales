@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 
 from app.config import get_settings
 from .config import RATE_LIMIT_SEC, random_ua
-from .extractors import extract_emails, extract_company, extract_address, is_kansai, is_excluded
+from .extractors import extract_emails, extract_company, extract_address, is_kansai, is_excluded, decode_html
 
 log = logging.getLogger("pipeline.google")
 settings = get_settings()
@@ -100,7 +100,7 @@ async def collect(seen_emails: set[str], on_progress=None) -> list[CollectedLead
                     resp = await client.get(url, headers=random_ua())
                     if resp.status_code != 200:
                         continue
-                    html = resp.text
+                    html = decode_html(resp)
                 except Exception:
                     continue
 

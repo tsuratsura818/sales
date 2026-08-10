@@ -3,6 +3,59 @@ import re
 from .config import TARGET_AREAS, EXCLUDE_NAMES
 
 EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+
+# HTML内の文字コード宣言（<meta charset=...> / <meta http-equiv=... charset=...>）
+_META_CHARSET_RE = re.compile(
+    rb"""<meta[^>]+charset\s*=\s*["']?\s*([a-zA-Z0-9_\-]+)""", re.IGNORECASE
+)
+
+
+def decode_html(resp) -> str:
+    """httpx のレスポンスを正しい文字コードで文字列にする。
+
+    `resp.text` は Content-Type ヘッダの charset を信じるが、古い日本語サイトは
+    ヘッダに charset を書かず HTML の meta タグにだけ書いていることが多い。
+    その場合 httpx が UTF-8 と誤推定し、Shift_JIS のページが
+    「�}�Y���[」のように化ける（収集した会社名がそのまま営業メールの宛名に入る）。
+
+    優先順位: ヘッダのcharset → HTMLのmeta宣言 → 文字コード自動判定。
+    """
+    content = resp.content
+    if not content:
+        return ""
+
+    # 1) ヘッダに明示されていればそれを使う
+    header_charset = None
+    ctype = resp.headers.get("content-type", "")
+    m = re.search(r"charset=([a-zA-Z0-9_\-]+)", ctype, re.IGNORECASE)
+    if m:
+        header_charset = m.group(1)
+
+    # 2) HTML の meta 宣言（先頭4KBを見れば十分）
+    meta_charset = None
+    mm = _META_CHARSET_RE.search(content[:4096])
+    if mm:
+        meta_charset = mm.group(1).decode("ascii", "ignore")
+
+    for enc in (header_charset, meta_charset):
+        if not enc:
+            continue
+        try:
+            decoded = content.decode(enc, errors="strict")
+        except (LookupError, UnicodeDecodeError):
+            continue
+        return decoded
+
+    # 3) 自動判定（bs4 同梱。日本語の Shift_JIS / EUC-JP を拾える）
+    try:
+        from bs4 import UnicodeDammit
+        dammit = UnicodeDammit(content, is_html=True)
+        if dammit.unicode_markup:
+            return dammit.unicode_markup
+    except Exception:
+        pass
+
+    return content.decode("utf-8", errors="replace")
 EXCLUDE_EMAIL_DOMAINS = {"example.com", "test.com", "sentry.io", "wixpress.com", "shopify.com"}
 
 
