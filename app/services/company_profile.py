@@ -11,7 +11,12 @@
   - MailForge の送信者設定（住所・電話・メール）
 
 MailForge が末尾に「会社名 / 氏名 / TEL / Email」のフッタを自動で付けるため、
-ここでは重複しないよう住所・URL・配信停止のみを署名として置いている。
+ここでは重複しないよう住所・URLのみを署名として置いている。
+
+受信拒否の通知先は特定電子メール法で表示が必要なため、末尾の一文
+「ご不要でしたらその旨ご返信ください」で担保している。一括配信の体裁を
+避けたいという意向により、注意書き調（※〜）ではなく本文の流れに馴染む
+書き方にしてある。この一文は消さないこと。
 """
 
 COMPANY_NAME = "株式会社TSURATSURA"
@@ -74,14 +79,12 @@ ECを運営しており、阪神百貨店・西武渋谷など百貨店の催事
 （ご参考まで、Webサイト制作は30万円程度から、
 　ECサイト構築は50万円程度からお受けしております）
 
+なお、ご不要でしたらその旨ご返信ください。以後お送りいたしません。
+
 ──────────────────────────────
 {COMPANY_NAME}　{CONTACT_NAME}
 {COMPANY_ZIP} {COMPANY_ADDRESS}
 {COMPANY_URL}
-
-※本メールは、貴社サイトに公開されているアドレス宛にお送りしております。
-　今後の配信をご希望されない場合は、本メールに「配信停止」とご返信ください。
-　以後お送りすることはございません。
 """
 
 
@@ -89,6 +92,6 @@ def append_boilerplate(body: str) -> str:
     """パーソナライズ本文に定型ブロックを連結する（二重付与はしない）"""
     if not body:
         return BOILERPLATE.strip()
-    if COMPANY_URL in body and "配信停止" in body:
+    if COMPANY_URL in body and COMPANY_ADDRESS in body:
         return body  # すでに付いている
     return body.rstrip() + "\n\n" + BOILERPLATE.strip()
