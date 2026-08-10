@@ -40,6 +40,17 @@ log = logging.getLogger("run_daily_outreach")
 JST = timezone(timedelta(hours=9))
 
 
+def _file_outreach_mail() -> None:
+    """送信済み・返信を専用フォルダへ振り分ける（失敗しても本処理は続行）"""
+    try:
+        from app.services.mail_folder_service import file_outreach_mail
+        r = file_outreach_mail()
+        if r.get("sent") or r.get("replies"):
+            log.info(f"フォルダ振り分け: 送信{r['sent']}件 / 返信{r['replies']}件")
+    except Exception as e:
+        log.warning(f"フォルダ振り分けに失敗: {e}")
+
+
 async def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--force", action="store_true",
@@ -62,6 +73,12 @@ async def main() -> int:
     from app.tasks.daily_outreach_scheduler import run_daily_outreach
 
     init_db()
+
+    # 送信メールと返信のフォルダ振り分けは、アウトリーチを実行するかどうかに
+    # 関わらず毎回行う。launchd から30分ごとに呼ばれるので、
+    # 配信が進むにつれて送られたメールも取りこぼさずラベルが付く。
+    # （送信は120〜300秒間隔なので、実行直後の1回だけでは大半が未送信のまま）
+    _file_outreach_mail()
 
     today = datetime.now(JST).strftime("%Y-%m-%d")
     db = SessionLocal()
@@ -124,14 +141,8 @@ async def main() -> int:
 
     log.info(f"完了: {result}")
 
-    # 送信ぶんを専用フォルダに振り分ける（返信ぶんは reply_checker が随時拾う）
-    try:
-        from app.services.mail_folder_service import file_outreach_mail
-        filed = file_outreach_mail()
-        log.info(f"フォルダ振り分け: 送信{filed['sent']}件 / 返信{filed['replies']}件")
-    except Exception as e:
-        log.warning(f"フォルダ振り分けに失敗（送信自体は完了しています）: {e}")
-
+    # 送信直後のぶんを拾う。残りは以降30分ごとの起動で順次ラベルが付く。
+    _file_outreach_mail()
     return 0
 
 
