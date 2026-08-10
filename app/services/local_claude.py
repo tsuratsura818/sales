@@ -18,6 +18,7 @@ import logging
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 from typing import Any
 
@@ -34,6 +35,25 @@ DEFAULT_MAX_BUDGET_USD = float(os.environ.get("CLAUDE_CLI_MAX_BUDGET_USD", "3.0"
 _BRIDGE_POLL_SEC = 5
 
 
+# CLI に渡すと定額サブスクではなく従量課金のAPIを使ってしまう環境変数。
+# .env に ANTHROPIC_API_KEY があると load_dotenv() が os.environ に載せてしまい、
+# サブスクではなくAPI課金で動いてしまう（残高があれば黙って課金され続ける）。
+_METERED_ENV_VARS = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_API_URL",
+    "ANTHROPIC_BASE_URL",
+)
+
+
+def _subscription_env() -> dict:
+    """定額サブスクで動かすための環境を作る（従量課金の指定を取り除く）"""
+    env = os.environ.copy()
+    for key in _METERED_ENV_VARS:
+        env.pop(key, None)
+    return env
+
+
 class ClaudeCliError(RuntimeError):
     """Claude CLI 呼び出しの失敗を示す例外"""
 
@@ -44,6 +64,7 @@ def _cli_available() -> bool:
         r = subprocess.run(
             [CLAUDE_BIN, "--version"],
             capture_output=True, timeout=5, check=False,
+            env=_subscription_env(),
         )
         return r.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
@@ -239,6 +260,8 @@ async def invoke(
                 capture_output=True,
                 timeout=timeout,
                 check=False,
+                env=_subscription_env(),
+                cwd=tempfile.gettempdir(),  # CLAUDE.md 等を読ませない
             )
             return r.returncode, r.stdout or b"", r.stderr or b""
         except FileNotFoundError as e:

@@ -84,6 +84,23 @@ def _start_job(prompt: str, timeout: int) -> str:
     return job_id
 
 
+# これらが環境にあると CLI は定額サブスクではなく従量課金のAPIを使ってしまう。
+# 課金ゼロを保証するため、実行時に必ず取り除く。
+METERED_ENV_VARS = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_API_URL",
+    "ANTHROPIC_BASE_URL",
+)
+
+
+def subscription_env() -> dict:
+    env = os.environ.copy()
+    for key in METERED_ENV_VARS:
+        env.pop(key, None)
+    return env
+
+
 def run_claude(prompt: str, timeout: int = 240) -> str:
     """ローカル claude を実行して出力テキストを返す(okami-wealth と同方式)。"""
     args = [CLAUDE_BIN, "-p", "--output-format", "text"]
@@ -96,6 +113,7 @@ def run_claude(prompt: str, timeout: int = 240) -> str:
         capture_output=True,
         cwd=tempfile.gettempdir(),  # CLAUDE.md 等を読ませない
         timeout=timeout,
+        env=subscription_env(),  # 従量課金の指定を持ち込まない
         **kwargs,
     )
     if r.returncode != 0:
