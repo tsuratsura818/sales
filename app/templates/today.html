@@ -300,13 +300,13 @@
 </div>
 {% endif %}
 
-<!-- アクティブ案件（Notion / 案件化） -->
+<!-- アクティブ案件（Notion / 進行中） -->
 {% if notion_connected %}
 <div class="card" style="margin-bottom:16px;">
     <h3 style="margin-top:0; display:flex; align-items:center; gap:8px; justify-content:space-between;">
         <span style="display:flex; align-items:center; gap:8px;">
             📁 アクティブ案件
-            <span style="font-size:0.75rem; font-weight:400; color:#888;">案件化 {{ active_projects|length }}件</span>
+            <span style="font-size:0.75rem; font-weight:400; color:#888;">進行中 {{ active_projects|length }}件</span>
         </span>
         <a href="/projects" style="font-size:0.8rem; font-weight:400;">案件管理 →</a>
     </h3>

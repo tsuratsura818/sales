@@ -110,7 +110,7 @@ async def gantt_page(request: Request):
 
 class ProjectCreate(BaseModel):
     name: str
-    status: str = "提案前"
+    status: str = "見込み"
     client: str = ""
     amount: Optional[int] = None
     start_date: Optional[str] = None
@@ -223,7 +223,7 @@ async def api_update_project(project_id: str, data: ProjectUpdate, suppress_task
         generated_tasks: list[dict] = []
         # ステータスが「案件化」になったら定型タスクを自動生成（既存タスクが無い場合のみ）
         # 詳細モーダルからの保存(suppress_tasks=True)では生成しない
-        if updates.get("status") == "案件化" and not suppress_tasks:
+        if updates.get("status") == "進行中" and not suppress_tasks:
             try:
                 generated_tasks = await notion_service.generate_onboarding_tasks(project_id)
             except Exception:
@@ -668,7 +668,7 @@ async def api_lead_to_project(lead_id: int, data: LeadToProjectRequest):
     try:
         project = await notion_service.create_project(
             name=data.name,
-            status="提案前",
+            status="見込み",
             client_name=data.client,
             amount=data.amount,
             url=data.url,

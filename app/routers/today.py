@@ -72,7 +72,7 @@ async def today_page(request: Request):
         # アクティブ案件（案件化ステータス）。案件は納期より「進行中のもの」を把握する
         try:
             projects = await notion_service.list_projects()
-            active_projects = [p for p in projects if p.get("status") == "案件化"]
+            active_projects = [p for p in projects if p.get("status") == "進行中"]
             active_projects.sort(key=lambda x: (x.get("client") or "", x.get("name") or ""))
         except Exception:
             active_projects = []
