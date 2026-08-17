@@ -7,6 +7,8 @@ ChatGPT は「Shopifyを名指しで提案する」「仕組みで説明する�
 「何を書くか」を手順と穴埋めの形にして、外せない要素を構造で強制する。
 """
 
+import os
+
 SYSTEM_PROMPT_GPT = """あなたは株式会社TSURATSURAの営業担当・西川です。
 渡された企業リストの各社について、営業メールの「相手ごとの導入部分」を書きます。
 
@@ -143,3 +145,41 @@ def clean_generated(items: list[dict]) -> list[dict]:
             "body": strip_citations(it.get("body", "")),
         })
     return out
+
+
+# ── ChatGPT 呼び出し ────────────────────────────────────────
+# 常時起動のChrome(CDP)を画像生成ジョブ等と共有しているため、
+# 実行が重なるとロックを取れない。ask.mjs の既定待ち時間は300秒で、
+# 画像生成が長引くとその日の送信が空振りする。日次送信は時刻に厳密で
+# ないので、待ち時間を長く取って確実に通す。
+CHROME_LOCK_WAIT_MS = 45 * 60 * 1000   # 45分待つ
+ASK_TIMEOUT_MS = 15 * 60 * 1000        # 生成自体の上限（実測 142〜435秒）
+
+CHATGPT_DIR = "/Users/nishikawamasashi/chatgpt-image-auto"
+
+
+def ask_chatgpt(prompt: str) -> str:
+    """ログイン済みChatGPTに投げて応答テキストを返す（Claudeの枠を使わない）"""
+    import json as _json
+    import subprocess
+    import tempfile
+
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as f:
+        f.write(prompt)
+        path = f.name
+
+    env = {**os.environ, "LOCK_WAIT_MS": str(CHROME_LOCK_WAIT_MS)}
+    r = subprocess.run(
+        ["node", "ask.mjs", "--file", path, "--json", "--timeout", str(ASK_TIMEOUT_MS)],
+        cwd=CHATGPT_DIR, capture_output=True, env=env,
+        timeout=(CHROME_LOCK_WAIT_MS + ASK_TIMEOUT_MS) / 1000 + 120,
+    )
+    if r.returncode != 0:
+        raise RuntimeError(
+            "ChatGPT呼び出しに失敗: " + r.stderr.decode("utf-8", "replace")[-300:]
+        )
+    d = _json.loads(r.stdout.decode("utf-8", "replace"))
+    if not d.get("ok"):
+        raise RuntimeError("ChatGPTの応答が失敗しました")
+    return d.get("text", "")
+

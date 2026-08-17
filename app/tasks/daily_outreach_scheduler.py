@@ -418,25 +418,109 @@ async def _screen_targets(targets: list[dict]) -> tuple[list[dict], list[dict]]:
     return passed, rejected
 
 
+async def _final_check(targets: list[dict]) -> tuple[list[dict], list[dict]]:
+    """生成された文面を Claude で最終確認し、(送ってよいもの, 弾いたもの) を返す。
+
+    生成は ChatGPT に任せているので、事実の創作・宛名の誤り・引用マークの
+    混入などをここで止める。Claude を使うのはこの1回だけ。
+    """
+    import json as _json
+
+    from app.models.pipeline import PipelineResult as PR
+    from app.services.proposal_checker import check_proposals
+
+    db = SessionLocal()
+    try:
+        issues_by_id: dict[int, str] = {}
+        for r in db.query(PR).filter(PR.id.in_([t["id"] for t in targets])).all():
+            try:
+                sa = _json.loads(r.site_analysis) if r.site_analysis else {}
+                issues_by_id[r.id] = "; ".join(
+                    i.get("text", "") for i in (sa.get("issues") or [])
+                )[:200]
+            except Exception:
+                issues_by_id[r.id] = ""
+    finally:
+        db.close()
+
+    items = [{
+        "company": t["company"], "issues": issues_by_id.get(t["id"], ""),
+        "subject": t["subject"], "body": t["body"],
+    } for t in targets]
+
+    verdicts = await check_proposals(items)
+    ok_list, ng_list = [], []
+    for t, v in zip(targets, verdicts):
+        if v["ok"]:
+            ok_list.append(t)
+        else:
+            ng_list.append({**t, "reason": f"最終チェック: {v['reason']}"[:200]})
+            logger.info(f"  最終チェックで除外: {t['company'][:24]} — {v['reason'][:60]}")
+    return ok_list, ng_list
+
+
 async def _generate_for(targets: list[dict]) -> dict[int, tuple[str, str]]:
     """指定したリードだけ提案文を生成し、{id: (件名, 本文)} を返す。
 
+    生成は ChatGPT（常時起動Chrome経由・定額枠）に任せ、Claude の利用枠を使わない。
+    Claude は後段の最終チェック1回だけに使う。
     選別を通った相手だけを対象にすることで、捨てるぶんの生成を避ける。
     """
+    import json as _json
+    from dataclasses import asdict
+
     from app.models.pipeline import PipelineResult as PR
-    from app.services.pipeline.runner import _enrich_with_proposals
+    from app.services.local_claude import extract_json
+    from app.services.proposal_service import _build_batch_prompt
+    from app.services.proposal_prompt_gpt import (
+        SYSTEM_PROMPT_GPT, ask_chatgpt, clean_generated,
+    )
+    from app.services.pipeline.site_analyzer import analyze_and_extract_email, detect_issues
 
     ids = [t["id"] for t in targets]
     db = SessionLocal()
     try:
         rows = db.query(PR).filter(PR.id.in_(ids)).all()
-        logger.info(f"日次アウトリーチ: 選別通過した{len(rows)}件の提案文を生成します")
-        await _enrich_with_proposals(rows, db)
-        return {
-            r.id: (r.personalized_subject, r.personalized_body)
-            for r in rows
-            if r.personalized_subject and r.personalized_body
-        }
+        logger.info(f"日次アウトリーチ: 選別通過した{len(rows)}件の提案文を生成します(ChatGPT)")
+
+        # 診断が未取得のものはここで取る（提案の根拠になる）
+        import httpx
+        ua = "Mozilla/5.0 (compatible; TSURATSURA-ResearchBot/3.1; +https://tsuratsura.co.jp/bot)"
+        need = [r for r in rows if not r.site_analysis and r.website]
+        if need:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+                for r in need:
+                    try:
+                        a, _ = await analyze_and_extract_email(r.website, client, ua)
+                        a.issues = detect_issues(a, r.category or "B")
+                        r.site_analysis = _json.dumps(asdict(a), ensure_ascii=False, default=str)
+                    except Exception as e:
+                        logger.debug(f"サイト分析エラー {r.website}: {e}")
+            db.commit()
+
+        payload = [{
+            "url": r.website, "company": r.company, "industry": r.industry,
+            "category": r.category, "prefecture": r.location,
+            "analysis": _json.loads(r.site_analysis) if r.site_analysis else {},
+        } for r in rows]
+        prompt = SYSTEM_PROMPT_GPT + "\n\n---\n\n" + _build_batch_prompt(payload)
+
+        raw = await asyncio.to_thread(ask_chatgpt, prompt)
+        # 本文の改行がエスケープされずに返るので寛容なパーサを使い、
+        # ウェブ検索の引用マーク（出典行・+N）も落とす
+        arr = clean_generated(extract_json(raw))
+        if len(arr) != len(rows):
+            logger.warning(f"生成件数が一致しません: 要求{len(rows)}件 / 応答{len(arr)}件")
+
+        out: dict[int, tuple[str, str]] = {}
+        for r, a in zip(rows, arr):
+            subject, body = (a.get("subject") or "").strip(), (a.get("body") or "").strip()
+            if subject and body:
+                r.personalized_subject, r.personalized_body = subject, body
+                out[r.id] = (subject, body)
+        db.commit()
+        logger.info(f"日次アウトリーチ: 提案文を{len(out)}件生成しました")
+        return out
     except Exception as e:
         logger.exception(f"日次アウトリーチ: 提案文の生成でエラー: {e}")
         return {}
@@ -746,6 +830,16 @@ async def run_daily_outreach(collect: bool = True, send: bool = True) -> dict:
         for t in targets:
             if t["id"] in generated:
                 t["subject"], t["body"] = generated[t["id"]]
+
+    # 生成はChatGPTなので、送ってよいかを Claude で最終確認する。
+    # レビュー無しで送るため、判定できなかったものは送らない。
+    if targets:
+        checked, ng = await _final_check(targets)
+        if ng:
+            _mark_excluded(ng)
+            logger.info(f"日次アウトリーチ: 最終チェックで{len(ng)}件を除外しました")
+        targets = checked
+
     if not targets:
         if candidates and not rejected:
             # _screen_targets がエラー/利用枠切れで通知済みのため二重送信しない
