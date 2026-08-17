@@ -538,6 +538,39 @@ def _push_to_mailforge(targets: list[dict], campaign_name: str) -> dict:
     }
 
 
+def _promote_to_leads(result_ids: list[int]) -> int:
+    """送信したリードを Lead テーブルに昇格させる。
+
+    選別と最終チェックを通ったリードは「営業して良いと確認済みの企業」であり、
+    メール以外（電話・再アプローチ・商談管理）にも使える資産になる。
+    pipeline_results に置いたままだと /leads の営業ワークフローから扱えないので、
+    送信のタイミングで昇格させて蓄積する。
+    """
+    if not result_ids:
+        return 0
+    from app.models.pipeline import PipelineResult as PR
+    from app.services.promotion_service import promote_to_lead
+
+    db = SessionLocal()
+    try:
+        promoted = 0
+        for r in db.query(PR).filter(PR.id.in_(result_ids)).all():
+            try:
+                if promote_to_lead(r, db):
+                    promoted += 1
+            except Exception as e:
+                db.rollback()
+                logger.warning(f"リード昇格に失敗 (id={r.id}): {e}")
+        if promoted:
+            logger.info(f"日次アウトリーチ: {promoted}件をリード一覧に追加しました")
+        return promoted
+    except Exception as e:
+        logger.exception(f"リード昇格でエラー: {e}")
+        return 0
+    finally:
+        db.close()
+
+
 def _mark_queued(result_ids: list[int], campaign_id: str) -> None:
     """送信キューに載せたリードに印をつけて二重送信を防ぐ"""
     if not result_ids:
@@ -750,8 +783,12 @@ async def run_daily_outreach(collect: bool = True, send: bool = True) -> dict:
     sent = result.get("sent", 0)
     if result.get("error"):
         logger.error(f"日次アウトリーチ: {result['error']}")
+    promoted = 0
     if sent > 0:
-        _mark_queued(result.get("queued_ids", []), result["campaign_id"])
+        queued_ids = result.get("queued_ids", [])
+        _mark_queued(queued_ids, result["campaign_id"])
+        # 選別と最終チェックを通った企業は資産として蓄積する
+        promoted = _promote_to_leads(queued_ids)
 
     await _notify(collected, sent, cap, len(rejected), result.get("campaign_id"), result.get("error"))
     return {
@@ -759,6 +796,7 @@ async def run_daily_outreach(collect: bool = True, send: bool = True) -> dict:
         "collected": collected,
         "sent": sent,
         "screened_out": len(rejected),
+        "promoted_leads": promoted,
         "campaign_id": result.get("campaign_id"),
     }
 

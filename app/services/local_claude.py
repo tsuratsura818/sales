@@ -326,6 +326,20 @@ def _classify_error(message: str, reason: str) -> ClaudeCliError:
     return ClaudeCliError(message)
 
 
+def _loads_lenient(s: str) -> Any:
+    """JSON文字列内に生の改行が入っていても読めるようにパースする。
+
+    営業メールの本文は段落分けのため改行を含む。生成側が改行を \\n に
+    エスケープせず素の改行のまま返すことがあり、その場合 json.loads は
+    "Invalid control character" で失敗する（ChatGPT の応答で実測）。
+    strict=False は文字列リテラル内の制御文字を許容する。
+    """
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        return json.loads(s, strict=False)
+
+
 def extract_json(text: str) -> Any:
     """Claude の自然文レスポンスから最初の JSON ブロックを抽出してパース。
 
@@ -341,7 +355,7 @@ def extract_json(text: str) -> Any:
     if fence:
         candidate = fence.group(1).strip()
         try:
-            return json.loads(candidate)
+            return _loads_lenient(candidate)
         except json.JSONDecodeError:
             pass
 
@@ -378,7 +392,7 @@ def extract_json(text: str) -> Any:
             if depth == 0:
                 candidate = text[start:i+1]
                 try:
-                    return json.loads(candidate)
+                    return _loads_lenient(candidate)
                 except json.JSONDecodeError as e:
                     raise ClaudeCliError(f"json parse failed: {e}") from e
 
