@@ -55,11 +55,24 @@ def promote_to_lead(result: PipelineResult, db: Session) -> Lead | None:
         except Exception:
             pass
 
+    # 収集時に site_analyzer で診断済みなので、その結果を Lead の各列へ写す。
+    # 写さないとリード一覧の HTTPS / モバイル / CMS / 著作権年が全て「-」になり、
+    # 単発検索由来のリードと並べたときに未診断に見えてしまう。
+    sa = {}
+    if result.site_analysis:
+        try:
+            sa = json.loads(result.site_analysis)
+        except Exception:
+            sa = {}
+
+    from urllib.parse import urlparse
+    domain = urlparse(result.website or "").netloc or None
+
     lead = Lead(
         search_job_id=None,
         pipeline_result_id=result.id,
         url=result.website or "",
-        domain=None,  # 既存 analyzer が走らないので未取得
+        domain=domain,
         title=result.company or "",
         status=status,
         contact_email=result.email or None,
@@ -69,6 +82,19 @@ def promote_to_lead(result: PipelineResult, db: Session) -> Lead | None:
         industry_category=result.industry,
         generated_email_subject=result.personalized_subject,
         generated_email_body=result.personalized_body,
+        # ここから診断結果
+        is_https=sa.get("is_https"),
+        has_viewport=sa.get("has_viewport"),
+        # 「不明」は判定できなかったという意味なので、列には入れず空にする
+        # （そのまま入れると一覧に「不明」というCMS名が表示されてしまう）
+        cms_type=(sa.get("cms_type") or None) if sa.get("cms_type") not in ("", "不明", "None") else None,
+        copyright_year=sa.get("copyright_year"),
+        has_og_image=sa.get("has_og_image"),
+        has_favicon=sa.get("has_favicon"),
+        is_ec_site=sa.get("is_ec_site"),
+        ec_platform=sa.get("ec_platform") or None,
+        has_contact_form=sa.get("has_contact_form"),
+        contact_page_url=sa.get("contact_url") or None,
     )
     db.add(lead)
     db.commit()
