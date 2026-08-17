@@ -387,6 +387,9 @@ async def _screen_targets(targets: list[dict]) -> tuple[list[dict], list[dict]]:
         return [], []
     except Exception as e:
         logger.error(f"日次アウトリーチ: 選別に失敗したため全件見送り: {e}")
+        await _notify_text(
+            f"⚠️ 日次アウトリーチ: 選別でエラーが発生したため全件見送り\n{str(e)[:200]}"
+        )
         return [], []
 
     passed: list[dict] = []
@@ -691,6 +694,9 @@ async def run_daily_outreach(collect: bool = True, send: bool = True) -> dict:
             if t["id"] in generated:
                 t["subject"], t["body"] = generated[t["id"]]
     if not targets:
+        if candidates and not rejected:
+            # _screen_targets がエラー/利用枠切れで通知済みのため二重送信しない
+            return {"started": True, "collected": collected, "sent": 0, "screened_out": 0}
         await _notify_text(
             "📭 日次アウトリーチ: 選別を通過したリードがありませんでした\n\n"
             f"・今回の収集: {collected}件\n"
