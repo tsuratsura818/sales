@@ -94,22 +94,116 @@ _COMPANY_TRAILING_LABELS = re.compile(
 )
 
 
+# 法人格を含む社名。ページタイトルから社名部分だけを取り出すために使う。
+_CORP = r"(?:株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|医療法人|学校法人)"
+# 「株式会社◯◯」（前置）を先に試す。日本語の社名はこちらが多数で、
+# 「◯◯株式会社」を先に試すと「神戸のあんこやさん株式会社」のように
+# 直前の説明文まで社名として拾ってしまう。
+# 社名の直後に付く売場・サイト名。社名の一部ではないので落とす。
+_SHOP_SUFFIX = re.compile(
+    r"(?:オンラインショップ|オンラインストア|公式(?:通販)?(?:サイト|ショップ|ストア)?|"
+    r"通販(?:サイト|ショップ)?|本店|ネットショップ|ショップ|ストア|WEBSHOP|Web[Ss]hop)$"
+)
+
+# ページ名がそのまま社名の後ろに付いたもの。社名の一部ではないので落とす。
+# 例:「まいど！おおきに屋クラクラ [会社概要]」「特定商取引法に基づく表記 - 大浜海苔店」
+_PAGE_LABEL = re.compile(
+    r"\s*[\[［(（【]?\s*(?:会社概要|企業情報|店舗情報|特定商取引法に基づく表記|"
+    r"特定商取引法|お問い合わせ|返品について|プライバシーポリシー|利用規約)"
+    r"\s*[\]］)）】]?\s*"
+)
+
+_CORP_NAME_RES = [
+    re.compile(rf"({_CORP}[^\s　｜|/／、。（()\[\]【】]{{2,20}})"),
+    re.compile(rf"([^\s　｜|/／、。（()\[\]【】]{{2,20}}{_CORP})"),
+]
+
+
 def clean_company_name(name: str) -> str:
     """抽出した会社名から前後のラベル・住所等のノイズを落とす"""
     if not name:
         return ""
     name = name.strip()
-    # 前置ラベルは複数付くことがある（「販売業者（商号）◯◯」等）
+
+    # ページ名（[会社概要] 等）は社名の前後どちらにも付くので先に落とす
+    name = _PAGE_LABEL.sub(" ", name).strip(" -‐-–—|｜")
+
+    # 先に前後のラベルを落とす（「（商号）」等が残ると社名の抽出を誤る）
     for _ in range(3):
         new = _COMPANY_LEADING_LABELS.sub("", name).strip()
         if new == name:
             break
         name = new
     name = _COMPANY_TRAILING_LABELS.sub("", name).strip()
+
+    # ページタイトルがそのまま入っている場合は社名だけ取り出す。
+    # 例: 「赤穂市の老舗和菓子屋 株式会社岡友恵堂 | 株式会社岡友惠堂は、兵庫県…です。19」
+    #  →「株式会社岡友恵堂」
+    if len(name) > 24 or "｜" in name or "|" in name or "は、" in name:
+        for pat in _CORP_NAME_RES:
+            m = pat.search(name)
+            if m and len(m.group(1)) > len("株式会社"):
+                # 社名の後ろに付く売場名（オンラインショップ等）は落とす
+                return _SHOP_SUFFIX.sub("", m.group(1)).strip()
+        # 法人格が無ければ区切り文字の手前までを社名とみなす
+        name = re.split(r"[｜|/／]|は、", name)[0].strip()
     # 記号のみの残骸や区切り文字を落とす
     name = re.sub(r"^[\s　:：\-–—|｜/]+", "", name)
     name = re.sub(r"[\s　:：\-–—|｜/]+$", "", name)
     return name.strip()
+
+
+# 会社名として成立しない文字列の特徴。
+# 収集元がページタイトルなので、記事見出し・ページ分類名・楽曲名などが
+# そのまま会社名欄に入ることがある（実測: 在庫18件中11件）。
+# これが宛名になると「秋田観光スポット12選！… ご担当者様」のような
+# メールが出来上がるため、生成前に落とす。
+_NOT_COMPANY_PATTERNS = [
+    r"\d+\s*選\b",                      # 「12選」
+    # 感嘆符・疑問符は記事見出しの特徴だが、屋号の一部のこともある
+    # （例:「まいど！おおきに屋クラクラ」）。文の途中に現れ、かつ長いものだけ落とす。
+    r"[！!？?].{14,}",
+    r"ランキング|おすすめ|まとめ|比較|口コミ|評判|徹底|完全ガイド|特集",
+    r"とは[？?]?$",
+    r"^(?:加盟|会員|参加)(?:企業|店舗|団体)",   # ページ分類名
+    r"（?都道府県別）?$|一覧$|カテゴリ$|検索結果$",
+    r"^Working at\b|^Jobs? at\b",        # 求人ページ
+    r"feat\.|【.*】.*[×xX].*",            # 楽曲・コラボ表記
+    r"の(?:観光|旅行)ガイド$",
+    r"(?:オープン|開店|閉店|新発売|発売|登場)$",   # ニュース見出し
+    r"^[^\s　]{2,6}(?:市内|県内|市|区)初",          # 「青森市内初 〜」
+]
+_NOT_COMPANY_RE = [re.compile(p, re.IGNORECASE) for p in _NOT_COMPANY_PATTERNS]
+
+
+def looks_like_company(name: str) -> bool:
+    """営業メールの宛名に使える会社名・屋号らしいか。
+
+    法人格が無くても店名・屋号なら通す。判断がつかないものは False に倒す
+    （レビュー無しで送るため、通すより落とす方が安全）。
+    """
+    if not name:
+        return False
+    n = name.strip()
+    if len(n) < 2 or len(n) > 30:
+        return False
+    # 法人格があれば会社名とみなす
+    if re.search(_CORP, n):
+        return True
+    for pat in _NOT_COMPANY_RE:
+        if pat.search(n):
+            return False
+    # 日本語をまったく含まない（英文の記事見出し等）
+    if not re.search(r"[ぁ-んァ-ヶ一-龠]", n):
+        return False
+    # 助詞や読点を含む文章はページタイトル
+    if re.search(r"[、。]|[はがをにでとも]\s", n):
+        return False
+    # 空白区切りの語が3つ以上あるのは検索語の羅列（SEO用タイトル）。
+    # 例:「神戸 洋菓子 ギフト専門店 神戸洋藝菓子ボックサン」
+    if len(re.split(r"[\s　]+", n)) >= 3:
+        return False
+    return True
 
 
 def extract_company(text: str) -> str:

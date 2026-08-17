@@ -235,8 +235,12 @@ async def _enrich_with_proposals(
             # 1回の呼び出しごとにシステムプロンプトのキャッシュ生成
             # （実測1万トークン前後）が発生するので、チャンクを小さくすると
             # 呼び出し回数が増えて固定費が積み上がる。12件に戻して回数を抑える。
+            # CLI は1回の呼び出しごとに内容と無関係に約1.3万トークンを消費する
+            # （`claude -p "1+1"` でも cache_creation 13,009 を実測）。
+            # 効くのはプロンプトを削ることより呼び出し回数を減らすことなので、
+            # 1日ぶん(20件)を1回にまとめる。
             proposals = await proposal_service.generate_batch_proposals(
-                targets, chunk_size=12, sleep_between_chunks=3.0,
+                targets, chunk_size=30, sleep_between_chunks=0.0,
             )
         except Exception as e:
             log.exception(f"Claude CLI バッチ生成エラー (type={type(e).__name__}): {e!r}")

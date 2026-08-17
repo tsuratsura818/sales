@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import httpx
 from bs4 import BeautifulSoup
 
-from .extractors import decode_html
+from .extractors import decode_html, clean_company_name, looks_like_company
 from .config import RATE_LIMIT_SEC, random_ua
 from .site_analyzer import (
     analyze_html, extract_emails, _same_domain,
@@ -437,9 +437,15 @@ async def collect(
                 # 業種ラベル
                 industry = axis.get("subcategory", "")
 
+                # ページタイトルがそのまま会社名になるため、社名部分を取り出し、
+                # 記事見出し等の「会社名でないもの」はここで捨てる。
+                company = clean_company_name(analysis.title or "")
+                if not looks_like_company(company):
+                    return None
+
                 lead = CollectedLead(
                     email=email,
-                    company=analysis.title[:60] if analysis.title else "",
+                    company=company,
                     industry=industry,
                     location=axis.get("prefecture", ""),
                     website=url,

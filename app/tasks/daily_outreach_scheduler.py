@@ -40,6 +40,7 @@ from app.models.pipeline import PipelineRun, PipelineResult
 from app.services import line_service
 from app.services import mailforge_client as mf
 from app.services.company_profile import append_boilerplate
+from app.services.pipeline.extractors import clean_company_name, looks_like_company
 from app.services.suppression_service import is_suppressed
 
 logger = logging.getLogger(__name__)
@@ -296,11 +297,17 @@ def _pick_candidates(limit: int, require_proposal: bool = True) -> list[dict]:
             if is_suppressed(email, db):
                 logger.info(f"配信停止リストのためスキップ: {email}")
                 continue
+            # 会社名として成立しないもの（記事見出し等）は宛名にできない。
+            # 収集時のフィルタを通っていない在庫が残っているためここでも見る。
+            company = clean_company_name(r.company or "")
+            if not looks_like_company(company):
+                logger.info(f"会社名として不適当なためスキップ: {(r.company or '')[:30]}")
+                continue
             seen_emails.add(email)
             picked.append({
                 "id": r.id,
                 "email": r.email,
-                "company": r.company or "",
+                "company": company,
                 "industry": r.industry or "",
                 "website": r.website or "",
                 "platform": r.platform or "",
