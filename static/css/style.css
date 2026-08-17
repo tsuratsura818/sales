@@ -336,6 +336,7 @@ textarea.form-control { resize: vertical; font-family: inherit; }
 .badge-analyzing { background: #fff3cd; color: #856404; }
 .badge-analyzed { background: #d4edda; color: #155724; }
 .badge-email_generated { background: #d1ecf1; color: #0c5460; }
+.badge-email_sent { background: #c8e6c9; color: #1b5e20; }
 .badge-sent { background: #c3e6cb; color: #155724; }
 .badge-replied { background: #d4edda; color: #155724; }
 .badge-error { background: #f8d7da; color: #721c24; }

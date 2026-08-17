@@ -57,6 +57,7 @@ STATUS_JA = {
     "generating": "生成中",
     "review": "確認待ち",
     "applying": "応募中",
+    "email_sent": "営業メール送信済み",
     "applied": "応募完了",
     "skipped": "スキップ",
     "expired": "期限切れ",

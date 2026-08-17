@@ -156,6 +156,9 @@ def _migrate_sqlite():
         ("pipeline_results", "queued_at",       "TIMESTAMP"),
         ("pipeline_results", "campaign_id",     "TEXT"),
         ("pipeline_results", "excluded_reason", "TEXT"),
+        # 日次アウトリーチの送信実績（リード一覧で送信済みか分かるように）
+        ("leads", "outreach_sent_at",      "TIMESTAMP"),
+        ("leads", "outreach_campaign_id",  "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
@@ -238,6 +241,9 @@ def _migrate_postgres():
         ("pipeline_results", "queued_at",       "TIMESTAMP"),
         ("pipeline_results", "campaign_id",     "TEXT"),
         ("pipeline_results", "excluded_reason", "TEXT"),
+        # 日次アウトリーチの送信実績（リード一覧で送信済みか分かるように）
+        ("leads", "outreach_sent_at",     "TIMESTAMP"),
+        ("leads", "outreach_campaign_id", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:

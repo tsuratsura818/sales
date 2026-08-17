@@ -538,7 +538,7 @@ def _push_to_mailforge(targets: list[dict], campaign_name: str) -> dict:
     }
 
 
-def _promote_to_leads(result_ids: list[int]) -> int:
+def _promote_to_leads(result_ids: list[int], campaign_id: str | None = None) -> int:
     """送信したリードを Lead テーブルに昇格させる。
 
     選別と最終チェックを通ったリードは「営業して良いと確認済みの企業」であり、
@@ -554,10 +554,23 @@ def _promote_to_leads(result_ids: list[int]) -> int:
     db = SessionLocal()
     try:
         promoted = 0
+        sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
         for r in db.query(PR).filter(PR.id.in_(result_ids)).all():
             try:
-                if promote_to_lead(r, db):
+                lead = promote_to_lead(r, db)
+                if lead:
                     promoted += 1
+                else:
+                    # 既に昇格済みでも送信実績は記録する
+                    from app.models.lead import Lead
+                    lead = db.query(Lead).filter(Lead.pipeline_result_id == r.id).first()
+                if lead:
+                    # status だけでは「生成済み」と「送信済み」が区別できないので
+                    # 送信日時とキャンペーンIDを別に持たせる
+                    lead.outreach_sent_at = sent_at
+                    lead.outreach_campaign_id = campaign_id
+                    lead.status = "email_sent"
+                    db.commit()
             except Exception as e:
                 db.rollback()
                 logger.warning(f"リード昇格に失敗 (id={r.id}): {e}")
@@ -788,7 +801,7 @@ async def run_daily_outreach(collect: bool = True, send: bool = True) -> dict:
         queued_ids = result.get("queued_ids", [])
         _mark_queued(queued_ids, result["campaign_id"])
         # 選別と最終チェックを通った企業は資産として蓄積する
-        promoted = _promote_to_leads(queued_ids)
+        promoted = _promote_to_leads(queued_ids, result.get("campaign_id"))
 
     await _notify(collected, sent, cap, len(rejected), result.get("campaign_id"), result.get("error"))
     return {

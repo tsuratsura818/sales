@@ -78,6 +78,11 @@ class Lead(Base):
 
     # フォローアップ
     followup_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    # 日次アウトリーチで実際にメールを送った日時とキャンペーンID。
+    # status だけだと「生成済み」と「送信済み」が区別できないため分けて持つ
+    # （送信は MailForge 側で行われ、Lead には記録が残らなかった）。
+    outreach_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    outreach_campaign_id: Mapped[str | None] = mapped_column(String, nullable=True)
     # None / active / paused / completed / stopped
 
     # Phase 6: 商談・成約追跡
