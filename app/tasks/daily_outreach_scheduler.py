@@ -377,7 +377,9 @@ async def _screen_targets(targets: list[dict]) -> tuple[list[dict], list[dict]]:
         from app.services.proposal_service import _proposal_model
         raw = await local_claude.invoke(
             prompt, system_prompt=SCREEN_SYSTEM_PROMPT,
-            model=_proposal_model(), timeout=600,
+            # 候補40件で入力が数千文字になる。600秒では足りず全件見送りになった
+            # （最終チェック側と同じ理由。片方だけ直していたのが漏れ）
+            model=_proposal_model(), timeout=1800,
         )
         verdicts = local_claude.extract_json(raw)
         if not isinstance(verdicts, list):
