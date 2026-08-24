@@ -168,12 +168,19 @@ def ask_chatgpt(prompt: str) -> str:
         f.write(prompt)
         path = f.name
 
-    env = {**os.environ, "LOCK_WAIT_MS": str(CHROME_LOCK_WAIT_MS)}
-    r = subprocess.run(
-        ["node", "ask.mjs", "--file", path, "--json", "--timeout", str(ASK_TIMEOUT_MS)],
-        cwd=CHATGPT_DIR, capture_output=True, env=env,
-        timeout=(CHROME_LOCK_WAIT_MS + ASK_TIMEOUT_MS) / 1000 + 120,
-    )
+    try:
+        env = {**os.environ, "LOCK_WAIT_MS": str(CHROME_LOCK_WAIT_MS)}
+        r = subprocess.run(
+            ["node", "ask.mjs", "--file", path, "--json", "--timeout", str(ASK_TIMEOUT_MS)],
+            cwd=CHATGPT_DIR, capture_output=True, env=env,
+            timeout=(CHROME_LOCK_WAIT_MS + ASK_TIMEOUT_MS) / 1000 + 120,
+        )
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
     if r.returncode != 0:
         raise RuntimeError(
             "ChatGPT呼び出しに失敗: " + r.stderr.decode("utf-8", "replace")[-300:]
