@@ -1,0 +1,79 @@
+@import 'tailwindcss';
+
+/* -------------------------------------------------------------
+   デザイントークン
+   ここが唯一の正。新しい色を足さない（CLAUDE.md §5）
+   ------------------------------------------------------------- */
+@theme {
+  --color-washi: #fbf7ef; /* 地・生成り */
+  --color-sumi: #23201c; /* 文字・墨 */
+  --color-hare: #c8873a; /* 差し色・陽だまり */
+  --color-line: #ddd3c2; /* 罫 */
+
+  --color-sumi-70: #23201cb3;
+  --color-sumi-55: #23201c8c;
+  --color-washi-shade: #f4eee2;
+
+  --font-mincho: 'Hiragino Mincho ProN', 'Yu Mincho', 'YuMincho', 'Noto Serif JP', serif;
+  --font-gothic: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Noto Sans JP',
+    system-ui, sans-serif;
+}
+
+/* -------------------------------------------------------------
+   日本語組版の下地
+   ------------------------------------------------------------- */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--color-washi);
+  color: var(--color-sumi);
+  font-family: var(--font-gothic);
+  font-feature-settings: 'palt' 1;
+  line-height: 1.8;
+  letter-spacing: 0.02em;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-mincho);
+  font-weight: 500;
+  line-height: 1.45;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  letter-spacing: 0.04em;
+}
+
+/* 数字・英字は組版を詰めない */
+.tabular {
+  font-feature-settings: 'tnum' 1;
+  font-variant-numeric: tabular-nums;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-hare);
+  outline-offset: 2px;
+}
+
+/* 画像は必ず width/height を持たせる。ここは最後の砦（CLS対策） */
+img,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

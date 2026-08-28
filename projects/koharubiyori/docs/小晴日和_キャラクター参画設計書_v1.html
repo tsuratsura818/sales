@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>キャラクター参画設計書｜小晴日和 KOHARU-BIYORI</title>
+<meta name="description" content="露店限定の編集レーベル「小晴日和」に外部クリエイターのキャラクターIPを迎え入れるための、選定基準・三層構造・掛け紙運用・契約実務をまとめた設計書。">
+<style>
+@layer reset, tokens, base, layout, components, print;
+
+@layer reset {
+  *, *::before, *::after { box-sizing: border-box; }
+  body, h1, h2, h3, h4, p, ul, ol, li, figure, table { margin: 0; padding: 0; }
+  ul, ol { list-style: none; }
+  table { border-collapse: collapse; }
+}
+
+@layer tokens {
+  :root {
+    --washi:   oklch(0.977 0.012 88);   /* #FBF7EF 生成り */
+    --washi-2: oklch(0.951 0.021 85);   /* #F3ECDF */
+    --washi-3: oklch(0.925 0.026 82);
+    --sumi:    oklch(0.245 0.008 65);   /* #23201C 墨 */
+    --sumi-2:  oklch(0.505 0.012 65);   /* 副次 */
+    --sumi-3:  oklch(0.665 0.010 65);
+    --hare:    oklch(0.635 0.108 62);   /* #C8873A 陽だまり */
+    --hare-pale: oklch(0.93 0.038 78);
+    --sora:    oklch(0.605 0.045 235);  /* 淡い空 */
+    --line:    oklch(0.86 0.018 80);
+    --measure: 46rem;
+    --mincho: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", "MS PMincho", serif;
+    --gothic: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+  }
+}
+
+@layer base {
+  body {
+    background: oklch(0.90 0.015 82);
+    color: var(--sumi);
+    font-family: var(--gothic);
+    line-height: 1.85;
+    letter-spacing: 0.03em;
+    line-break: strict;
+    overflow-wrap: anywhere;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 { font-family: var(--mincho); line-height: 1.45; word-break: keep-all; font-feature-settings: "palt" 1; }
+  p { text-wrap: pretty; }
+  strong { font-weight: 700; }
+  em { font-style: normal; background: linear-gradient(transparent 62%, var(--hare-pale) 62%); font-weight: 700; }
+}
+
+@layer layout {
+  .sheet {
+    inline-size: 297mm;
+    min-block-size: 210mm;
+    margin: 8mm auto;
+    background: var(--washi);
+    padding: 13mm 16mm 11mm;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    box-shadow: 0 2px 18px oklch(0 0 0 / 0.14);
+    background-image:
+      radial-gradient(oklch(0.80 0.02 80 / 0.35) 0.5px, transparent 0.6px);
+    background-size: 4px 4px;
+  }
+  .sheet::after {
+    content: attr(data-no);
+    position: absolute;
+    inset-block-end: 7mm; inset-inline-end: 18mm;
+    font-family: var(--mincho);
+    font-size: 9pt; color: var(--sumi-3); letter-spacing: 0.18em;
+  }
+  .sheet::before {
+    content: "小晴日和 ｜ KOHARU-BIYORI";
+    position: absolute;
+    inset-block-start: 7mm; inset-inline-start: 18mm;
+    font-family: var(--mincho);
+    font-size: 8pt; color: var(--sumi-3); letter-spacing: 0.22em;
+  }
+  .body { flex: 1; display: flex; flex-direction: column; gap: 5mm; }
+  .cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; }
+  .cols-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6mm; }
+  .cols-2-1 { display: grid; grid-template-columns: 1.35fr 1fr; gap: 8mm; }
+  .cols-2 > *, .cols-3 > *, .cols-2-1 > * { min-inline-size: 0; }
+  table.tbl { table-layout: fixed; }
+}
+
+@layer components {
+  .kicker {
+    font-family: var(--mincho);
+    font-size: 8.5pt; letter-spacing: 0.3em; color: var(--hare);
+    margin-block-end: 2mm;
+  }
+  .h-sec {
+    font-size: 19pt; letter-spacing: 0.04em;
+    padding-block-end: 3mm;
+    border-block-end: 1px solid var(--line);
+    margin-block-end: 5mm;
+  }
+  .h-sec .en { font-size: 8pt; font-family: var(--gothic); color: var(--sumi-3); letter-spacing: 0.2em; margin-inline-start: 4mm; }
+  .lead { font-size: 10pt; line-height: 1.9; color: var(--sumi-2); max-inline-size: var(--measure); }
+  .txt { font-size: 9pt; line-height: 1.9; }
+  .txt-s { font-size: 8pt; line-height: 1.8; color: var(--sumi-2); }
+
+  .card {
+    background: oklch(1 0 0 / 0.55);
+    border: 1px solid var(--line);
+    padding: 5mm 6mm;
+  }
+  .card-h { font-family: var(--mincho); font-size: 12pt; margin-block-end: 2.5mm; }
+  .card-n {
+    font-family: var(--mincho); font-size: 8pt; color: var(--hare);
+    letter-spacing: 0.2em; margin-block-end: 1.5mm;
+  }
+
+  table.tbl { inline-size: 100%; font-size: 8.5pt; }
+  table.tbl th, table.tbl td {
+    border: 1px solid var(--line);
+    padding: 2.2mm 2.6mm;
+    vertical-align: top;
+    text-align: start;
+    line-height: 1.7;
+  }
+  table.tbl th { background: var(--washi-2); font-weight: 700; font-family: var(--mincho); white-space: nowrap; }
+  table.tbl td.num { text-align: center; white-space: nowrap; font-family: var(--mincho); }
+  table.tbl tr.accent td { background: oklch(0.96 0.03 78 / 0.6); }
+
+  .list { display: flex; flex-direction: column; gap: 2.5mm; font-size: 9pt; }
+  .list li { position: relative; padding-inline-start: 6mm; line-height: 1.75; }
+  .list li::before { position: absolute; inset-inline-start: 0; inset-block-start: 0; }
+  .list li::before { content: "—"; color: var(--hare); font-family: var(--mincho); }
+  .list-n { counter-reset: n; }
+  .list-n li::before { counter-increment: n; content: counter(n); color: var(--hare); font-family: var(--mincho); font-size: 8.5pt; }
+
+  .tier {
+    border: 1px solid var(--line);
+    background: oklch(1 0 0 / 0.5);
+    padding: 5mm;
+    position: relative;
+    display: flex; flex-direction: column; gap: 2mm;
+  }
+  .tier-no { font-family: var(--mincho); font-size: 24pt; line-height: 1; color: var(--hare-pale); position: absolute; inset-block-start: 3mm; inset-inline-end: 4mm; }
+  .tier-name { font-family: var(--mincho); font-size: 13pt; }
+  .tier-sub { font-size: 7.5pt; letter-spacing: 0.16em; color: var(--sumi-3); }
+  .tier dl { display: grid; grid-template-columns: 17mm 1fr; gap: 1.2mm 2mm; font-size: 8pt; margin-block-start: 2mm; }
+  .tier dt { color: var(--sumi-3); }
+  .tier dd { margin: 0; }
+
+  .arrow-row { display: flex; align-items: center; gap: 3mm; }
+  .arrow { color: var(--hare); font-size: 12pt; }
+
+  .box-ng { border: 1px solid oklch(0.62 0.09 30); background: oklch(0.96 0.02 30 / 0.5); padding: 4mm 5mm; }
+  .box-ok { border: 1px solid var(--hare); background: oklch(0.96 0.03 78 / 0.5); padding: 4mm 5mm; }
+  .badge {
+    display: inline-block; font-size: 7.5pt; letter-spacing: 0.14em;
+    border: 1px solid currentColor; padding: 0.4mm 2mm; margin-inline-end: 2mm;
+  }
+  .b-ng { color: oklch(0.55 0.12 30); }
+  .b-ok { color: var(--hare); }
+
+  .quote {
+    font-family: var(--mincho); font-size: 13pt; line-height: 1.7;
+    border-inline-start: 2px solid var(--hare); padding-inline-start: 5mm;
+  }
+
+  .diagram { inline-size: 100%; height: auto; }
+
+  .cover { justify-content: center; gap: 0; }
+  .cover .brand { font-family: var(--mincho); font-size: 38pt; letter-spacing: 0.1em; }
+  .cover .tag { font-family: var(--mincho); font-size: 11pt; color: var(--sumi-2); letter-spacing: 0.14em; margin-block-start: 2mm; }
+  .cover .title { font-family: var(--mincho); font-size: 25pt; margin-block-start: 16mm; letter-spacing: 0.05em; }
+  .cover .meta { font-size: 8.5pt; color: var(--sumi-3); letter-spacing: 0.12em; margin-block-start: 4mm; }
+  .cover .abst { font-size: 9pt; color: var(--sumi-2); max-inline-size: 150mm; margin-block-start: 10mm; line-height: 1.95; }
+  .rule { inline-size: 22mm; block-size: 1px; background: var(--hare); margin-block: 6mm; }
+
+  .toc { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5mm 10mm; font-size: 9pt; margin-block-start: 8mm; }
+  .toc li { display: grid; grid-template-columns: 8mm 1fr; border-block-end: 1px dotted var(--line); padding-block: 1.2mm; }
+  .toc li span { font-family: var(--mincho); color: var(--hare); }
+}
+
+@media (max-width: 1180px) {
+  .sheet { inline-size: 100%; min-block-size: auto; padding: 8mm 6mm; margin: 4mm 0; }
+  .cols-2, .cols-3, .cols-2-1 { grid-template-columns: 1fr; gap: 5mm; }
+  .toc { grid-template-columns: 1fr; }
+  .cover .brand { font-size: 28pt; }
+  .cover .title { font-size: 19pt; margin-block-start: 10mm; }
+  table.tbl { font-size: 7.5pt; }
+  .sheet::before, .sheet::after { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+@layer print {
+  @media print {
+    @page { size: A4 landscape; margin: 0; }
+    body { background: #fff; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .sheet { margin: 0; box-shadow: none; break-after: page; inline-size: 297mm; min-block-size: 210mm; }
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- 01 表紙 -->
+<section class="sheet cover" data-no="01">
+  <div class="body cover" style="justify-content:center">
+    <p class="brand">小晴日和</p>
+    <p class="tag">なんでもない日に、小さな晴れ間を。</p>
+    <div class="rule"></div>
+    <h1 class="title">キャラクター参画設計書</h1>
+    <p class="meta">CHARACTER IP GUIDELINE　v1.0　｜　2026.08　｜　株式会社TSURATSURA</p>
+    <p class="abst">
+      本書は、小晴日和に外部クリエイターのキャラクターIPを迎え入れるにあたり、<strong>「誰を選ぶか」を属人的な好みではなく基準で決められる状態</strong>にするための設計書である。
+      小晴日和はすでに「六つの晴れ間」という編集軸と、掛け紙という翻訳装置を持っている。キャラクターもまた、商品と同じくこの装置を通す。
+      本書は、ブランドブック・出店戦略書・『晴れ間だより』発行計画と一式で運用する。
+    </p>
+    <ul class="toc">
+      <li><span>02</span>なぜ入れるのか／何が壊れるのか</li>
+      <li><span>07</span>三層構造 ― 参画の階段</li>
+      <li><span>03</span>ベンチマーク分解：フェリシモ型とniko and ...型</li>
+      <li><span>08</span>掛け紙という最小リスクの実験装置</li>
+      <li><span>04</span>大原則 三か条</li>
+      <li><span>09</span>ツクモを編集長に置く ― 入れ子の構造</li>
+      <li><span>05</span>選定基準「晴れ間の四問」</li>
+      <li><span>10</span>契約・権利の実務チェックリスト</li>
+      <li><span>06</span>スコアシートと足切り</li>
+      <li><span>11</span>年間運用とNEXT STEP</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 02 前提 -->
+<section class="sheet" data-no="02">
+  <div class="body">
+    <p class="kicker">PREMISE</p>
+    <h2 class="h-sec">なぜ入れるのか、そして何が壊れるのか<span class="en">WHY & RISK</span></h2>
+    <p class="lead">
+      キャラクターIPの導入は、小晴日和にとって<strong>正しく効く施策であると同時に、最も簡単にブランドを壊せる施策</strong>でもある。両面を先に確定させておく。
+    </p>
+    <div class="cols-2">
+      <div>
+        <div class="box-ok" style="margin-block-end:4mm">
+          <p class="card-n">効く理由</p>
+          <ul class="list txt">
+            <li><strong>露店は「立ち止まらせる」ことが全て。</strong>絵は3メートル手前から効く。器や革は手に取らないと伝わらないが、キャラクターは遠くから客を引く。導線の入口として最も強い。</li>
+            <li><strong>大義名分と完全に一致する。</strong>「分散した手仕事に光を当てる」——絵を描く人もまた、光の当たっていない手仕事の作り手である。器・革・ビールと同列に並べられる。</li>
+            <li><strong>クリエイター側が自分の客を連れてくる。</strong>作家のSNSフォロワーが京都の店先に来る。CAC≒0の新規獲得装置がもう一つ増える。</li>
+          </ul>
+        </div>
+        <div class="box-ng">
+          <p class="card-n" style="color:oklch(0.55 0.12 30)">壊れる理由</p>
+          <ul class="list txt">
+            <li><strong>棚の統一感が最初に死ぬ。</strong>生成り・墨・季節でまとめた棚に、原色でベタ塗りされた絵が一点入るだけで、そこだけが浮いて棚全体の説得力が落ちる。</li>
+            <li><strong>客層が入れ替わる。</strong>「キャラ買い」の客が増えると、澄香（メインターゲット）が居づらくなる。一度入れ替わった客層は戻らない。</li>
+            <li><strong>作り手の物語が薄まる。</strong>主役が季節と作り手からキャラクターに移ると、小晴日和は「雑貨屋」になる。</li>
+          </ul>
+        </div>
+      </div>
+      <div>
+        <div class="card" style="block-size:100%">
+          <p class="card-n">結論</p>
+          <p class="quote" style="margin-block-end:5mm">キャラクターを「載せる」のではなく、<br>晴れ間に「翻訳する」。</p>
+          <p class="txt">
+            小晴日和はすでに、<strong>複数事業のバラバラな商品を六つの晴れ間に翻訳して一つの棚に並べる</strong>という難題を、掛け紙という装置で解いている。
+            キャラクターも例外にしない。同じ装置を通す。
+          </p>
+          <p class="txt" style="margin-block-start:4mm">
+            つまり判断の順序はこうなる。<em>「このキャラクターは可愛いか」ではなく、「このキャラクターは六つの晴れ間のどれに住めるか」</em>。
+            後者に答えられないものは、どれだけ人気があっても入れない。
+          </p>
+          <p class="txt" style="margin-block-start:4mm">
+            この一行が守られている限り、キャラクターは何人入っても棚は壊れない。逆にこの一行を外した瞬間、一人目で壊れる。
+          </p>
+          <div class="rule" style="margin-block:5mm"></div>
+          <p class="txt-s">
+            ※「六つの晴れ間」＝朝／ひと息／夜／出かける／飾る／育てる。レザーの作り手参画時に六つ目を追加済み。
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 03 ベンチマーク -->
+<section class="sheet" data-no="03">
+  <div class="body">
+    <p class="kicker">BENCHMARK</p>
+    <h2 class="h-sec">フェリシモ型とniko and ...型は、正反対である<span class="en">WHAT TO BORROW</span></h2>
+    <p class="lead">
+      二社は「ブランドとキャラクターIPの共存がうまい」という点で同じに見えるが、<strong>構造は逆</strong>である。どちらを借りるかで設計が変わるため、まず分解する。
+    </p>
+    <div class="cols-2">
+      <div class="card">
+        <p class="card-n">A ｜ フェリシモ型 ― お題を出す側になる</p>
+        <p class="txt">
+          フェリシモは「YOU+MORE!」というユーモア雑貨ブランドを持ち、<strong>クリエイターの持ち込みを待つのではなく、ブランド側が毎月お題を出す</strong>仕組み（妄想商品化道場）を運営している。クリエイターは大喜利的にアイデアを出し、投票で選ばれたものが商品化される。
+        </p>
+        <p class="txt" style="margin-block-start:3mm"><strong>本質：</strong>審査の前に、<em>お題の時点で世界観のフィルターがかかっている</em>。だから何人参加しても、出てくるものはブランドの範囲に収まる。</p>
+        <div class="rule" style="margin-block:4mm"></div>
+        <p class="txt"><strong>小晴日和が借りるもの：</strong>お題を出す構造。そして小晴日和には<strong>七十二候という、世界最強のお題ジェネレータ</strong>がすでにある。「草露白（くさのつゆしろし）をテーマに一枚描いてください」——この一行で、依頼と同時に世界観の枠がはまる。</p>
+      </div>
+      <div class="card">
+        <p class="card-n">B ｜ niko and ...型 ― 自前の編集軸に配置する</p>
+        <p class="txt">
+          niko and ...は<strong>「衣・食・住・遊・知・健・旅・音・LOCAL」という九つの自前の軸</strong>を先に掲げ、コラボはその軸の中に配置される。85周年のキャラクターIPを扱うときも、ヴィンテージ調のアートを選び直すという自社の編集視点で翻訳している。さらに自社マスコットを持ち、外部IPと共存させている。
+        </p>
+        <p class="txt" style="margin-block-start:3mm"><strong>本質：</strong>軸が先、キャラが後。<em>キャラクターに合わせて棚を変えず、棚に合うようにキャラクターを編集する</em>。</p>
+        <div class="rule" style="margin-block:4mm"></div>
+        <p class="txt"><strong>小晴日和が借りるもの：</strong>編集軸の先行。六つの晴れ間がniko and ...の九軸に相当する。<strong>借りないもの：大手版権IPとの座組み</strong>（次頁）。</p>
+      </div>
+    </div>
+    <div class="box-ng">
+      <p class="txt"><span class="badge b-ng">採らない</span><strong>niko and ...の「有名IPを取ってくる」戦い方は、小晴日和では逆効果になる。</strong>
+      理由は三つ。①ミニマムギャランティと最低ロット数が、月4回の露店の規模と釣り合わない。②「分散した手仕事に光を当てる」という大義名分と正面から矛盾する（すでに光の当たっているIPに乗ることになる）。③規模で戦うブランドと同じ土俵に出れば、小晴日和は単なる劣化版にしかならない。
+      <em>小晴日和が選ぶべきは、まだ名前の知られていない描き手である。</em>それが差別化そのものになる。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 04 大原則 -->
+<section class="sheet" data-no="04">
+  <div class="body">
+    <p class="kicker">PRINCIPLE</p>
+    <h2 class="h-sec">大原則 三か条<span class="en">THREE RULES</span></h2>
+    <p class="lead">迷ったときは、この三つに戻る。個別の判断はすべてここから導出できる。</p>
+    <div class="cols-3" style="flex:1">
+      <div class="tier">
+        <span class="tier-no">壱</span>
+        <p class="tier-sub">EDIT FIRST</p>
+        <p class="tier-name">編集軸が先、<br>キャラクターが後</p>
+        <div class="rule" style="margin-block:3mm"></div>
+        <p class="txt-s">
+          六つの晴れ間のどれかに翻訳できないキャラクターは、どれだけ人気でも入れない。
+          「このキャラのために新しい晴れ間を作る」は禁じ手。軸を増やした瞬間、軸は軸でなくなる。
+        </p>
+        <p class="txt-s" style="margin-block-start:3mm"><strong>運用：</strong>依頼書の一行目に必ず「どの晴れ間か」を書く。書けなければ発注しない。</p>
+      </div>
+      <div class="tier">
+        <span class="tier-no">弐</span>
+        <p class="tier-sub">WE SET THE THEME</p>
+        <p class="tier-name">お題を出すのは<br>こちらである</p>
+        <div class="rule" style="margin-block:3mm"></div>
+        <p class="txt-s">
+          「好きに描いてください」と言わない。<strong>候を一つ指定して発注する</strong>。
+          自由度を下げることは、クリエイターへの敬意を欠くことではない。むしろ制約があるほど良い絵が上がる。
+        </p>
+        <p class="txt-s" style="margin-block-start:3mm"><strong>運用：</strong>七十二候から候を指定＋その候のコピー（既存72本）を渡す。世界観の説明は不要になる。</p>
+      </div>
+      <div class="tier">
+        <span class="tier-no">参</span>
+        <p class="tier-sub">GUEST, NOT HERO</p>
+        <p class="tier-name">キャラクターは<br>主役にしない</p>
+        <div class="rule" style="margin-block:3mm"></div>
+        <p class="txt-s">
+          小晴日和の主役は<strong>季節と作り手</strong>である。キャラクターはその晴れ間に住む「登場人物」であり、看板ではない。
+          店頭でキャラクターが一番大きい状態を作らない。
+        </p>
+        <p class="txt-s" style="margin-block-start:3mm"><strong>運用：</strong>キャラクターの掲出面積は、掛け紙・タグ・誌面に限定。商品の主面には出さない（層三を除く）。</p>
+      </div>
+    </div>
+    <p class="txt-s" style="text-align:center">この三か条は、フェリシモ型（お題＝弐）とniko and ...型（軸＝壱）の良い部分だけを取り、小晴日和の大義名分（参）で締めた構造になっている。</p>
+  </div>
+</section>
+
+<!-- 05 選定基準 -->
+<section class="sheet" data-no="05">
+  <div class="body">
+    <p class="kicker">CRITERIA</p>
+    <h2 class="h-sec">選定基準「晴れ間の四問」<span class="en">FOUR QUESTIONS</span></h2>
+    <p class="lead">
+      商品の採用にはすでに「三問テスト」がある。キャラクターにはその対となる<strong>四問</strong>を置く。各5点・合計20点で採点する。
+    </p>
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th style="inline-size:8mm">問</th>
+          <th style="inline-size:32mm">観点</th>
+          <th>問いの内容</th>
+          <th style="inline-size:62mm">5点の状態</th>
+          <th style="inline-size:52mm">0点の状態（弾く）</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="num">一</td>
+          <td><strong>線</strong><br><span class="txt-s">紙に置けるか</span></td>
+          <td>生成りの紙の上、墨と淡色の棚の中で成立する線か。掛け紙一枚になったとき、隣の器と喧嘩しないか。</td>
+          <td>線画・淡彩・和紙や版画的な質感。余白が活きる。モノクロにしても成立する。</td>
+          <td>原色のベタ塗り、光沢、強い輪郭線、蛍光色、デジタル特有のグラデーション。</td>
+        </tr>
+        <tr>
+          <td class="num">二</td>
+          <td><strong>暮らし</strong><br><span class="txt-s">物語があるか</span></td>
+          <td>そのキャラクターに「生活の時間」があるか。朝起きて、お茶を飲み、夜眠る姿が想像できるか。</td>
+          <td>日常の所作が描ける。感情の振れ幅が小さく、静かな場面が似合う。</td>
+          <td>戦う・叫ぶ・オチをつける・パロディが主機能。静止した日常が描けない。</td>
+        </tr>
+        <tr class="accent">
+          <td class="num">三</td>
+          <td><strong>暦</strong><br><span class="txt-s">季節に翻訳できるか</span></td>
+          <td>七十二候のどれかに置いたとき、絵が一枚立ち上がるか。<strong>この問は足切り項目</strong>（次頁）。</td>
+          <td>季節の中に置ける。同じキャラで春夏秋冬・複数の候を描き分けられる。</td>
+          <td>季節と無関係な世界観に固定されている。SF・都市・抽象など無季のキャラクター。</td>
+        </tr>
+        <tr>
+          <td class="num">四</td>
+          <td><strong>大義</strong><br><span class="txt-s">作り手の側の人か</span></td>
+          <td>描き手本人が手仕事の側にいるか。小晴日和が光を当てる意味のある相手か。</td>
+          <td>個人または少人数の作家。本人と直接話せる。まだ広く知られていない。</td>
+          <td>権利管理会社としか話せない。すでに十分に光が当たっている大型IP。</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="cols-2-1">
+      <div class="box-ok">
+        <p class="txt"><span class="badge b-ok">設計意図</span>この四問は、既存の商品三問テスト（①日常に光を足すか ②手ざわり・物語があるか ③掛け紙一枚で棚に馴染むか）と<strong>同じ思想で作られている</strong>。担当者が変わっても、商品とキャラクターで判断基準がねじれない。</p>
+      </div>
+      <div class="card">
+        <p class="txt-s"><strong>採点は必ず二人以上で行う。</strong>一人の好みで決めると、必ず「線」の問が甘くなる。絵の魅力と棚への適合は別物であり、後者は複数の目でしか測れない。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 06 スコアシート -->
+<section class="sheet" data-no="06">
+  <div class="body">
+    <p class="kicker">SCORING</p>
+    <h2 class="h-sec">スコアシートと足切り<span class="en">HOW TO DECIDE</span></h2>
+    <div class="cols-2-1">
+      <div>
+        <table class="tbl" style="margin-block-end:5mm">
+          <thead>
+            <tr><th style="inline-size:26mm">合計点</th><th>判定</th><th style="inline-size:70mm">次のアクション</th></tr>
+          </thead>
+          <tbody>
+            <tr class="accent"><td class="num">16 〜 20</td><td><strong>採用</strong>｜層二から入る</td><td>候を指定して掛け紙の描き下ろしを発注。反応が良ければ層三へ。</td></tr>
+            <tr><td class="num">12 〜 15</td><td><strong>試す</strong>｜層一で様子を見る</td><td>『晴れ間だより』誌面に一度だけ登場。読者反応を見て再採点。</td></tr>
+            <tr><td class="num">8 〜 11</td><td><strong>保留</strong></td><td>作風が変化する可能性があるため、リストに残して半年後に再評価。</td></tr>
+            <tr><td class="num">0 〜 7</td><td><strong>見送る</strong></td><td>断る。ここで妥協した一件が、棚全体の説得力を落とす。</td></tr>
+          </tbody>
+        </table>
+        <div class="box-ng">
+          <p class="txt"><span class="badge b-ng">足切り</span><strong>第三問（暦）が0点なら、他が満点でも不採用とする。</strong>
+          小晴日和のすべての運用——出店日・掛け紙・SNS・『晴れ間だより』——は七十二候の軌道に乗っている。季節に翻訳できないキャラクターは、この軌道に乗れない。乗れないものを一つ入れると、そこだけ暦から外れた例外運用が発生し、<em>「暦が編集する」という仕組みそのものが壊れる</em>。</p>
+        </div>
+      </div>
+      <div class="card">
+        <p class="card-n">採点シート（運用フォーマット）</p>
+        <table class="tbl">
+          <tbody>
+            <tr><th>作家名</th><td></td></tr>
+            <tr><th>キャラクター名</th><td></td></tr>
+            <tr><th>想定の晴れ間</th><td class="txt-s">朝／ひと息／夜／出かける／飾る／育てる</td></tr>
+            <tr><th>一・線</th><td class="num">／5</td></tr>
+            <tr><th>二・暮らし</th><td class="num">／5</td></tr>
+            <tr><th>三・暦</th><td class="num">／5　←0なら即不採用</td></tr>
+            <tr><th>四・大義</th><td class="num">／5</td></tr>
+            <tr class="accent"><th>合計</th><td class="num">／20</td></tr>
+            <tr><th>採点者</th><td class="txt-s">2名以上</td></tr>
+            <tr><th>判定</th><td class="txt-s">採用／試す／保留／見送る</td></tr>
+          </tbody>
+        </table>
+        <p class="txt-s" style="margin-block-start:3mm">※このシートはExcel化して候補リストと一体運用する。年間で20〜30名を採点する前提のため、記録を残さないと基準が徐々にぶれる。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 07 三層構造 -->
+<section class="sheet" data-no="07">
+  <div class="body">
+    <p class="kicker">STRUCTURE</p>
+    <h2 class="h-sec">三層構造 ― 参画の階段をつくる<span class="en">THREE TIERS</span></h2>
+    <p class="lead">
+      全員をいきなり商品化しない。<strong>軽い関わりから始め、反応を見て上げていく階段</strong>にする。こちらは在庫リスクを負わず、クリエイターには成長の道筋がある。両者が得をする構造にする。
+    </p>
+    <div class="cols-3">
+      <div class="tier">
+        <span class="tier-no">01</span>
+        <p class="tier-sub">TIER 1</p>
+        <p class="tier-name">客人<span style="font-size:8pt">（まろうど）</span></p>
+        <p class="txt-s">『晴れ間だより』の誌面にだけ登場する。商品化はしない。挿絵一点、あるいは見開き一頁。</p>
+        <dl>
+          <dt>露出</dt><dd>フリーペーパー誌面のみ</dd>
+          <dt>在庫</dt><dd>なし</dd>
+          <dt>対価</dt><dd>原稿料のみ</dd>
+          <dt>期間</dt><dd>1号（2ヶ月）</dd>
+          <dt>判断</dt><dd>読者反応・SNS反応</dd>
+        </dl>
+      </div>
+      <div class="tier" style="border-color:var(--hare); border-width:1.5px">
+        <span class="tier-no" style="color:var(--hare)">02</span>
+        <p class="tier-sub" style="color:var(--hare)">TIER 2 ｜ 中核</p>
+        <p class="tier-name">候の描き手</p>
+        <p class="txt-s">指定した候をテーマに<strong>掛け紙を描き下ろす</strong>。商品ではなく「包み」に宿る。紙袋の帯・市ページにも展開。</p>
+        <dl>
+          <dt>露出</dt><dd>掛け紙・紙袋の帯・市ページ</dd>
+          <dt>在庫</dt><dd>紙のみ</dd>
+          <dt>対価</dt><dd>原稿料＋刷り部数連動</dd>
+          <dt>期間</dt><dd>1候（5日）〜1ヶ月</dd>
+          <dt>判断</dt><dd>掛け紙の持ち帰り率・QR通過率</dd>
+        </dl>
+      </div>
+      <div class="tier">
+        <span class="tier-no">03</span>
+        <p class="tier-sub">TIER 3</p>
+        <p class="tier-name">晴れ間の仲間</p>
+        <p class="txt-s">実際に商品化する。器・革・布のいずれかの作り手と組ませ、<strong>作り手×描き手の二人組</strong>で一品をつくる。年に数名だけ。</p>
+        <dl>
+          <dt>露出</dt><dd>商品本体・催事・EC</dd>
+          <dt>在庫</dt><dd>あり（要判断）</dd>
+          <dt>対価</dt><dd>レベニューシェア</dd>
+          <dt>期間</dt><dd>1年・自動更新なし</dd>
+          <dt>判断</dt><dd>消化率・再販要望</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="arrow-row" style="justify-content:center">
+      <span class="txt-s">客人</span><span class="arrow">→</span>
+      <span class="txt-s">誌面の反応が良い</span><span class="arrow">→</span>
+      <span class="txt-s"><strong>候の描き手</strong></span><span class="arrow">→</span>
+      <span class="txt-s">掛け紙が持ち帰られる</span><span class="arrow">→</span>
+      <span class="txt-s">晴れ間の仲間</span>
+    </div>
+    <div class="box-ok">
+      <p class="txt"><span class="badge b-ok">コネクター構造</span>層三の「作り手×描き手の二人組」が、この設計の到達点である。<strong>器の作り手と絵の描き手、どちらも単独では光が当たっていない二者を接続し、片方だけでは作れない一品を生む。</strong>小晴日和はその編集者として立つ。これは大義名分の実践であり、同時に他店が模倣できない商品になる。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 08 掛け紙 -->
+<section class="sheet" data-no="08">
+  <div class="body">
+    <p class="kicker">CORE DEVICE</p>
+    <h2 class="h-sec">掛け紙は、IPを試すための最小リスク装置である<span class="en">THE WRAPPER</span></h2>
+    <p class="lead">
+      層二を中核に置く理由を明示する。<strong>掛け紙は、小晴日和がすでに持っている資産のなかで、キャラクターIPと最も相性が良い。</strong>
+    </p>
+    <div class="cols-2-1">
+      <div>
+        <ol class="list list-n txt">
+          <li><strong>在庫を持たずにIPを試せる。</strong>刷るのは紙だけ。失敗しても損失は印刷代に収まる。商品化してから合わないと気づく構造にしない。</li>
+          <li><strong>日付が入るので、一期一会になる。</strong>掛け紙には候名と日付が入る。同じ絵は二度と出ない。これは制約ではなく<em>コレクション性という価値</em>である。「先週の掛け紙が欲しかった」が翌週の来店動機になる。</li>
+          <li><strong>合わなければ5日で消える。</strong>候は5日で変わる。棚に馴染まなかった絵は、次の候で自動的に入れ替わる。撤退コストがゼロに設計されている。</li>
+          <li><strong>クリエイターにとって実績になる。</strong>「京都・河原町の店先で毎週配られている」は、無名の描き手にとって意味のある経歴になる。だから低予算でも良い作家が受けてくれる。</li>
+          <li><strong>QRで作家自身にも送客できる。</strong>掛け紙裏のQR先に作家紹介ページを置き、そこから作家自身のSNS・ECにも導線を出す。<strong>小晴日和が作家の集客装置になる</strong>——これがWin-Winの実体であり、口説き文句になる。</li>
+        </ol>
+      </div>
+      <div class="card">
+        <p class="card-n">掛け紙の面構成（層二運用時）</p>
+        <table class="tbl">
+          <tbody>
+            <tr><th>表・主面</th><td>描き下ろしの絵（その候のテーマ）</td></tr>
+            <tr><th>表・小</th><td>候名／日付／シーンコピー</td></tr>
+            <tr><th>表・極小</th><td>小晴日和の印、ツクモの小印</td></tr>
+            <tr><th>裏</th><td>QR（商品の物語ページ）＋作家名・作家ページQR＋元ブランド名（小）</td></tr>
+          </tbody>
+        </table>
+        <div class="rule" style="margin-block:4mm"></div>
+        <p class="txt-s"><strong>絶対に守る一点：</strong>掛け紙のフォーマット（判型・書体・候名と日付の位置・墨の色）は<em>こちらが固定し、絵だけを差し替える</em>。作家ごとにレイアウトを変えると、掛け紙がシリーズとして成立しなくなり、コレクション性が消える。</p>
+        <p class="txt-s" style="margin-block-start:3mm">枠は変えない。中身だけ変わる。これが72候を通して破綻しない唯一の作り方。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 09 ツクモ -->
+<section class="sheet" data-no="09">
+  <div class="body">
+    <p class="kicker">HOST</p>
+    <h2 class="h-sec">ツクモを編集長に置く ― 入れ子の構造<span class="en">OUR OWN IP</span></h2>
+    <p class="lead">
+      複数のキャラクターを並列に並べると、必ず「雑多な寄せ集め」になる。それを防ぐ方法は一つ、<strong>自社のキャラクターを一段上に置き、外部キャラクターをその客人として招く</strong>という入れ子にすることである。
+    </p>
+    <div class="cols-2">
+      <div class="card">
+        <p class="card-n">構造</p>
+        <p class="quote" style="margin-block-end:4mm">小晴日和は編集レーベルである。<br>ならば編集長がいる。</p>
+        <p class="txt">
+          <strong>ツクモ（九十九）</strong>——墨でできた狼、金継ぎの意匠を持つTSURATSURA横断のキャラクター——を、小晴日和における<strong>編集長・案内人</strong>として置く。
+          外部のキャラクターは「ツクモが今号に招いた客人」として登場する。
+        </p>
+        <p class="txt" style="margin-block-start:4mm">
+          この一段があるだけで、キャラクターが何人増えても構造は<em>「毎号ゲストが来る雑誌」</em>のまま保たれる。並列ではなく、主と客の関係になる。
+        </p>
+        <p class="txt" style="margin-block-start:4mm">
+          niko and ...が自社マスコットを持ちながら外部IPと共存できているのも、フェリシモが「ブランド」という枠の内側に多数の企画を抱えられるのも、同じ理屈である。<strong>芯があるから、外を足せる。</strong>
+        </p>
+      </div>
+      <div>
+        <div class="card" style="margin-block-end:4mm">
+          <p class="card-n">具体的な置き場所</p>
+          <table class="tbl">
+            <tbody>
+              <tr><th style="inline-size:38mm">『晴れ間だより』</th><td>「ツクモが今号にお招きしたのは——」という固定の紹介欄を設け、そこから客人の頁に入る</td></tr>
+              <tr><th>掛け紙</th><td>描き下ろしの絵の隅に、ツクモの小印を必ず入れる（版元の印にあたる）</td></tr>
+              <tr><th>店頭</th><td>ゲストの絵の横に、ツクモの立て札で一言添える</td></tr>
+              <tr><th>SNS</th><td>紹介投稿の語り手をツクモに固定する</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="box-ok">
+          <p class="txt"><span class="badge b-ok">副次効果</span>ツクモは9事業を横断するキャラクターである。小晴日和で編集長として機能させることは、<strong>ツクモ自身の露出と物語を最も安く育てる場</strong>にもなる。露店とフリーペーパーは、ツクモにとっての連載枠として働く。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 契約 -->
+<section class="sheet" data-no="10">
+  <div class="body">
+    <p class="kicker">LEGAL</p>
+    <h2 class="h-sec">契約・権利の実務チェックリスト<span class="en">CONTRACT</span></h2>
+    <p class="lead">
+      個人作家との取引は、口約束で始まり、揉めてから条件を確認することになりがちである。<strong>層ごとにテンプレートを用意し、金額の大小にかかわらず必ず書面を交わす</strong>。
+    </p>
+    <table class="tbl" style="font-size:8pt; line-height:1.6">
+      <thead>
+        <tr><th style="inline-size:30mm">項目</th><th style="inline-size:88mm">必ず定めること</th><th>小晴日和での標準</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>使用範囲</strong></td><td>媒体・部数・期間・地域を明記。「宣伝目的での使用」のような包括表現は使わない</td><td>層一＝誌面のみ／層二＝掛け紙・紙袋・市ページ・SNS告知／層三＝商品・EC・催事</td></tr>
+        <tr class="accent"><td><strong>色調整・変換の可否</strong></td><td><em>世界観維持の生命線。</em>小晴日和のトーン（生成り・墨・淡色）に合わせた色調整・単色化を可とする条項を必ず入れる</td><td>「レイアウト内での配置・サイズ調整、および掛け紙仕様に合わせた色調整を可とする。線・造形の改変は不可」</td></tr>
+        <tr><td><strong>独占／非独占</strong></td><td>同一キャラクターの他社雑貨展開を制限するか</td><td>原則<strong>非独占</strong>。ただし層三のみ、同一カテゴリ（器／革／布）での競合出店を期間中制限</td></tr>
+        <tr><td><strong>対価と支払</strong></td><td>原稿料／部数連動／レベニューシェアの別と、支払時期</td><td>層一・二＝納品月末締め翌月末払い／層三＝卸価格の8〜12%を四半期精算</td></tr>
+        <tr><td><strong>クレジット表記</strong></td><td>表記名・表記位置・省略の可否</td><td>掛け紙裏面に作家名とQR。表面には出さない（大原則・参）</td></tr>
+        <tr><td><strong>AI学習利用</strong></td><td>提供データの生成AI学習への利用可否</td><td><strong>学習利用は行わない旨を明記。</strong>個人作家との信頼構築において、この一文の有無は大きい</td></tr>
+        <tr><td><strong>権利の帰属</strong></td><td>著作権は作家、小晴日和は利用許諾。共同制作物の扱い</td><td>著作権は作家に留保。層三の商品意匠は共有とし、単独での他社展開は相互に不可</td></tr>
+        <tr><td><strong>終了時の扱い</strong></td><td>期間満了後の在庫・掲載済み媒体・過去の掛け紙の扱い</td><td>既刷の掛け紙・既刊誌面は継続配布可。商品は期間満了後6ヶ月の在庫消化を認める</td></tr>
+      </tbody>
+    </table>
+    <div class="box-ng">
+      <p class="txt"><span class="badge b-ng">要確認</span>本頁は実務上の論点整理であり、法的助言ではない。層三（商品化・レベニューシェア）に進む前に、契約書のひな形は<strong>専門家の確認を一度通す</strong>こと。特に権利帰属と終了時の在庫処分は後から直せない。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 11 運用とNEXT -->
+<section class="sheet" data-no="11">
+  <div class="body">
+    <p class="kicker">OPERATION & NEXT</p>
+    <h2 class="h-sec">年間運用と、次にやること<span class="en">WHAT'S NEXT</span></h2>
+    <div class="cols-2-1">
+      <div>
+        <p class="card-n">年間の回し方</p>
+        <table class="tbl" style="margin-block-end:5mm">
+          <tbody>
+            <tr><th style="inline-size:30mm">候の総数</th><td>72（年間）</td></tr>
+            <tr><th>層二の起用</th><td>月1〜2名 ＝ <strong>年12〜24名</strong></td></tr>
+            <tr><th>層一の起用</th><td>『晴れ間だより』隔月6号 × 1〜2名 ＝ 年6〜12名</td></tr>
+            <tr class="accent"><th>層三の起用</th><td><strong>年2〜4名まで</strong>。ここを増やすと在庫と管理で潰れる</td></tr>
+            <tr><th>同時進行</th><td>1候につき描き手は<strong>1名まで</strong>。並べない</td></tr>
+          </tbody>
+        </table>
+        <div class="box-ok">
+          <p class="txt"><span class="badge b-ok">資産化</span>この運用を1年続けると、<strong>採点済み・取引実績のある作家ネットワークが20〜30名分たまる</strong>。これは掛け紙のためだけの資産ではない。
+          百貨店催事に出るとき、小晴日和は「商品を並べる店」ではなく<em>「作り手と描き手を数十名束ねる編集レーベル」</em>として提案できる。催事担当者に対する提案力が、この一点で決定的に変わる。</p>
+        </div>
+      </div>
+      <div class="card">
+        <p class="card-n">NEXT STEP</p>
+        <ol class="list list-n txt">
+          <li><strong>候補作家のロングリストを作る。</strong>まず10〜20名。SNS・作品展・京都の作家、既存の取引先からの紹介。名前が知られていない人を優先的に入れる。</li>
+          <li><strong>四問テストで採点する。</strong>スコアシートをExcel化し、二人以上で採点。ここまでやって初めて「選んでいる」状態になる。</li>
+          <li><strong>創刊号（白露号）の客人を1名決める。</strong>層一で一人だけ試す。誌面はすでにあるので、挿絵を差し込むだけで検証が始まる。</li>
+          <li><strong>層二の発注書テンプレを作る。</strong>候の指定・候のコピー・掛け紙の判型仕様・色調整条項をワンセットにした発注書。これがあると、以降の発注が10分で終わる。</li>
+        </ol>
+        <div class="rule" style="margin-block:4mm"></div>
+        <p class="txt-s">最短の入り方は<strong>3→1→2→4</strong>の順。まず一人試して手応えを掴んでから、リストと仕組みを整えるほうが、机上で完璧な基準を作るより速い。</p>
+      </div>
+    </div>
+    <p class="txt-s" style="text-align:center; margin-block-start:auto">
+      キャラクター参画設計書 v1.0 ／ 2026.08 ／ 株式会社TSURATSURA　｜　関連文書：ブランドブック・露店オペレーション出店戦略書・晴れ間だより発行計画・TSUKUMO_PERSONA.md
+    </p>
+  </div>
+</section>
+
+</body>
+</html>
