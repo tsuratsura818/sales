@@ -45,7 +45,7 @@ def promote_to_lead(result: PipelineResult, db: Session) -> Lead | None:
             ps = sa.get("pagespeed_score")
             if ps is not None and ps < 50:
                 score_breakdown["low_pagespeed"] = True
-            if not sa.get("has_og"):
+            if not sa.get("has_og_image"):
                 score_breakdown["no_og_image"] = True
             if not sa.get("has_favicon"):
                 score_breakdown["no_favicon"] = True

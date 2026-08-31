@@ -195,6 +195,7 @@ async def _monitor_cycle() -> tuple[int, int, int]:
             except Exception as e:
                 logger.error(f"案件処理エラー ({job_data.get('title', '?')}): {e}")
                 try:
+                    db.rollback()
                     listing.status = "error"
                     db.commit()
                 except Exception:
