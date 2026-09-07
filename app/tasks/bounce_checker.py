@@ -106,7 +106,7 @@ def _scan_inbox_sync() -> list[dict]:
                 addrs = [
                     a.lower() for a in EMAIL_RE.findall(body_text)
                     if "@" in a
-                    and not a.lower().endswith(settings.GMAIL_ADDRESS.lower())
+                    and a.lower() != settings.GMAIL_ADDRESS.lower()
                     and not any(s in a.lower() for s in ("mailer-daemon", "postmaster"))
                 ]
                 # 最初に出てくる宛先を「バウンスしたアドレス」とみなす
