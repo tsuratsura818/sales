@@ -109,7 +109,7 @@ MIN_CATEGORY_CONFIDENCE = 0.4
 # このモジュールはアプリ起動時に import されるので、ここで採った時刻 ≒ プロセス起動時刻。
 # 「今のプロセスより前に始まった run」は、そのタスクを持っていたプロセスが
 # もう居ないので確実に死んでいる、と判定できる（時間しきい値より正確）。
-PROCESS_STARTED_AT = datetime.now()
+PROCESS_STARTED_AT = datetime.now(timezone.utc).replace(tzinfo=None)
 # プロセス内で本当に固まった場合の保険（再起動を挟まないケース）
 STALE_RUN_MINUTES = 90
 
@@ -199,7 +199,7 @@ async def _collect(day_index: int, cap: int = 20) -> int:
         # ただし Render の再起動で asyncio タスクが死ぬと running のまま残り、
         # そのままだと以後ずっと収集がスキップされてしまうので、
         # STALE_RUN_MINUTES を過ぎたものは失敗扱いにして先へ進む。
-        stale_before = datetime.now() - timedelta(minutes=STALE_RUN_MINUTES)
+        stale_before = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=STALE_RUN_MINUTES)
         for running in db.query(PipelineRun).filter(PipelineRun.status == "running").all():
             started = running.created_at
             # 今のプロセスより前に始まったものは、実行していたプロセスが既に居ない
@@ -213,7 +213,7 @@ async def _collect(day_index: int, cap: int = 20) -> int:
                 )
                 running.status = "failed"
                 running.error_message = f"実行中に中断（{why}）"
-                running.completed_at = datetime.now()
+                running.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 db.commit()
             else:
                 logger.warning(f"パイプライン実行中のため収集をスキップ: run_id={running.id}")
