@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -540,7 +540,7 @@ async def run_pipeline(run_id: int):
         run.total_imported = imported_count
         run.duration_sec = duration
         run.source_breakdown = json.dumps(source_breakdown, ensure_ascii=False)
-        run.completed_at = datetime.now()
+        run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
 
         log.info(f"パイプライン完了: {len(all_leads)}件 ({duration}秒)")
@@ -555,7 +555,7 @@ async def run_pipeline(run_id: int):
                 run.status = "failed"
                 run.error_message = str(e)[:500]
                 run.duration_sec = int(time.time() - start_time)
-                run.completed_at = datetime.now()
+                run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 db.commit()
         except Exception:
             db.rollback()
