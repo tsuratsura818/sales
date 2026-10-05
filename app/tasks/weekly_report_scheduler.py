@@ -68,7 +68,7 @@ async def weekly_report_scheduler():
                 or (now_jst.weekday() == settings.WEEKLY_REPORT_DAY
                     and now_jst.hour >= settings.WEEKLY_REPORT_HOUR_JST)
             )
-            if reached and _get_last_report_week() != cur_week:
+            if settings.WEEKLY_REPORT_ENABLED and reached and _get_last_report_week() != cur_week:
                 logger.info("週次レポート生成開始")
                 db = None
                 try:
