@@ -5,6 +5,7 @@ from urllib.parse import parse_qs
 
 from fastapi import APIRouter, Request, HTTPException
 
+from app.config import get_settings
 from app.database import SessionLocal
 from app.models.job_listing import JobListing
 from app.services import line_service
@@ -22,6 +23,10 @@ async def line_webhook(request: Request):
     # 署名検証
     if not line_service.verify_signature(body, signature):
         raise HTTPException(status_code=403, detail="Invalid signature")
+
+    # 応答を止めている間は受け取るだけで何もしない（LINEには200を返す）
+    if not get_settings().LINE_WEBHOOK_ENABLED:
+        return {"status": "ok"}
 
     payload = json.loads(body)
 

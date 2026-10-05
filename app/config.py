@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # Webhook
     WEBHOOK_SECRET: str = ""
 
+    # LINE通知の個別スイッチ（2026-10-05 本人の指示で停止。再開は Render env で true）
+    JOB_LINE_ENABLED: bool = False       # 新着案件マッチ・提案文・応募処理の結果
+    REPLY_LINE_ENABLED: bool = False     # 営業先からの返信検知
+    LINE_WEBHOOK_ENABLED: bool = False   # LINEのボタン操作・メッセージへの応答
+
     # 週次レポート（2026-10-05 本人の指示でLINE送信を停止。再開は Render env WEEKLY_REPORT_ENABLED=true）
     WEEKLY_REPORT_ENABLED: bool = False
     WEEKLY_REPORT_DAY: int = 0  # 0=月曜

@@ -182,7 +182,7 @@ async def _monitor_cycle() -> tuple[int, int, int]:
                     except Exception as gen_err:
                         logger.error(f"提案文生成失敗 (job_id={listing.id}): {gen_err}")
                         listing.status = "notified"
-                        await line_service.push_text_message(
+                        await line_service.push_job_text(
                             f"⚠️ 提案文生成失敗\n【{listing.platform}】{listing.title[:60]}\n"
                             f"スコア: {eval_result['score']} / {eval_result['reason']}\n"
                             f"{listing.url}"

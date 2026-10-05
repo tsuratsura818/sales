@@ -385,7 +385,7 @@ async def import_jobs(request: Request, db: Session = Depends(get_db)):
                 except Exception as gen_err:
                     logger.error(f"提案文生成失敗 (job_id={listing.id}): {gen_err}")
                     listing.status = "notified"
-                    await line_service.push_text_message(
+                    await line_service.push_job_text(
                         f"⚠️ 提案文生成失敗\n【{listing.platform}】{listing.title[:60]}\n"
                         f"スコア: {eval_result['score']} / {eval_result['reason']}\n"
                         f"{listing.url}"
@@ -602,7 +602,7 @@ async def _regenerate_with_new_format(job_id: int) -> None:
             )
         except Exception as e:
             logger.error(f"再生成エラー (job_id={job_id}): {e}")
-            await line_service.push_text_message(f"⚠️ 再生成失敗: {job.title[:40]}\n{str(e)[:100]}")
+            await line_service.push_job_text(f"⚠️ 再生成失敗: {job.title[:40]}\n{str(e)[:100]}")
     finally:
         db.close()
 
@@ -653,7 +653,7 @@ async def _apply_to_job(job_id: int) -> None:
             logger.error(f"提案文生成エラー (job_id={job_id}): {e}")
             job.status = "error"
             db.commit()
-            await line_service.push_text_message(
+            await line_service.push_job_text(
                 f"提案文生成エラー: {job.title[:40]}\n{str(e)[:100]}"
             )
 
@@ -692,7 +692,7 @@ async def _submit_application(job_id: int) -> None:
                 application.applied_at = datetime.now()
                 job.status = "applied"
                 db.commit()
-                await line_service.push_text_message(
+                await line_service.push_job_text(
                     f"応募完了: {job.title[:40]}\n提案文を送信しました。"
                 )
             else:
@@ -700,7 +700,7 @@ async def _submit_application(job_id: int) -> None:
                 application.error_message = "送信確認ができませんでした"
                 job.status = "error"
                 db.commit()
-                await line_service.push_text_message(
+                await line_service.push_job_text(
                     f"応募エラー: {job.title[:40]}\n手動で確認してください:\n{job.url}"
                 )
 
@@ -709,7 +709,7 @@ async def _submit_application(job_id: int) -> None:
             application.error_message = str(e)[:500]
             job.status = "error"
             db.commit()
-            await line_service.push_text_message(
+            await line_service.push_job_text(
                 f"応募エラー: {job.title[:40]}\n{str(e)[:100]}"
             )
 

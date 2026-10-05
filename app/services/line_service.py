@@ -42,6 +42,8 @@ async def push_job_flex_message(
     job_url: str,
 ) -> Optional[str]:
     """案件カードをFlex Messageで送信。応募/スキップ/詳細ボタン付き"""
+    if not settings.JOB_LINE_ENABLED:
+        return None
     platform_color = "#F16722" if platform == "crowdworks" else "#0CBBF0"
     platform_label = "CrowdWorks" if platform == "crowdworks" else "Lancers"
 
@@ -204,6 +206,8 @@ async def push_proposal_review(
     proposal_text: str,
 ) -> None:
     """提案文をLINEに送信し、送信/再生成ボタンを表示"""
+    if not settings.JOB_LINE_ENABLED:
+        return None
     # 提案文（LINEメッセージ上限5000文字に収める）
     truncated = proposal_text[:4500]
 
@@ -265,6 +269,13 @@ async def push_text_message(text: str) -> None:
             logger.error(f"LINE text push失敗: {resp.status_code} {resp.text}")
 
 
+async def push_job_text(text: str) -> None:
+    """案件・応募まわりのテキスト通知。JOB_LINE_ENABLED が false なら送らない"""
+    if not settings.JOB_LINE_ENABLED:
+        return
+    await push_text_message(text)
+
+
 async def push_job_with_proposal(
     title: str,
     platform: str,
@@ -276,6 +287,8 @@ async def push_job_with_proposal(
     job_id: int | None = None,
 ) -> None:
     """マッチ案件 + 提案文 + URL を送信。後続でアクションボタンFlexも送る"""
+    if not settings.JOB_LINE_ENABLED:
+        return None
     text = (
         f"🎯 新着案件マッチ (スコア {score})\n\n"
         f"【{platform}】{title}\n"
@@ -341,6 +354,8 @@ def _action_buttons_flex(job_id: int, title: str) -> dict:
 
 async def push_funnel_buttons(job_id: int, title: str) -> None:
     """応募完了後の追跡用ボタン（返信あり/受注/見送り）。応募完了時に自動送信"""
+    if not settings.JOB_LINE_ENABLED:
+        return None
     flex = {
         "type": "flex",
         "altText": "案件追跡",
@@ -376,6 +391,8 @@ async def push_funnel_buttons(job_id: int, title: str) -> None:
 
 async def push_amount_quick_reply(job_id: int, title: str) -> None:
     """受注金額入力用Quick Reply。受注ボタン押下後に送信"""
+    if not settings.JOB_LINE_ENABLED:
+        return None
     presets = [50000, 100000, 200000, 300000, 500000, 1000000]
     items = [
         {
@@ -421,6 +438,8 @@ async def push_reply_notification(
     body_preview: str,
 ) -> None:
     """返信検知時のFlex Message通知。返信内容サマリー + 次アクション提案"""
+    if not settings.REPLY_LINE_ENABLED:
+        return None
     # 本文プレビュー（長すぎる場合は切り詰め）
     preview = body_preview[:300] + "..." if len(body_preview) > 300 else body_preview
     title_text = lead_title or lead_domain
