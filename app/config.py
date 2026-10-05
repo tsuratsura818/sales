@@ -58,7 +58,8 @@ class Settings(BaseSettings):
     # Webhook
     WEBHOOK_SECRET: str = ""
 
-    # 週次レポート
+    # 週次レポート（2026-10-05 本人の指示でLINE送信を停止。再開は Render env WEEKLY_REPORT_ENABLED=true）
+    WEEKLY_REPORT_ENABLED: bool = False
     WEEKLY_REPORT_DAY: int = 0  # 0=月曜
     WEEKLY_REPORT_HOUR_JST: int = 9
 
