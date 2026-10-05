@@ -6,6 +6,7 @@ except ImportError:
     pass
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -72,6 +73,12 @@ def status_ja(value: str) -> str:
 async def lifespan(app: FastAPI):
     # 起動時
     init_db()
+    # 本番は VPS（sellbuddy.tsuratsura.com）。Render は旧環境で、ここで定期処理を動かすと
+    # LINE通知・Notion起票・メール振り分けが VPS と二重になる（2026-10-05 判明）。
+    # Render は環境変数 RENDER を自動で持つので、そこでは画面とAPIだけ動かす。
+    if os.environ.get("RENDER"):
+        yield
+        return
     worker_task = asyncio.create_task(task_queue.worker())
     scheduler_task = asyncio.create_task(followup_scheduler())
     monitor_task = asyncio.create_task(job_monitor())
