@@ -21,11 +21,7 @@ WATCHED = {
         "alert_hour_jst": 11,  # 11時台に1回だけアラート
         "alert_label": "比較ビズ自動応募",
     },
-    "lancers_local": {
-        "max_age_sec": 90 * 60,
-        "alert_hour_jst": 12,
-        "alert_label": "Lancers取得",
-    },
+    # lancers_local は 2026-10-05 に監視を外した（PC停止のたびに通知が来るため、本人の指示で停止）
 }
 
 # 1日に1回だけアラートするためのフラグ（メモリ）
