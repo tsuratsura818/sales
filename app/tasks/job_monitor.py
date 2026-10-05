@@ -124,15 +124,18 @@ async def _monitor_cycle() -> tuple[int, int, int]:
                 db.commit()
                 db.refresh(listing)
 
-                eval_result = await job_matcher.evaluate_job(
-                    title=listing.title,
-                    description=listing.description or "",
-                    budget_min=listing.budget_min,
-                    budget_max=listing.budget_max,
-                    budget_type=listing.budget_type,
-                    client_name=listing.client_name,
-                    client_rating=listing.client_rating,
-                    platform=listing.platform,
+                eval_result = await asyncio.wait_for(
+                    job_matcher.evaluate_job(
+                        title=listing.title,
+                        description=listing.description or "",
+                        budget_min=listing.budget_min,
+                        budget_max=listing.budget_max,
+                        budget_type=listing.budget_type,
+                        client_name=listing.client_name,
+                        client_rating=listing.client_rating,
+                        platform=listing.platform,
+                    ),
+                    timeout=120,
                 )
 
                 listing.match_score = eval_result["score"]

@@ -61,9 +61,8 @@ def _domain_core(domain: str) -> set[str]:
 def _is_same_site(email_domain: str, site_domain: str) -> bool:
     e = email_domain.lower().replace("www.", "")
     s = site_domain.lower().replace("www.", "")
-    if e == s or e.endswith("." + s) or s.endswith("." + e):
-        return True
-    return bool(_domain_core(e) & _domain_core(s))
+    # ラベル交差(_domain_core)は都市型ドメイン(.nagoya.jp等)で別会社を同一視するため廃止
+    return e == s or e.endswith("." + s) or s.endswith("." + e)
 
 # 難読化（info＠example.com / info[at]example.com 等）を素のメールに戻す
 _DEOBF = [
@@ -169,7 +168,7 @@ async def extract_contact(url: str, client: httpx.AsyncClient) -> dict:
             for kw_jp, kw_en, prio in SUBPAGE_HINTS:
                 if kw_jp in text or kw_jp in href or (kw_en and kw_en in hl):
                     full = urljoin(base, href)
-                    if urlparse(full).netloc != domain:
+                    if not _is_same_site(urlparse(full).netloc, domain):
                         break
                     if full not in seen_urls:
                         seen_urls.add(full)

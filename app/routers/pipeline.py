@@ -729,16 +729,13 @@ async def update_keyword(keyword_id: int, data: KeywordUpdate, db: Session = Dep
     if not kw:
         raise HTTPException(status_code=404, detail="キーワードが見つかりません")
 
-    if data.keyword is not None:
-        kw.keyword = data.keyword.strip()
-    if data.industry is not None:
-        kw.industry = data.industry.strip()
-    if data.source is not None:
-        kw.source = data.source
-    if data.enabled is not None:
-        kw.enabled = data.enabled
-    if data.note is not None:
-        kw.note = data.note
+    updates = data.model_dump(exclude_unset=True)
+    if "keyword" in updates and updates["keyword"] is not None:
+        updates["keyword"] = updates["keyword"].strip()
+    if "industry" in updates and updates["industry"] is not None:
+        updates["industry"] = updates["industry"].strip()
+    for k, v in updates.items():
+        setattr(kw, k, v)
     db.commit()
     return {"success": True}
 

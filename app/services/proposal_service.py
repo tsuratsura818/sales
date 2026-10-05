@@ -14,7 +14,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+_JST = timezone(timedelta(hours=9))
 from typing import Any
 
 from app.models.lead import Lead
@@ -286,7 +288,7 @@ SYSTEM_PROMPT_BATCH = """あなたは株式会社TSURATSURAの営業担当・西
 # ============================================================
 
 def _build_issues_text(lead: Lead, score_breakdown: dict) -> str:
-    current_year = datetime.now().year
+    current_year = datetime.now(_JST).year
     issues: list[str] = []
 
     if "no_https" in score_breakdown:
@@ -342,7 +344,7 @@ def _issues_from_analysis(analysis: dict | None, category: str | None) -> str:
     if analysis.get("is_https") is False:
         lines.append("・HTTPSに対応していない(ブラウザ警告表示・SEO低下)")
     copyright_year = analysis.get("copyright_year")
-    if copyright_year and isinstance(copyright_year, int) and copyright_year < datetime.now().year - 2:
+    if copyright_year and isinstance(copyright_year, int) and copyright_year < datetime.now(_JST).year - 2:
         lines.append(f"・コピーライト表記が{copyright_year}年のまま更新されていない")
     ps = analysis.get("pagespeed_score")
     if ps is not None and isinstance(ps, (int, float)) and ps < 50:

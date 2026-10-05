@@ -101,8 +101,17 @@ async def _analyze_one(lead_id: int, url: str) -> float:
                 analyze_db.commit()
         except Exception:
             pass
-    except Exception:
-        pass
+    except Exception as e:
+        try:
+            import logging
+            logging.getLogger(__name__).debug(f"analyze error lead_id={lead_id}: {e}")
+            stuck = analyze_db.query(Lead).filter(Lead.id == lead_id).first()
+            if stuck and stuck.status == "analyzing":
+                stuck.status = "error"
+                stuck.analysis_error = str(e)[:200]
+                analyze_db.commit()
+        except Exception:
+            pass
     finally:
         analyze_db.close()
     return time.time() - t0

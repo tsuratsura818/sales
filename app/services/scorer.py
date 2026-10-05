@@ -1,4 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+_JST = timezone(timedelta(hours=9))
 
 # WordPress メジャーバージョンのリリース日マッピング
 WP_VERSION_DATES = {
@@ -79,7 +81,7 @@ def calculate_score(analysis: dict) -> tuple[int, dict]:
     """分析結果からスコアと内訳を計算する"""
     score = 0
     breakdown = {}
-    current_year = datetime.now().year
+    current_year = datetime.now(_JST).year
 
     # HTTPSなし
     if analysis.get("is_https") is False:

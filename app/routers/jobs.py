@@ -309,6 +309,7 @@ async def import_jobs(request: Request, db: Session = Depends(get_db)):
 
     notified = 0
     for job_data in jobs:
+        listing = None  # 前イテレーションの listing が例外ハンドラに漏れないようリセット
         try:
             listing = JobListing(
                 platform=job_data["platform"],
@@ -399,11 +400,12 @@ async def import_jobs(request: Request, db: Session = Depends(get_db)):
 
         except Exception as e:
             logger.error(f"Lancers案件処理エラー ({job_data.get('title', '?')}): {e}")
-            try:
-                listing.status = "error"
-                db.commit()
-            except Exception:
-                pass
+            if listing is not None:
+                try:
+                    listing.status = "error"
+                    db.commit()
+                except Exception:
+                    pass
 
     return {
         "success": True,
