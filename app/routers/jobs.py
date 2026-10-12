@@ -402,6 +402,7 @@ async def import_jobs(request: Request, db: Session = Depends(get_db)):
             logger.error(f"Lancers案件処理エラー ({job_data.get('title', '?')}): {e}")
             if listing is not None:
                 try:
+                    db.rollback()  # セッションが "needs rollback" 状態のまま commit しないよう先に rollback
                     listing.status = "error"
                     db.commit()
                 except Exception:
