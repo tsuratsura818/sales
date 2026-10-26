@@ -621,14 +621,22 @@ async def _apply_to_job(job_id: int) -> None:
         job.status = "generating"
         db.commit()
 
-        # 応募レコード作成
-        application = JobApplication(
-            job_listing_id=job.id,
-            result_status="pending",
-        )
-        db.add(application)
-        db.commit()
-        db.refresh(application)
+        # 応募レコード作成（再生成時は既存行を再利用して重複防止）
+        application = db.query(JobApplication).filter(
+            JobApplication.job_listing_id == job.id
+        ).first()
+        if application:
+            application.proposal_text = None
+            application.result_status = "pending"
+            db.commit()
+        else:
+            application = JobApplication(
+                job_listing_id=job.id,
+                result_status="pending",
+            )
+            db.add(application)
+            db.commit()
+            db.refresh(application)
 
         try:
             # Claude で提案文を生成
