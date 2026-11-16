@@ -471,6 +471,18 @@ class RecurringTaskIn(BaseModel):
     enabled: bool = True
 
 
+class RecurringTaskUpdate(BaseModel):
+    name: Optional[str] = None
+    freq: Optional[str] = None
+    weekday: Optional[int] = None
+    day_of_month: Optional[int] = None
+    priority: Optional[str] = None
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None
+    create_status: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
 def _recurring_dict(r: RecurringTask) -> dict:
     freq = getattr(r, "freq", "weekly") or "weekly"
     dom = getattr(r, "day_of_month", 0) or 0
@@ -536,22 +548,20 @@ async def api_create_recurring(data: RecurringTaskIn):
 
 
 @router.patch("/api/recurring-tasks/{rid}")
-async def api_update_recurring(rid: int, data: RecurringTaskIn):
+async def api_update_recurring(rid: int, data: RecurringTaskUpdate):
     """毎週のタスクを更新"""
     db = SessionLocal()
     try:
         row = db.query(RecurringTask).filter(RecurringTask.id == rid).first()
         if not row:
             raise HTTPException(status_code=404, detail="見つかりません")
-        row.name = data.name.strip()[:300]
-        row.freq = data.freq if data.freq in ("weekly", "monthly") else "weekly"
-        row.weekday = data.weekday
-        row.day_of_month = data.day_of_month
-        row.priority = data.priority or "中"
-        row.project_id = data.project_id or None
-        row.project_name = data.project_name or None
-        row.create_status = data.create_status or "進行中"
-        row.enabled = data.enabled
+        updates = data.model_dump(exclude_unset=True)
+        for k, v in updates.items():
+            if k == "name" and v is not None:
+                v = v.strip()[:300]
+            elif k == "freq" and v not in ("weekly", "monthly"):
+                v = "weekly"
+            setattr(row, k, v)
         db.commit()
         return {"success": True, "recurring_task": _recurring_dict(row)}
     finally:
