@@ -1,6 +1,6 @@
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -274,7 +274,7 @@ async def _run_search_job(job_id: int) -> None:
         job.status = "completed"
         job.total_urls = lead_count
         job.analyzed_count = lead_count
-        job.completed_at = datetime.now()
+        job.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
 
         await progress_store.update(

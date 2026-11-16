@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.config import get_settings
 from app.database import SessionLocal
@@ -62,7 +62,7 @@ def _log_run(
     db = SessionLocal()
     try:
         log = MonitorLog(
-            run_at=datetime.now(),
+            run_at=datetime.now(timezone.utc).replace(tzinfo=None),
             status=status,
             message=message,
             cw_count=cw_count,
@@ -187,7 +187,7 @@ async def _monitor_cycle() -> tuple[int, int, int]:
                             f"スコア: {eval_result['score']} / {eval_result['reason']}\n"
                             f"{listing.url}"
                         )
-                    listing.notified_at = datetime.now()
+                    listing.notified_at = datetime.now(timezone.utc).replace(tzinfo=None)
                     notified += 1
                 else:
                     listing.status = "skipped"

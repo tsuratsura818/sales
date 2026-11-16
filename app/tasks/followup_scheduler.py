@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import and_
 from app.database import SessionLocal
@@ -23,7 +23,7 @@ async def followup_scheduler() -> None:
         try:
             db = SessionLocal()
             try:
-                now = datetime.now()
+                now = datetime.now(timezone.utc).replace(tzinfo=None)
 
                 # 送信予定時刻を過ぎていて、リードがactive状態のステップを取得
                 due_steps = (
